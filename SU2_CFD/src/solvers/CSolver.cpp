@@ -30,6 +30,7 @@
 #include "../../include/gradients/computeGradientsGreenGauss.hpp"
 #include "../../include/gradients/computeGradientsLeastSquares.hpp"
 #include "../../include/limiters/computeLimiters.hpp"
+#include "../../include/metrics/computeMetrics.hpp"
 #include "../../../Common/include/toolboxes/MMS/CIncTGVSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CInviscidVortexSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CMMSIncEulerSolution.hpp"
@@ -275,6 +276,18 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       ICOUNT           = nVar;
       break;
+    case PERIODIC_GRAD_ADAPT:
+      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
+      JCOUNT          = nDim;
+      COUNT_PER_POINT = ICOUNT * JCOUNT;
+      MPI_TYPE        = COMM_TYPE_DOUBLE;
+      break;
+    case PERIODIC_HESSIAN:
+      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
+      JCOUNT          = nDim;
+      COUNT_PER_POINT = ICOUNT * JCOUNT;
+      MPI_TYPE        = COMM_TYPE_DOUBLE;
+      break;
     default:
       SU2_MPI::Error("Unrecognized quantity for periodic communication.",
                      CURRENT_FUNCTION);
@@ -294,6 +307,12 @@ namespace PeriodicCommHelpers {
       case PERIODIC_SOL_LS:
       case PERIODIC_SOL_ULS:
         return nodes->GetGradient();
+        break;
+      case PERIODIC_GRAD_ADAPT:
+        return nodes->GetGradient_Adapt();
+        break;
+      case PERIODIC_HESSIAN:
+        return nodes->GetHessian();
         break;
       default:
         return nodes->GetGradient_Reconstruction();
@@ -720,6 +739,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
           case PERIODIC_SOL_GG_R:
           case PERIODIC_PRIM_GG:
           case PERIODIC_PRIM_GG_R:
+          case PERIODIC_GRAD_ADAPT:
 
             /*--- Access and rotate the partial G-G gradient. These will be
              summed on both sides of the periodic faces before dividing
@@ -758,6 +778,21 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
             for (iVar = 0; iVar < ICOUNT; iVar++) {
               for (iDim = 0; iDim < nDim; iDim++) {
                 bufDSend[buf_offset+iVar*nDim+iDim] = rotBlock[iVar][iDim];
+              }
+            }
+
+            break;
+
+          case PERIODIC_HESSIAN:
+
+            /*--- For now, just send the partial gradient.
+             TODO: perform a rotation. ---*/
+
+            /*--- Store the partial gradient in the buffer. ---*/
+
+            for (iVar = 0; iVar < ICOUNT; iVar++) {
+              for (iDim = 0; iDim < nSymMat; iDim++) {
+                bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
               }
             }
 
@@ -1222,6 +1257,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
             case PERIODIC_SOL_GG_R:
             case PERIODIC_PRIM_GG:
             case PERIODIC_PRIM_GG_R:
+            case PERIODIC_GRAD_ADAPT:
 
               /*--- For G-G, we accumulate partial gradients then compute
                the final value using the entire volume of the periodic cell. ---*/
@@ -1229,6 +1265,16 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
               for (iVar = 0; iVar < ICOUNT; iVar++)
                 for (iDim = 0; iDim < nDim; iDim++)
                   gradient(iPoint, iVar, iDim) += bufDRecv[buf_offset+iVar*nDim+iDim];
+
+              break;
+
+            case PERIODIC_HESSIAN:
+              /*--- For G-G, we accumulate partial gradients then compute
+               the final value using the entire volume of the periodic cell. ---*/
+
+              for (iVar = 0; iVar < ICOUNT; iVar++)
+                for (iDim = 0; iDim < nSymMat; iDim++)
+                  gradient(iPoint, iVar, iDim) += bufDRecv[buf_offset+iVar*nSymMat+iDim];
 
               break;
 
@@ -1379,6 +1425,22 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = nVar;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
+    case MPI_QUANTITIES::GRADIENT_ADAPT:
+      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nDim : config->GetnAdap_Sensor()*nDim;
+      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      break;
+    case MPI_QUANTITIES::AUXVAR_ADAPT:
+      COUNT_PER_POINT  = nAuxGradAdap;
+      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      break;
+    case MPI_QUANTITIES::HESSIAN:
+      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nSymMat : config->GetnAdap_Sensor()*nSymMat;
+      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      break;
+    case MPI_QUANTITIES::METRIC:
+      COUNT_PER_POINT  = nSymMat;
+      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      break;
     default:
       SU2_MPI::Error("Unrecognized quantity for point-to-point MPI comms.",
                      CURRENT_FUNCTION);
@@ -1393,6 +1455,8 @@ namespace CommHelpers {
       case MPI_QUANTITIES::PRIMITIVE_GRADIENT: return nodes->GetGradient_Primitive();
       case MPI_QUANTITIES::PRIMITIVE_GRAD_REC: return nodes->GetGradient_Reconstruction();
       case MPI_QUANTITIES::AUXVAR_GRADIENT: return nodes->GetAuxVarGradient();
+      case MPI_QUANTITIES::GRADIENT_ADAPT: return nodes->GetGradient_Adapt();
+      case MPI_QUANTITIES::HESSIAN: return nodes->GetHessian();
       default: return nodes->GetGradient();
     }
   }
@@ -1409,7 +1473,7 @@ void CSolver::InitiateComms(CGeometry *geometry,
 
   /*--- Local variables ---*/
 
-  unsigned short iVar, iDim;
+  unsigned short iVar, iDim, iMat;
   unsigned short COUNT_PER_POINT = 0;
   unsigned short MPI_TYPE        = 0;
 
@@ -1435,6 +1499,7 @@ void CSolver::InitiateComms(CGeometry *geometry,
   /*--- Handle the different types of gradient and limiter. ---*/
 
   const auto nVarGrad = COUNT_PER_POINT / nDim;
+  const auto nVarHess = COUNT_PER_POINT / nSymMat;
   auto& gradient = CommHelpers::selectGradient(base_nodes, commType);
   auto& limiter = CommHelpers::selectLimiter(base_nodes, commType);
 
@@ -1503,9 +1568,23 @@ void CSolver::InitiateComms(CGeometry *geometry,
           case MPI_QUANTITIES::SOLUTION_GRAD_REC:
           case MPI_QUANTITIES::PRIMITIVE_GRAD_REC:
           case MPI_QUANTITIES::AUXVAR_GRADIENT:
+          case MPI_QUANTITIES::GRADIENT_ADAPT:
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
+            break;
+          case MPI_QUANTITIES::AUXVAR_ADAPT:
+            for (iVar = 0; iVar < nAuxGradAdap; iVar++)
+              bufDSend[buf_offset+iVar] = base_nodes->GetAuxVar_Adapt(iPoint, iVar);
+            break;
+          case MPI_QUANTITIES::HESSIAN:
+            for (iVar = 0; iVar < nVarHess; iVar++)
+              for (iMat = 0; iMat < nSymMat; iMat++)
+                bufDSend[buf_offset+iVar*nSymMat+iMat] = gradient(iPoint, iVar, iMat);
+            break;
+          case MPI_QUANTITIES::METRIC:
+            for (iMat = 0; iMat < nSymMat; iMat++)
+              bufDSend[buf_offset+iMat] = base_nodes->GetMetric(iPoint, iMat);
             break;
           case MPI_QUANTITIES::SOLUTION_FEA:
             for (iVar = 0; iVar < nVar; iVar++) {
@@ -1551,7 +1630,7 @@ void CSolver::CompleteComms(CGeometry *geometry,
 
   /*--- Local variables ---*/
 
-  unsigned short iDim, iVar;
+  unsigned short iDim, iVar, iMat;
   unsigned long iPoint, iRecv, nRecv, msg_offset, buf_offset;
   unsigned short COUNT_PER_POINT = 0;
   unsigned short MPI_TYPE = 0;
@@ -1572,6 +1651,7 @@ void CSolver::CompleteComms(CGeometry *geometry,
   /*--- Handle the different types of gradient and limiter. ---*/
 
   const auto nVarGrad = COUNT_PER_POINT / nDim;
+  const auto nVarHess = COUNT_PER_POINT / nSymMat;
   auto& gradient = CommHelpers::selectGradient(base_nodes, commType);
   auto& limiter = CommHelpers::selectLimiter(base_nodes, commType);
 
@@ -1651,9 +1731,23 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::SOLUTION_GRAD_REC:
           case MPI_QUANTITIES::PRIMITIVE_GRAD_REC:
           case MPI_QUANTITIES::AUXVAR_GRADIENT:
+          case MPI_QUANTITIES::GRADIENT_ADAPT:
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 gradient(iPoint,iVar,iDim) = bufDRecv[buf_offset+iVar*nDim+iDim];
+            break;
+          case MPI_QUANTITIES::AUXVAR_ADAPT:
+            for (iVar = 0; iVar < nAuxGradAdap; iVar++)
+              base_nodes->SetAuxVar_Adapt(iPoint, iVar, bufDRecv[buf_offset+iVar]);
+            break;
+          case MPI_QUANTITIES::HESSIAN:
+            for (iVar = 0; iVar < nVarHess; iVar++)
+              for (iMat = 0; iMat < nSymMat; iMat++)
+                gradient(iPoint, iVar, iMat) = bufDRecv[buf_offset+iVar*nSymMat+iMat];
+            break;
+          case MPI_QUANTITIES::METRIC:
+            for (iMat = 0; iMat < nSymMat; iMat++)
+              base_nodes->SetMetric(iPoint, iMat, SU2_TYPE::GetValue(bufDRecv[buf_offset+iMat]));
             break;
           case MPI_QUANTITIES::SOLUTION_FEA:
             for (iVar = 0; iVar < nVar; iVar++) {
@@ -2158,6 +2252,26 @@ void CSolver::SetSolution_Gradient_LS(CGeometry *geometry, const CConfig *config
   const auto comm = reconstruction? MPI_QUANTITIES::SOLUTION_GRAD_REC : MPI_QUANTITIES::SOLUTION_GRADIENT;
 
   computeGradientsLeastSquares(this, comm, commPer, *geometry, *config, weighted, solution, 0, nVar, idxVel, gradient, rmatrix);
+}
+
+void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
+
+  //--- communicate the solution values via MPI
+  const auto commSol = config->GetGoal_Oriented_Metric()? MPI_QUANTITIES::SOLUTION : MPI_QUANTITIES::AUXVAR_ADAPT;
+  InitiateComms(geometry, config, commSol);
+  CompleteComms(geometry, config, commSol);
+
+  const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetAuxVar_Adapt();
+  auto& gradient = base_nodes->GetGradient_Adapt();
+  auto nHess = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
+
+  computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
+                             *geometry, *config, solution, 0, nHess, idxVel, gradient);
+
+  auto& hessian = base_nodes->GetHessian();
+
+  computeHessiansGreenGauss(this, MPI_QUANTITIES::HESSIAN, PERIODIC_HESSIAN,
+                            *geometry, *config, gradient, 0, nHess, idxVel, hessian);
 }
 
 void CSolver::SetUndivided_Laplacian(CGeometry *geometry, const CConfig *config) {
@@ -4366,4 +4480,92 @@ void CSolver::SavelibROM(CGeometry *geometry, CConfig *config, bool converged) {
   SU2_MPI::Error("SU2 was not compiled with libROM support.", CURRENT_FUNCTION);
 #endif
 
+}
+
+void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config) {
+
+  const unsigned long nPointDomain = geometry->GetnPointDomain();
+
+  const bool visc = (config->GetViscous());
+  const bool turb = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
+
+  const bool goal = (config->GetGoal_Oriented_Metric());
+
+  /*--- Vector to store weights from various error contributions ---*/
+  unsigned long nVarTot = solver[FLOW_SOL]->GetnVar();
+  if(goal && turb) nVarTot += solver[TURB_SOL]->GetnVar();
+  vector<vector<double> > weights(3, vector<double>(nVarTot));
+
+  unsigned short nSensor = config->GetnAdap_Sensor();
+
+  /*--- Compute Hessian weights for goal-oriented metric ---*/
+  for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
+    for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
+      if (goal) {
+        //--- TODO: implement sum of weighted Hessians for goal-oriented metric
+      }
+    }
+
+    //--- TODO: apply boundary correction?
+    // CorrectBoundMetric(geometry, config);
+  }
+
+  /*--- Compute Lp-normalization of the metric tensor field ---*/
+  for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
+    SU2_OMP_MASTER
+    if (goal) {
+      auto& metrics = base_nodes->GetMetric();
+      setPositiveDefiniteMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+      normalizeMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+    }
+    else {
+      auto& metrics = base_nodes->GetHessian();
+      setPositiveDefiniteMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
+      normalizeMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
+    }
+    END_SU2_OMP_MASTER
+    SU2_OMP_BARRIER
+  }
+
+  /*--- Intersect and store feature-based metrics ---*/
+  if (!goal) {
+    auto varFlo = solver[FLOW_SOL]->GetNodes();
+    const unsigned short nMet = 3*(nDim-1);
+    if (nSensor > 1) {
+      for (auto jSensor = 1u; jSensor < nSensor; ++jSensor) {
+        //--- TODO: metric intersection of multiple features
+      }
+    }
+    for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
+      SetMetric(solver, geometry, config, iPoint, weights);
+    }
+  }
+  if (!goal) {
+    //--- TODO: metric intersection of multiple features
+
+  }
+
+}
+
+void CSolver::SetMetric(CSolver **solver, const CGeometry*geometry, const CConfig *config,
+                                  unsigned long iPoint, vector<vector<double> > &weights) {
+
+  auto varFlo = solver[FLOW_SOL]->GetNodes();
+
+  const unsigned short nMet = 3*(nDim-1);
+  const unsigned short nVarFlo = solver[FLOW_SOL]->GetnVar();
+  const unsigned short nSensor = config->GetnAdap_Sensor();
+
+  const bool turb = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
+  const bool goal = (config->GetGoal_Oriented_Metric());
+
+  if (goal) {
+    //--- TODO: sum weighted Hessians
+  }
+  else {
+    for (auto iMet = 0; iMet < nMet; ++iMet) {
+      const double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, 0, iMet));
+      varFlo->SetMetric(iPoint, iMet, hess);
+    }
+  }
 }

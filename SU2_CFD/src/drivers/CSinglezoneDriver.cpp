@@ -175,6 +175,11 @@ void CSinglezoneDriver::Postprocess() {
     iteration_container[ZONE_0][INST_0]->Relaxation(output_container[ZONE_0], integration_container, geometry_container, solver_container,
         numerics_container, config_container, surface_movement, grid_movement, FFDBox, ZONE_0, INST_0);
 
+  /*--- Compute metric for anisotropic mesh adaptation ---*/
+
+  if (config_container[ZONE_0]->GetCompute_Metric())
+    ComputeMetricField();
+
 }
 
 void CSinglezoneDriver::Update() {
@@ -311,4 +316,31 @@ bool CSinglezoneDriver::Monitor(unsigned long TimeIter){
 
 bool CSinglezoneDriver::GetTimeConvergence() const{
   return output_container[ZONE_0]->GetCauchyCorrectedTimeConvergence(config_container[ZONE_0]);
+}
+
+void CSinglezoneDriver::ComputeMetricField() {
+
+  auto solver = solver_container[ZONE_0][INST_0][MESH_0];
+  auto solver_flow = solver_container[ZONE_0][INST_0][MESH_0][FLOW_SOL];
+  auto geometry = geometry_container[ZONE_0][INST_0][MESH_0];
+  auto config = config_container[ZONE_0];
+  int idxVel = -1;
+
+  if (rank == MASTER_NODE){
+    cout << endl <<"----------------------------- Compute Metric ----------------------------" << endl;
+    cout << "Storing primitive variables needed for gradients in metric." << endl;
+  }
+  solver_flow->SetAuxVar_Adapt(geometry, config, solver_flow->GetNodes());
+
+  if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {
+    if(rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
+    solver_flow->SetHessian_GG(geometry, config, idxVel, RUNTIME_FLOW_SYS);
+  }
+  else {
+    SU2_MPI::Error("Unsupported Hessian method.", CURRENT_FUNCTION);
+  }
+
+  //--- Metric
+  if(rank == MASTER_NODE) cout << "Computing feature-based metric tensor." << endl;
+  solver_flow->ComputeMetric(solver, geometry, config);
 }

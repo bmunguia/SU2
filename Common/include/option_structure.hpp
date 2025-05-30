@@ -2592,6 +2592,8 @@ enum PERIODIC_QUANTITIES {
   PERIODIC_LIM_PRIM_1 ,  /*!< \brief Primitive limiter communication phase 1 of 2 (periodic only). */
   PERIODIC_LIM_PRIM_2 ,  /*!< \brief Primitive limiter communication phase 2 of 2 (periodic only). */
   PERIODIC_IMPLICIT   ,  /*!< \brief Implicit update communication to ensure consistency across periodic boundaries. */
+  PERIODIC_GRAD_ADAPT ,  /*!< \brief Gradient vectors for anisotropic mesh adaptation (periodic only). */
+  PERIODIC_HESSIAN    ,  /*!< \brief Hessian matrices for anisotropic mesh adaptation (periodic only). */
 };
 
 /*!
@@ -2623,6 +2625,10 @@ enum class MPI_QUANTITIES {
   MESH_DISPLACEMENTS   ,  /*!< \brief Mesh displacements at the interface. */
   SOLUTION_TIME_N      ,  /*!< \brief Solution at time n. */
   SOLUTION_TIME_N1     ,  /*!< \brief Solution at time n-1. */
+  GRADIENT_ADAPT       ,  /*!< \brief Gradient vectors for anisotropic mesh adaptation. */
+  AUXVAR_ADAPT         ,  /*!< \brief Auxiliary vectors for anisotropic mesh adaptation. */
+  HESSIAN              ,  /*!< \brief Hessian vectors for anisotropic mesh adaptation. */
+  METRIC               ,  /*!< \brief Metric vectors for anisotropic mesh adaptation. */
 };
 
 /*!

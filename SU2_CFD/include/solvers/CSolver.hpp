@@ -80,10 +80,12 @@ protected:
   unsigned short nVar,           /*!< \brief Number of variables of the problem. */
   nPrimVar,                      /*!< \brief Number of primitive variables of the problem. */
   nPrimVarGrad,                  /*!< \brief Number of primitive variables of the problem in the gradient computation. */
+  nAuxGradAdap,                  /*!< \brief Number of primitive variable gradients of the problem needed for adaptation. */
   nSecondaryVar,                 /*!< \brief Number of primitive variables of the problem. */
   nSecondaryVarGrad,             /*!< \brief Number of primitive variables of the problem in the gradient computation. */
   nVarGrad,                      /*!< \brief Number of variables for deallocating the LS Cvector. */
-  nDim;                          /*!< \brief Number of dimensions of the problem. */
+  nDim,                          /*!< \brief Number of dimensions of the problem. */
+  nSymMat;                       /*!< \brief Number of symmetric matrix componenents for Hessian and metric tensor. */
   unsigned long nPoint;          /*!< \brief Number of points of the computational grid. */
   unsigned long nPointDomain;    /*!< \brief Number of points of the computational grid. */
   su2double Max_Delta_Time, /*!< \brief Maximum value of the delta time for all the control volumes. */
@@ -577,6 +579,23 @@ public:
    * \param[in] config - Definition of the particular problem.
    */
   inline virtual void SetPrimitive_Limiter(CGeometry *geometry, const CConfig *config) { }
+
+  /*!
+   * \brief Compute the Green-Gauss Hessian of the solution.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] idxVel - Index to velocity, -1 if no velocity is present in the solver.
+   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
+   */
+  void SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
+   */
+  virtual void SetAuxVar_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) { }
 
   /*!
    * \brief Set the old solution variables to the current solution value for Runge-Kutta iteration.
@@ -4334,6 +4353,25 @@ public:
     END_SU2_OMP_FOR
   }
 
+  /*!
+   * \brief Compute the goal-oriented metric.
+   * \param[in] solver - Physical definition of the problem.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config);
+
+  /*!
+   * \brief Sum up the weighted Hessians to obtain the goal-oriented metric.
+   * \param[in] solver - Physical definition of the problem.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] iPoint - Index of current node.
+   * \param[in] weights - Weights of each Hessian in the metric.
+   */
+  void SetMetric(CSolver **solver, const CGeometry *geometry, const CConfig *config,
+                 unsigned long iPoint, vector<vector<double> > &weights);
+
 protected:
   /*!
    * \brief Allocate the memory for the verification solution, if necessary.
@@ -4432,5 +4470,4 @@ protected:
       Point_Max_Coord_BGS[val_var][iDim] = val_coord[iDim];
     }
   }
-
 };
