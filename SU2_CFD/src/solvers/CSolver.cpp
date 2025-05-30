@@ -284,7 +284,7 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       break;
     case PERIODIC_HESSIAN:
       ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
-      JCOUNT          = nDim;
+      JCOUNT          = nSymMat;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
       break;
@@ -369,7 +369,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
   bool boundary_i, boundary_j;
   bool weighted = true;
 
-  unsigned short iVar, jVar, iDim;
+  unsigned short iVar, jVar, iDim, iMat;
   unsigned short nNeighbor       = 0;
   unsigned short COUNT_PER_POINT = 0;
   unsigned short MPI_TYPE        = 0;
@@ -791,8 +791,8 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
             /*--- Store the partial gradient in the buffer. ---*/
 
             for (iVar = 0; iVar < ICOUNT; iVar++) {
-              for (iDim = 0; iDim < nSymMat; iDim++) {
-                bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
+              for (iMat = 0; iMat < nSymMat; iMat++) {
+                bufDSend[buf_offset+iVar*nSymMat+iMat] = gradient(iPoint, iVar, iMat);
               }
             }
 
@@ -1045,7 +1045,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
   /*--- Local variables ---*/
 
   unsigned short nPeriodic = config->GetnMarker_Periodic();
-  unsigned short iDim, jDim, iVar, jVar, iPeriodic, nNeighbor;
+  unsigned short iDim, jDim, iVar, jVar, iMat, iPeriodic, nNeighbor;
 
   unsigned long iPoint, iRecv, nRecv, msg_offset, buf_offset, total_index;
 
@@ -1272,9 +1272,11 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
               /*--- For G-G, we accumulate partial gradients then compute
                the final value using the entire volume of the periodic cell. ---*/
 
-              for (iVar = 0; iVar < ICOUNT; iVar++)
-                for (iDim = 0; iDim < nSymMat; iDim++)
-                  gradient(iPoint, iVar, iDim) += bufDRecv[buf_offset+iVar*nSymMat+iDim];
+              for (iVar = 0; iVar < ICOUNT; iVar++) {
+                for (iMat = 0; iMat < nSymMat; iMat++) {
+                  gradient(iPoint, iVar, iMat) += bufDRecv[buf_offset+iVar*nSymMat+iMat];
+                }
+              }
 
               break;
 
