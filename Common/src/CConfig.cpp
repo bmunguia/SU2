@@ -7830,6 +7830,29 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
       cout << "Actuator disk BEM method propeller data read from file: " << GetBEM_prop_filename() << endl;
     }
   }
+
+  if (val_software == SU2_COMPONENT::SU2_CFD || val_software == SU2_COMPONENT::SU2_SOL) {
+    if (Compute_Metric) {
+        cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
+        cout << "Adaptation sensor(s): ";
+        for (auto iSensor = 0; iSensor < nAdap_Sensor; iSensor++) {
+          cout << Adap_Sensor[iSensor];
+          if (iSensor < nAdap_Sensor - 1 ) cout << ", ";
+        }
+        cout << endl;
+        cout << "Target complexity: " << Adap_Complexity << endl;
+        cout << "Lp norm: " << Adap_Norm << endl;
+        switch (Kind_Hessian_Method) {
+          case GREEN_GAUSS: cout << "Hessian for adaptive metric: Green-Gauss." << endl; break;
+          case LEAST_SQUARES: cout << "Hessian for adaptive metric: unweighted Least-Squares." << endl; break;
+          case WEIGHTED_LEAST_SQUARES: cout << "Hessian for adaptive metric: inverse-distance weighted Least-Squares." << endl; break;
+        }
+        cout << "Min. edge length: " << Adap_Hmin << endl;
+        cout << "Max. edge length: " << Adap_Hmax << endl;
+
+
+    }
+  }
 }
 
 bool CConfig::TokenizeString(string & str, string & option_name,
