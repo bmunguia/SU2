@@ -4492,6 +4492,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
   const bool turb = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
 
   const bool goal = (config->GetGoal_Oriented_Metric());
+  const bool normalize = (config->GetNormalize_Metric());
 
   /*--- Vector to store weights from various error contributions ---*/
   unsigned long nVarTot = solver[FLOW_SOL]->GetnVar();
@@ -4518,12 +4519,12 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
     if (goal) {
       auto& metrics = base_nodes->GetMetric();
       setPositiveDefiniteMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
-      normalizeMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+      if (normalize) normalizeMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
     }
     else {
       auto& metrics = base_nodes->GetHessian();
       setPositiveDefiniteMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
-      normalizeMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
+      if (normalize) normalizeMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
     }
     END_SU2_OMP_MASTER
     SU2_OMP_BARRIER

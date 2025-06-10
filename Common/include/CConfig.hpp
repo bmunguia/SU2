@@ -1241,6 +1241,7 @@ private:
 
     /*--- Mesh adaptation options ---*/
   bool Compute_Metric;                 /*!< \brief Determines if error estimation is taking place */
+  bool Normalize_Metric;               /*!< \brief Determines if metric tensor normalization is taking place */
   unsigned short Kind_Hessian_Method;  /*!< \brief Numerical method for computation of Hessians. */
   unsigned short nAdap_Sensor;         /*!< \brief Number of sensors to use for adaptation. */
   string *Adap_Sensor;                 /*!< \brief Sensors to use for adaptation. */
@@ -9817,11 +9818,17 @@ public:
    */
   const FluidFlamelet_ParsedOptions& GetFlameletParsedOptions() const { return flamelet_ParsedOptions; }
 
-    /*!
+  /*!
    * \brief Check if error estimation is being carried out
    * \return <code>TRUE<\code> if error estimation is taking place
   */
   bool GetCompute_Metric(void) const { return Compute_Metric; }
+
+  /*!
+   * \brief Check if metric tensor normalization is being carried out
+   * \return <code>TRUE<\code> if metric normalization is taking place
+  */
+  bool GetNormalize_Metric(void) const { return Normalize_Metric; }
 
   /*!
    * \brief Check if goal-oriented error estimation is being carried out

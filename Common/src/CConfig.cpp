@@ -2989,6 +2989,9 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Compute an error estimate */
   addBoolOption("COMPUTE_METRIC", Compute_Metric, false);
 
+  /* DESCRIPTION: Normalize the metric tensor */
+  addBoolOption("NORMALIZE_METRIC", Normalize_Metric, false);
+
   /*!\brief NUM_METHOD_HESS
    *  \n DESCRIPTION: Numerical method for Hessian computation \n OPTIONS: See \link Gradient_Map \endlink. \n DEFAULT: GREEN_GAUSS. \ingroup Config*/
   addEnumOption("NUM_METHOD_HESS", Kind_Hessian_Method, Gradient_Map, GREEN_GAUSS);
@@ -7840,17 +7843,20 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           if (iSensor < nAdap_Sensor - 1 ) cout << ", ";
         }
         cout << endl;
-        cout << "Target complexity: " << Adap_Complexity << endl;
-        cout << "Lp norm: " << Adap_Norm << endl;
         switch (Kind_Hessian_Method) {
           case GREEN_GAUSS: cout << "Hessian for adaptive metric: Green-Gauss." << endl; break;
           case LEAST_SQUARES: cout << "Hessian for adaptive metric: unweighted Least-Squares." << endl; break;
           case WEIGHTED_LEAST_SQUARES: cout << "Hessian for adaptive metric: inverse-distance weighted Least-Squares." << endl; break;
         }
-        cout << "Min. edge length: " << Adap_Hmin << endl;
-        cout << "Max. edge length: " << Adap_Hmax << endl;
-
-
+        if (Normalize_Metric) {
+          cout << "Target complexity: " << Adap_Complexity << endl;
+          cout << "Lp norm: " << Adap_Norm << endl;
+          cout << "Min. edge length: " << Adap_Hmin << endl;
+          cout << "Max. edge length: " << Adap_Hmax << endl;
+        }
+        else {
+          cout << "Output unnormalized metric field." << endl;
+        }
     }
   }
 }
