@@ -1431,11 +1431,6 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nDim : nAuxVarAdapt*nDim;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
-    case MPI_QUANTITIES::AUXVAR_ADAPT:
-      COUNT_PER_POINT  = nAuxVarAdapt;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
-      cout << COUNT_PER_POINT << endl;
-      break;
     case MPI_QUANTITIES::HESSIAN:
       COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nSymMat : nAuxVarAdapt*nSymMat;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
@@ -1575,10 +1570,6 @@ void CSolver::InitiateComms(CGeometry *geometry,
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
-            break;
-          case MPI_QUANTITIES::AUXVAR_ADAPT:
-            for (iVar = 0; iVar < nAuxVarAdapt; iVar++)
-              bufDSend[buf_offset+iVar] = base_nodes->GetAuxVar_Adapt(iPoint, iVar);
             break;
           case MPI_QUANTITIES::HESSIAN:
             for (iVar = 0; iVar < nVarHess; iVar++)
@@ -1738,10 +1729,6 @@ void CSolver::CompleteComms(CGeometry *geometry,
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 gradient(iPoint,iVar,iDim) = bufDRecv[buf_offset+iVar*nDim+iDim];
-            break;
-          case MPI_QUANTITIES::AUXVAR_ADAPT:
-            for (iVar = 0; iVar < nAuxVarAdapt; iVar++)
-              base_nodes->SetAuxVar_Adapt(iPoint, iVar, bufDRecv[buf_offset+iVar]);
             break;
           case MPI_QUANTITIES::HESSIAN:
             for (iVar = 0; iVar < nVarHess; iVar++)
@@ -2258,12 +2245,6 @@ void CSolver::SetSolution_Gradient_LS(CGeometry *geometry, const CConfig *config
 }
 
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
-
-  //--- communicate the solution values via MPI
-  const auto commSol = config->GetGoal_Oriented_Metric()? MPI_QUANTITIES::SOLUTION : MPI_QUANTITIES::AUXVAR_ADAPT;
-  InitiateComms(geometry, config, commSol);
-  CompleteComms(geometry, config, commSol);
-
   const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetAuxVar_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
   auto nHess = config->GetGoal_Oriented_Metric()? nVar : nAuxVarAdapt;

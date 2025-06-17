@@ -283,7 +283,7 @@ protected:
   void SetAuxVar_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) final {
     if (config->GetGoal_Oriented_Metric()) {
       //--- store temperature and viscosity in aux vector
-      for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
+      for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
         const su2double density = nodes->GetDensity(iPoint);
         const su2double temp = nodes->GetTemperature(iPoint);
         const su2double* vel = nodes->GetPrimitive(iPoint)+1;
@@ -300,7 +300,7 @@ protected:
       //--- store mach and/or pressure in aux vector
       const auto nAdapSensor = config->GetnAdap_Sensor();
       su2double aux = 0.0;
-      for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
+      for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
         for (auto iSensor = 0; iSensor < nAdapSensor; iSensor++) {
           if (config->GetAdap_Sensor(iSensor) == "MACH") {
             aux = nodes->GetVelocity2(iPoint)/nodes->GetSoundSpeed(iPoint);
@@ -321,10 +321,6 @@ protected:
         }
       }
     }
-
-    //--- communicate the solution values via MPI
-    InitiateComms(geometry, config, MPI_QUANTITIES::AUXVAR_ADAPT);
-    CompleteComms(geometry, config, MPI_QUANTITIES::AUXVAR_ADAPT);
   }
 
   /*!

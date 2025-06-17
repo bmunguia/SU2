@@ -2626,7 +2626,6 @@ enum class MPI_QUANTITIES {
   SOLUTION_TIME_N      ,  /*!< \brief Solution at time n. */
   SOLUTION_TIME_N1     ,  /*!< \brief Solution at time n-1. */
   GRADIENT_ADAPT       ,  /*!< \brief Gradient vectors for anisotropic mesh adaptation. */
-  AUXVAR_ADAPT         ,  /*!< \brief Auxiliary vectors for anisotropic mesh adaptation. */
   HESSIAN              ,  /*!< \brief Hessian vectors for anisotropic mesh adaptation. */
   METRIC               ,  /*!< \brief Metric vectors for anisotropic mesh adaptation. */
 };
