@@ -277,13 +277,13 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       ICOUNT           = nVar;
       break;
     case PERIODIC_GRAD_ADAPT:
-      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
+      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : nAuxVarAdapt;
       JCOUNT          = nDim;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
       break;
     case PERIODIC_HESSIAN:
-      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
+      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : nAuxVarAdapt;
       JCOUNT          = nSymMat;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
@@ -1428,15 +1428,16 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::GRADIENT_ADAPT:
-      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nDim : config->GetnAdap_Sensor()*nDim;
+      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nDim : nAuxVarAdapt*nDim;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::AUXVAR_ADAPT:
-      COUNT_PER_POINT  = nAuxGradAdap;
+      COUNT_PER_POINT  = nAuxVarAdapt;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
+      cout << COUNT_PER_POINT << endl;
       break;
     case MPI_QUANTITIES::HESSIAN:
-      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nSymMat : config->GetnAdap_Sensor()*nSymMat;
+      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nSymMat : nAuxVarAdapt*nSymMat;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::METRIC:
@@ -1576,7 +1577,7 @@ void CSolver::InitiateComms(CGeometry *geometry,
                 bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
             break;
           case MPI_QUANTITIES::AUXVAR_ADAPT:
-            for (iVar = 0; iVar < nAuxGradAdap; iVar++)
+            for (iVar = 0; iVar < nAuxVarAdapt; iVar++)
               bufDSend[buf_offset+iVar] = base_nodes->GetAuxVar_Adapt(iPoint, iVar);
             break;
           case MPI_QUANTITIES::HESSIAN:
@@ -1739,7 +1740,7 @@ void CSolver::CompleteComms(CGeometry *geometry,
                 gradient(iPoint,iVar,iDim) = bufDRecv[buf_offset+iVar*nDim+iDim];
             break;
           case MPI_QUANTITIES::AUXVAR_ADAPT:
-            for (iVar = 0; iVar < nAuxGradAdap; iVar++)
+            for (iVar = 0; iVar < nAuxVarAdapt; iVar++)
               base_nodes->SetAuxVar_Adapt(iPoint, iVar, bufDRecv[buf_offset+iVar]);
             break;
           case MPI_QUANTITIES::HESSIAN:
@@ -2265,7 +2266,7 @@ void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short id
 
   const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetAuxVar_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  auto nHess = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
+  auto nHess = config->GetGoal_Oriented_Metric()? nVar : nAuxVarAdapt;
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                              *geometry, *config, solution, 0, nHess, idxVel, gradient);

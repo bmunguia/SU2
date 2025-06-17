@@ -330,6 +330,10 @@ void CSinglezoneDriver::ComputeMetricField() {
     cout << endl <<"----------------------------- Compute Metric ----------------------------" << endl;
     cout << "Storing primitive variables needed for gradients in metric." << endl;
   }
+  solver_flow->InitiateComms(geometry, config, MPI_QUANTITIES::SOLUTION);
+  solver_flow->CompleteComms(geometry, config, MPI_QUANTITIES::SOLUTION);
+  solver_flow->Preprocessing(geometry, solver, config, MESH_0, NO_RK_ITER,
+                             RUNTIME_FLOW_SYS, true);
   solver_flow->SetAuxVar_Adapt(geometry, config, solver_flow->GetNodes());
 
   if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {

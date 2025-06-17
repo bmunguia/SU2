@@ -120,6 +120,7 @@ CEulerSolver::CEulerSolver(CGeometry *geometry, CConfig *config,
 
   nVar = nDim + 2;
   nPrimVar = nDim + 9;
+  nAuxVarAdapt = config->GetGoal_Oriented_Metric()? nVar : config->GetnAdap_Sensor();
   /*--- Centered schemes only need gradients for viscous fluxes (T and v). ---*/
   nPrimVarGrad = nDim + (centered && !config->GetContinuous_Adjoint() ? 1 : 4);
   nSecondaryVar = nSecVar;
