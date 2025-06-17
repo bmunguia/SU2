@@ -101,8 +101,8 @@ protected:
 
   VectorType SolutionExtra_BGS_k; /*!< \brief Intermediate storage, enables cross term extraction as that is also pushed to Solution. */
 
+  MatrixType Primitive_Adapt;             /*!< \brief Variables for which we need gradients for anisotropy in mesh adaptation. */
   CVectorOfMatrix Gradient_Adapt;         /*!< \brief Gradient of sensor used for anisotropy in mesh adaptation. */
-  MatrixType AuxVar_Adapt;                /*!< \brief Variables for which we need gradients for anisotropy in mesh adaptation. */
   CVectorOfMatrix Hessian;                /*!< \brief Hessian of sensor used for anisotropy in mesh adaptation. */
   su2matrix<double> Metric;               /*!< \brief Metric tensor used for anisotropy in mesh adaptation. */
 
@@ -2402,22 +2402,22 @@ public:
    * \param[in] iPoint - Point index.
    * \param[in] gradient - Gradient of the solution.
    */
-  inline void SetAuxVar_Adapt(unsigned long iPoint, unsigned long iVar, su2double primitive) {
-    AuxVar_Adapt(iPoint,iVar) = primitive;
+  inline void SetPrimitive_Adapt(unsigned long iPoint, unsigned long iVar, su2double primitive) {
+    Primitive_Adapt(iPoint,iVar) = primitive;
   }
 
   /*!
    * \brief Get the gradient of the entire solution.
    * \return Reference to gradient.
    */
-  inline const MatrixType& GetAuxVar_Adapt(void) const { return AuxVar_Adapt; }
+  inline const MatrixType& GetPrimitive_Adapt(void) const { return Primitive_Adapt; }
 
   /*!
    * \brief Get the value of the solution gradient.
    * \param[in] iPoint - Point index.
    * \return Value of the gradient solution.
    */
-  inline su2double *GetAuxVar_Adapt(unsigned long iPoint) { return AuxVar_Adapt[iPoint]; }
+  inline su2double *GetPrimitive_Adapt(unsigned long iPoint) { return Primitive_Adapt[iPoint]; }
 
   /*!
    * \brief Get the value of the solution gradient.
@@ -2425,7 +2425,7 @@ public:
    * \param[in] iVar - Index of the variable.
    * \return Value of the solution gradient.
    */
-  inline su2double GetAuxVar_Adapt(unsigned long iPoint, unsigned long iVar) const { return AuxVar_Adapt(iPoint,iVar); }
+  inline su2double GetPrimitive_Adapt(unsigned long iPoint, unsigned long iVar) const { return Primitive_Adapt(iPoint,iVar); }
 
   /*!
    * \brief Set the hessian of the solution.

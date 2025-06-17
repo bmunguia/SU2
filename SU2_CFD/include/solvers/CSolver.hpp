@@ -595,7 +595,7 @@ public:
    * \param[in] config - Definition of the particular problem.
    * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
    */
-  virtual void SetAuxVar_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) { }
+  virtual void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) { }
 
   /*!
    * \brief Set the old solution variables to the current solution value for Runge-Kutta iteration.

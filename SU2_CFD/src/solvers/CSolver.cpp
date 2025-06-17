@@ -2245,7 +2245,7 @@ void CSolver::SetSolution_Gradient_LS(CGeometry *geometry, const CConfig *config
 }
 
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
-  const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetAuxVar_Adapt();
+  const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetPrimitive_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
   auto nHess = config->GetGoal_Oriented_Metric()? nVar : nAuxVarAdapt;
 

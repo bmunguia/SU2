@@ -280,7 +280,7 @@ protected:
    * \param[in] config - Definition of the particular problem.
    * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
    */
-  void SetAuxVar_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) final {
+  void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) final {
     if (config->GetGoal_Oriented_Metric()) {
       //--- store temperature and viscosity in aux vector
       for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
@@ -289,11 +289,11 @@ protected:
         const su2double* vel = nodes->GetPrimitive(iPoint)+1;
         const su2double lam_visc = nodes->GetLaminarViscosity(iPoint);
         const su2double eddy_visc = nodes->GetEddyViscosity(iPoint);
-        nodes->SetAuxVar_Adapt(iPoint, 0, temp);
+        nodes->SetPrimitive_Adapt(iPoint, 0, temp);
         for (auto iDim = 0; iDim < nDim; ++iDim)
-          nodes->SetAuxVar_Adapt(iPoint, iDim+1, vel[iDim]);
-        nodes->SetAuxVar_Adapt(iPoint, nDim+1, lam_visc/density);
-        nodes->SetAuxVar_Adapt(iPoint, nDim+2, eddy_visc/density);
+          nodes->SetPrimitive_Adapt(iPoint, iDim+1, vel[iDim]);
+        nodes->SetPrimitive_Adapt(iPoint, nDim+1, lam_visc/density);
+        nodes->SetPrimitive_Adapt(iPoint, nDim+2, eddy_visc/density);
       }
     }
     else {
@@ -317,7 +317,7 @@ protected:
           else if (config->GetAdap_Sensor(iSensor) == "DENSITY") {
             aux = nodes->GetDensity(iPoint);
           }
-          nodes->SetAuxVar_Adapt(iPoint, iSensor, aux);
+          nodes->SetPrimitive_Adapt(iPoint, iSensor, aux);
         }
       }
     }
