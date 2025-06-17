@@ -302,22 +302,8 @@ void CFlowCompOutput::SetVolumeOutputFields(CConfig *config){
 
   AddCommonFVMOutputs(config);
 
-  // Anisotropic metric
-  if(config->GetCompute_Metric()) {
-    if (nDim == 2){
-      AddVolumeOutput("METRIC_XX", "Metric_xx", "METRIC", "x-x-component of the metric");
-      AddVolumeOutput("METRIC_XY", "Metric_xy", "METRIC", "x-y-component of the metric");
-      AddVolumeOutput("METRIC_YY", "Metric_yy", "METRIC", "y-y-component of the metric");
-    }
-    else{
-      AddVolumeOutput("METRIC_XX", "Metric_xx", "METRIC", "x-x-component of the metric");
-      AddVolumeOutput("METRIC_XY", "Metric_xy", "METRIC", "x-y-component of the metric");
-      AddVolumeOutput("METRIC_YY", "Metric_yy", "METRIC", "y-y-component of the metric");
-      AddVolumeOutput("METRIC_XZ", "Metric_xz", "METRIC", "x-z-component of the metric");
-      AddVolumeOutput("METRIC_YZ", "Metric_yz", "METRIC", "y-z-component of the metric");
-      AddVolumeOutput("METRIC_ZZ", "Metric_zz", "METRIC", "z-z-component of the metric");
-    }
-  }
+  // Metric tensor and dual-cell volume
+  AddMeshAdaptationOutputs(config);
 
   if (config->GetTime_Domain()) {
     SetTimeAveragedFields();
@@ -399,21 +385,7 @@ void CFlowCompOutput::LoadVolumeData(CConfig *config, CGeometry *geometry, CSolv
 
   LoadCommonFVMOutputs(config, geometry, iPoint);
 
-  if(config->GetCompute_Metric()) {
-    if (nDim == 2){
-      SetVolumeOutputValue("METRIC_XX", iPoint, Node_Flow->GetMetric(iPoint, 0));
-      SetVolumeOutputValue("METRIC_XY", iPoint, Node_Flow->GetMetric(iPoint, 1));
-      SetVolumeOutputValue("METRIC_YY", iPoint, Node_Flow->GetMetric(iPoint, 2));
-    }
-    else{
-      SetVolumeOutputValue("METRIC_XX", iPoint, Node_Flow->GetMetric(iPoint, 0));
-      SetVolumeOutputValue("METRIC_XY", iPoint, Node_Flow->GetMetric(iPoint, 1));
-      SetVolumeOutputValue("METRIC_YY", iPoint, Node_Flow->GetMetric(iPoint, 2));
-      SetVolumeOutputValue("METRIC_XZ", iPoint, Node_Flow->GetMetric(iPoint, 3));
-      SetVolumeOutputValue("METRIC_YZ", iPoint, Node_Flow->GetMetric(iPoint, 4));
-      SetVolumeOutputValue("METRIC_ZZ", iPoint, Node_Flow->GetMetric(iPoint, 5));
-    }
-  }
+  LoadMeshAdaptationOutputs(config, solver, geometry, iPoint);
 
   if (config->GetTime_Domain()) {
     LoadTimeAveragedData(iPoint, Node_Flow);
