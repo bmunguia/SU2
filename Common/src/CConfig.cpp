@@ -2997,22 +2997,22 @@ void CConfig::SetConfig_Options() {
   addEnumOption("NUM_METHOD_HESS", Kind_Hessian_Method, Gradient_Map, GREEN_GAUSS);
 
   /* DESCRIPTION: Sensors for mesh adaptation */
-  addStringListOption("ADAP_SENSOR", nAdap_Sensor, Adap_Sensor);
+  addStringListOption("ADAPT_SENSOR", nAdapt_Sensor, Adapt_Sensor);
 
   /* DESCRIPTION: Lp-norm for mesh adaptation */
-  addDoubleOption("ADAP_NORM", Adap_Norm, 1.0);
+  addDoubleOption("ADAPT_NORM", Adapt_Norm, 1.0);
 
   /* DESCRIPTION: Constraint maximum cell size */
-  addDoubleOption("ADAP_HMAX", Adap_Hmax, 10.0);
+  addDoubleOption("ADAPT_HMAX", Adapt_Hmax, 10.0);
 
   /* DESCRIPTION: Constraint minimum cell size */
-  addDoubleOption("ADAP_HMIN", Adap_Hmin, 1.0E-8);
+  addDoubleOption("ADAPT_HMIN", Adapt_Hmin, 1.0E-8);
 
   /* DESCRIPTION: Constraint maximum cell aspect ratio */
-  addDoubleOption("ADAP_ARMAX", Adap_ARmax, 1.0E6);
+  addDoubleOption("ADAPT_ARMAX", Adapt_ARmax, 1.0E6);
 
   /* DESCRIPTION: Constraint mesh complexity */
-  addUnsignedLongOption("ADAP_COMPLEXITY", Adap_Complexity, 10000);
+  addUnsignedLongOption("ADAPT_COMPLEXITY", Adapt_Complexity, 10000);
 
   /* END_CONFIG_OPTIONS */
 
@@ -5671,11 +5671,11 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   if (Compute_Metric) {
     /*--- Check that sensor is valid ---*/
     vector<string> Sensor_Avail{"GOAL", "MACH", "PRESSURE", "TEMPERATURE", "ENERGY", "DENSITY"};
-    for (auto iSensor = 0; iSensor < nAdap_Sensor; iSensor++) {
-      if (find(begin(Sensor_Avail), end(Sensor_Avail), Adap_Sensor[iSensor]) != end(Sensor_Avail)) {
+    for (auto iSensor = 0; iSensor < nAdapt_Sensor; iSensor++) {
+      if (find(begin(Sensor_Avail), end(Sensor_Avail), Adapt_Sensor[iSensor]) != end(Sensor_Avail)) {
         /*--- If using GOAL, it must be the only sensor and the discrete adjoint must be used ---*/
-        if (Adap_Sensor[iSensor] == "GOAL") {
-          if (nAdap_Sensor != 1)
+        if (Adapt_Sensor[iSensor] == "GOAL") {
+          if (nAdapt_Sensor != 1)
             SU2_MPI::Error("Adaptation sensor GOAL cannot be used with other sensors.", CURRENT_FUNCTION);
 
           if (!DiscreteAdjoint)
@@ -5683,7 +5683,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
         }
       }
       else {
-        SU2_MPI::Error(string("Invalid adaptation sensor: ") + Adap_Sensor[iSensor] + string("; must be GOAL, MACH, or PRES."), CURRENT_FUNCTION);
+        SU2_MPI::Error(string("Invalid adaptation sensor: ") + Adapt_Sensor[iSensor] + string("; must be GOAL, MACH, or PRES."), CURRENT_FUNCTION);
       }
     }
 
@@ -7838,9 +7838,9 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
     if (Compute_Metric) {
         cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
         cout << "Adaptation sensor(s): ";
-        for (auto iSensor = 0; iSensor < nAdap_Sensor; iSensor++) {
-          cout << Adap_Sensor[iSensor];
-          if (iSensor < nAdap_Sensor - 1 ) cout << ", ";
+        for (auto iSensor = 0; iSensor < nAdapt_Sensor; iSensor++) {
+          cout << Adapt_Sensor[iSensor];
+          if (iSensor < nAdapt_Sensor - 1 ) cout << ", ";
         }
         cout << endl;
         switch (Kind_Hessian_Method) {
@@ -7849,10 +7849,10 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           case WEIGHTED_LEAST_SQUARES: cout << "Hessian for adaptive metric: inverse-distance weighted Least-Squares." << endl; break;
         }
         if (Normalize_Metric) {
-          cout << "Target complexity: " << Adap_Complexity << endl;
-          cout << "Lp norm: " << Adap_Norm << endl;
-          cout << "Min. edge length: " << Adap_Hmin << endl;
-          cout << "Max. edge length: " << Adap_Hmax << endl;
+          cout << "Target complexity: " << Adapt_Complexity << endl;
+          cout << "Lp norm: " << Adapt_Norm << endl;
+          cout << "Min. edge length: " << Adapt_Hmin << endl;
+          cout << "Max. edge length: " << Adapt_Hmax << endl;
         }
         else {
           cout << "Output unnormalized metric field." << endl;
