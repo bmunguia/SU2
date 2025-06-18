@@ -4481,7 +4481,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
   if(goal && turb) nVarTot += solver[TURB_SOL]->GetnVar();
   vector<vector<double> > weights(3, vector<double>(nVarTot));
 
-  unsigned short nSensor = config->GetnAdapt_Sensor();
+  unsigned short nSensor = config->GetnMetric_Sensor();
 
   /*--- Compute Hessian weights for goal-oriented metric ---*/
   for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
@@ -4539,7 +4539,7 @@ void CSolver::SetMetric(CSolver **solver, const CGeometry*geometry, const CConfi
 
   const unsigned short nMet = 3*(nDim-1);
   const unsigned short nVarFlo = solver[FLOW_SOL]->GetnVar();
-  const unsigned short nSensor = config->GetnAdapt_Sensor();
+  const unsigned short nSensor = config->GetnMetric_Sensor();
 
   const bool turb = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
   const bool goal = (config->GetGoal_Oriented_Metric());

@@ -1243,14 +1243,14 @@ private:
   bool Compute_Metric;                 /*!< \brief Determines if error estimation is taking place */
   bool Normalize_Metric;               /*!< \brief Determines if metric tensor normalization is taking place */
   unsigned short Kind_Hessian_Method;  /*!< \brief Numerical method for computation of Hessians. */
-  unsigned short nAdapt_Sensor;        /*!< \brief Number of sensors to use for adaptation. */
-  string *Adapt_Sensor;                /*!< \brief Sensors to use for adaptation. */
-  unsigned short Adapt_Norm;           /*!< \brief Lp-norm for mesh adaptation */
-  su2double Adapt_Hmax,                /*!< \brief Maximum cell size */
-            Adapt_Hmin,                /*!< \brief Minimum cell size */
-            Adapt_ARmax;               /*!< \brief Maximum cell aspect ratio */
-  unsigned long Adapt_Complexity;      /*!< \brief Constraint mesh complexity */
-
+  unsigned short nMetric_Sensor;       /*!< \brief Number of sensors to use for adaptation. */
+  string *Metric_Sensor;               /*!< \brief Sensors to use for adaptation. */
+  unsigned short Metric_Norm;          /*!< \brief Lp-norm for mesh adaptation */
+  unsigned long Metric_Complexity;     /*!< \brief Constraint mesh complexity */
+  su2double Metric_Hmax,               /*!< \brief Maximum cell size */
+            Metric_Hmin,               /*!< \brief Minimum cell size */
+            Metric_ARmax;              /*!< \brief Maximum cell aspect ratio */
+  
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
    * \param config - Config object to use the default values from.
@@ -9834,7 +9834,7 @@ public:
    * \brief Check if goal-oriented error estimation is being carried out
    * \return <code>TRUE<\code> if goal-oriented error estimation is taking place
   */
-  bool GetGoal_Oriented_Metric(void) const { return (Adapt_Sensor[0] == "GOAL"); }
+  bool GetGoal_Oriented_Metric(void) const { return (Metric_Sensor[0] == "GOAL"); }
 
   /*!
    * \brief Get the kind of method for computation of Hessians used for anisotropy.
@@ -9845,40 +9845,40 @@ public:
   /*!
    * \brief Get adaptation sensor
    */
-  string GetAdapt_Sensor(unsigned short iSens) const { return Adapt_Sensor[iSens]; }
+  string GetMetric_Sensor(unsigned short iSens) const { return Metric_Sensor[iSens]; }
 
   /*!
    * \brief Get number of adaptation sensors
    */
-  unsigned short GetnAdapt_Sensor(void) const { return nAdapt_Sensor; }
+  unsigned short GetnMetric_Sensor(void) const { return nMetric_Sensor; }
 
   /*!
    * \brief Get adaptation norm value (Lp)
    */
-  su2double GetAdapt_Norm(void) const { return Adapt_Norm; }
+  su2double GetMetric_Norm(void) const { return Metric_Norm; }
 
   /*!
    * \brief Get maximum cell size
    * \return Maximum cell size
    */
-  su2double GetAdapt_Hmax(void) const { return Adapt_Hmax; }
+  su2double GetMetric_Hmax(void) const { return Metric_Hmax; }
 
   /*!
    * \brief Get minimum cell size
    * \return Minimum cell size
    */
-  su2double GetAdapt_Hmin(void) const { return Adapt_Hmin; }
+  su2double GetMetric_Hmin(void) const { return Metric_Hmin; }
 
   /*!
    * \brief Get maximum cell aspect ratio
    * \return Maximum cell aspect ratio
    */
-  su2double GetAdapt_ARmax(void) const { return Adapt_ARmax; }
+  su2double GetMetric_ARmax(void) const { return Metric_ARmax; }
 
   /*!
    * \brief Get constraint complexity
    * \return Mesh complexity
    */
-  unsigned long GetAdapt_Complexity(void) const { return Adapt_Complexity; }
+  unsigned long GetMetric_Complexity(void) const { return Metric_Complexity; }
 
 };

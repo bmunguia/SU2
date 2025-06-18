@@ -186,11 +186,11 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
   ScalarType localScale = 0.;
   ScalarType globalScale = 0.;
 
-  const ScalarType p = SU2_TYPE::GetValue(config.GetAdapt_Norm());
-  const ScalarType eigmax = 1./(pow(SU2_TYPE::GetValue(config.GetAdapt_Hmin()),2.));
-  const ScalarType eigmin = 1./(pow(SU2_TYPE::GetValue(config.GetAdapt_Hmax()),2.));
-  const ScalarType armax2 = pow(SU2_TYPE::GetValue(config.GetAdapt_ARmax()), 2.);
-  const ScalarType outComplex = ScalarType(config.GetAdapt_Complexity());  // Constraint mesh complexity
+  const ScalarType p = SU2_TYPE::GetValue(config.GetMetric_Norm());
+  const ScalarType eigmax = 1./(pow(SU2_TYPE::GetValue(config.GetMetric_Hmin()),2.));
+  const ScalarType eigmin = 1./(pow(SU2_TYPE::GetValue(config.GetMetric_Hmax()),2.));
+  const ScalarType armax2 = pow(SU2_TYPE::GetValue(config.GetMetric_ARmax()), 2.);
+  const ScalarType outComplex = ScalarType(config.GetMetric_Complexity());  // Constraint mesh complexity
 
   ScalarType A[MAXNDIM][MAXNDIM], EigVec[MAXNDIM][MAXNDIM], EigVal[MAXNDIM], work[MAXNDIM];
 

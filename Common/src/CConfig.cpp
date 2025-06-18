@@ -2986,39 +2986,34 @@ void CConfig::SetConfig_Options() {
   /*--- options that are used for mesh adaptation ---*/
   /*!\par CONFIG_CATEGORY:Adaptation Options \ingroup Config*/
 
-  /* DESCRIPTION: Compute an error estimate */
+  /*!\brief COMPUTE_METRIC \n DESCRIPTION: Compute an error estimate */
   addBoolOption("COMPUTE_METRIC", Compute_Metric, false);
-
-  /* DESCRIPTION: Normalize the metric tensor */
+  /*!\brief NORMALIZE_METRIC \n DESCRIPTION: Normalize the metric tensor */
   addBoolOption("NORMALIZE_METRIC", Normalize_Metric, false);
-
   /*!\brief NUM_METHOD_HESS
    *  \n DESCRIPTION: Numerical method for Hessian computation \n OPTIONS: See \link Gradient_Map \endlink. \n DEFAULT: GREEN_GAUSS. \ingroup Config*/
   addEnumOption("NUM_METHOD_HESS", Kind_Hessian_Method, Gradient_Map, GREEN_GAUSS);
 
-  /* DESCRIPTION: Sensors for mesh adaptation */
-  addStringListOption("ADAPT_SENSOR", nAdapt_Sensor, Adapt_Sensor);
+  /*!\brief METRIC_SENSOR \n DESCRIPTION: Sensors for mesh adaptation */
+  addStringListOption("METRIC_SENSOR", nMetric_Sensor, Metric_Sensor);
+  /*!\brief METRIC_NORM \n DESCRIPTION: Lp-norm for mesh adaptation */
+  addUnsignedShortOption("METRIC_NORM", Metric_Norm, 2);
+  /*!\brief METRIC_COMPLEXITY \n DESCRIPTION: Constraint mesh complexity */
+  addUnsignedLongOption("METRIC_COMPLEXITY", Metric_Complexity, 10000);
 
-  /* DESCRIPTION: Lp-norm for mesh adaptation */
-  addUnsignedShortOption("ADAPT_NORM", Adapt_Norm, 2);
+  /*!\brief METRIC_HMAX \n DESCRIPTION: Constraint maximum cell size */
+  addDoubleOption("METRIC_HMAX", Metric_Hmax, 10.0);
+  /*!\brief METRIC_HMIN \n DESCRIPTION: Constraint minimum cell size */
+  addDoubleOption("METRIC_HMIN", Metric_Hmin, 1.0E-8);
+  /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
+  addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E6);
+  /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
+  addPythonOption("METRIC_HGRAD");
 
-  /* DESCRIPTION: Constraint maximum cell size */
-  addDoubleOption("ADAPT_HMAX", Adapt_Hmax, 10.0);
-
-  /* DESCRIPTION: Constraint minimum cell size */
-  addDoubleOption("ADAPT_HMIN", Adapt_Hmin, 1.0E-8);
-
-  /* DESCRIPTION: Constraint maximum cell aspect ratio */
-  addDoubleOption("ADAPT_ARMAX", Adapt_ARmax, 1.0E6);
-
-  /* DESCRIPTION: Constraint mesh complexity */
-  addUnsignedLongOption("ADAPT_COMPLEXITY", Adapt_Complexity, 10000);
-
-  /* DESCRIPTION: Size gradation smoothing parameter */
-  addPythonOption("ADAPT_HGRAD");
-
-  /* DESCRIPTION: Mesh adaptation iterations */
+  /*!\brief ADAPT_ITER \n DESCRIPTION: Mesh adaptation iterations */
   addPythonOption("ADAPT_ITER");
+  /*!\brief ADAPT_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
+  addPythonOption("ADAPT_TIME_SUBINTERVAL");
 
   /* END_CONFIG_OPTIONS */
 
@@ -5677,11 +5672,11 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   if (Compute_Metric) {
     /*--- Check that sensor is valid ---*/
     vector<string> Sensor_Avail{"GOAL", "MACH", "PRESSURE", "TEMPERATURE", "ENERGY", "DENSITY"};
-    for (auto iSensor = 0; iSensor < nAdapt_Sensor; iSensor++) {
-      if (find(begin(Sensor_Avail), end(Sensor_Avail), Adapt_Sensor[iSensor]) != end(Sensor_Avail)) {
+    for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
+      if (find(begin(Sensor_Avail), end(Sensor_Avail), Metric_Sensor[iSensor]) != end(Sensor_Avail)) {
         /*--- If using GOAL, it must be the only sensor and the discrete adjoint must be used ---*/
-        if (Adapt_Sensor[iSensor] == "GOAL") {
-          if (nAdapt_Sensor != 1)
+        if (Metric_Sensor[iSensor] == "GOAL") {
+          if (nMetric_Sensor != 1)
             SU2_MPI::Error("Adaptation sensor GOAL cannot be used with other sensors.", CURRENT_FUNCTION);
 
           if (!DiscreteAdjoint)
@@ -5689,7 +5684,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
         }
       }
       else {
-        SU2_MPI::Error(string("Invalid adaptation sensor: ") + Adapt_Sensor[iSensor] + string("; must be GOAL, MACH, or PRES."), CURRENT_FUNCTION);
+        SU2_MPI::Error(string("Invalid adaptation sensor: ") + Metric_Sensor[iSensor] + string("; must be GOAL, MACH, or PRES."), CURRENT_FUNCTION);
       }
     }
 
@@ -7844,9 +7839,9 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
     if (Compute_Metric) {
         cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
         cout << "Adaptation sensor(s): ";
-        for (auto iSensor = 0; iSensor < nAdapt_Sensor; iSensor++) {
-          cout << Adapt_Sensor[iSensor];
-          if (iSensor < nAdapt_Sensor - 1 ) cout << ", ";
+        for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
+          cout << Metric_Sensor[iSensor];
+          if (iSensor < nMetric_Sensor - 1 ) cout << ", ";
         }
         cout << endl;
         switch (Kind_Hessian_Method) {
@@ -7855,10 +7850,10 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           case WEIGHTED_LEAST_SQUARES: cout << "Hessian for adaptive metric: inverse-distance weighted Least-Squares." << endl; break;
         }
         if (Normalize_Metric) {
-          cout << "Target complexity: " << Adapt_Complexity << endl;
-          cout << "Lp norm: " << Adapt_Norm << endl;
-          cout << "Min. edge length: " << Adapt_Hmin << endl;
-          cout << "Max. edge length: " << Adapt_Hmax << endl;
+          cout << "Target complexity: " << Metric_Complexity << endl;
+          cout << "Lp norm: " << Metric_Norm << endl;
+          cout << "Min. edge length: " << Metric_Hmin << endl;
+          cout << "Max. edge length: " << Metric_Hmax << endl;
         }
         else {
           cout << "Output unnormalized metric field." << endl;
