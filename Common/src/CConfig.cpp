@@ -3000,7 +3000,7 @@ void CConfig::SetConfig_Options() {
   addStringListOption("ADAPT_SENSOR", nAdapt_Sensor, Adapt_Sensor);
 
   /* DESCRIPTION: Lp-norm for mesh adaptation */
-  addDoubleOption("ADAPT_NORM", Adapt_Norm, 1.0);
+  addUnsignedShortOption("ADAPT_NORM", Adapt_Norm, 2);
 
   /* DESCRIPTION: Constraint maximum cell size */
   addDoubleOption("ADAPT_HMAX", Adapt_Hmax, 10.0);
@@ -3013,6 +3013,12 @@ void CConfig::SetConfig_Options() {
 
   /* DESCRIPTION: Constraint mesh complexity */
   addUnsignedLongOption("ADAPT_COMPLEXITY", Adapt_Complexity, 10000);
+
+  /* DESCRIPTION: Size gradation smoothing parameter */
+  addPythonOption("ADAPT_HGRAD");
+
+  /* DESCRIPTION: Mesh adaptation iterations */
+  addPythonOption("ADAPT_ITER");
 
   /* END_CONFIG_OPTIONS */
 

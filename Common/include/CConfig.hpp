@@ -1245,8 +1245,8 @@ private:
   unsigned short Kind_Hessian_Method;  /*!< \brief Numerical method for computation of Hessians. */
   unsigned short nAdapt_Sensor;        /*!< \brief Number of sensors to use for adaptation. */
   string *Adapt_Sensor;                /*!< \brief Sensors to use for adaptation. */
-  su2double Adapt_Norm,                /*!< \brief Lp-norm for mesh adaptation */
-            Adapt_Hmax,                /*!< \brief Maximum cell size */
+  unsigned short Adapt_Norm;           /*!< \brief Lp-norm for mesh adaptation */
+  su2double Adapt_Hmax,                /*!< \brief Maximum cell size */
             Adapt_Hmin,                /*!< \brief Minimum cell size */
             Adapt_ARmax;               /*!< \brief Maximum cell aspect ratio */
   unsigned long Adapt_Complexity;      /*!< \brief Constraint mesh complexity */
