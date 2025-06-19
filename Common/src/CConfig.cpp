@@ -3012,7 +3012,7 @@ void CConfig::SetConfig_Options() {
 
   /*!\brief ADAPT_ITER \n DESCRIPTION: Mesh adaptation iterations */
   addPythonOption("ADAPT_ITER");
-  /*!\brief ADAPT_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
+  /*!\brief ADAPT_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
   addPythonOption("ADAPT_TIME_SUBINTERVAL");
 
   /* END_CONFIG_OPTIONS */
