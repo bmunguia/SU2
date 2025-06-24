@@ -293,7 +293,6 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
                      CURRENT_FUNCTION);
       break;
   }
-  cout << "ICOUNT: " << ICOUNT << ", JCOUNT: " << JCOUNT << endl;
 }
 
 namespace PeriodicCommHelpers {
