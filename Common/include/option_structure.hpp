@@ -2773,6 +2773,22 @@ static const MapType<std::string, ENUM_SOBOLEV_MODUS> Sobolev_Modus_Map = {
   MakePair("ONLY_GRADIENT",        ENUM_SOBOLEV_MODUS::ONLY_GRAD)
 };
 
+/*!
+ * \brief Types of sensors for anisotropic metric
+ */
+enum class METRIC_SENSOR {
+  MACH = 0,         /*!< \brief Mach feature-based metric. */
+  PRESSURE = 1,     /*!< \brief Pressure feature-based metric. */
+  TEMPERATURE = 2,  /*!< \brief Temperature feature-based metric. */
+  GOAL = 3,         /*!< \brief Goal-oriented metric. */
+};
+static const MapType<std::string, METRIC_SENSOR> Metric_Sensor_Map = {
+  MakePair("MACH", METRIC_SENSOR::MACH)
+  MakePair("PRESSURE", METRIC_SENSOR::PRESSURE)
+  MakePair("TEMPERATURE", METRIC_SENSOR::TEMPERATURE)
+  MakePair("GOAL", METRIC_SENSOR::GOAL)
+};
+
 #undef MakePair
 /* END_CONFIG_ENUMS */
 

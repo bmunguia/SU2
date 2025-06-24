@@ -302,20 +302,19 @@ protected:
       su2double aux = 0.0;
       for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
         for (auto iSensor = 0; iSensor < nAdapSensor; iSensor++) {
-          if (config->GetMetric_Sensor(iSensor) == "MACH") {
-            aux = nodes->GetVelocity2(iPoint)/nodes->GetSoundSpeed(iPoint);
-          }
-          else if (config->GetMetric_Sensor(iSensor) == "PRESSURE") {
-            aux = nodes->GetPressure(iPoint);
-          }
-          else if (config->GetMetric_Sensor(iSensor) == "TEMPERATURE") {
-            aux = nodes->GetTemperature(iPoint);
-          }
-          else if (config->GetMetric_Sensor(iSensor) == "ENERGY") {
-            aux = nodes->GetEnergy(iPoint);
-          }
-          else if (config->GetMetric_Sensor(iSensor) == "DENSITY") {
-            aux = nodes->GetDensity(iPoint);
+          switch (config->GetMetric_Sensor(iSensor)) {
+            case METRIC_SENSOR::MACH:
+              aux = nodes->GetVelocity2(iPoint) / nodes->GetSoundSpeed(iPoint);
+              break;
+            case METRIC_SENSOR::PRESSURE:
+              aux = nodes->GetPressure(iPoint);
+              break;
+            case METRIC_SENSOR::TEMPERATURE:
+              aux = nodes->GetTemperature(iPoint);
+              break;
+            default:
+              aux = nodes->GetVelocity2(iPoint) / nodes->GetSoundSpeed(iPoint);
+              break;
           }
           nodes->SetPrimitive_Adapt(iPoint, iSensor, aux);
         }

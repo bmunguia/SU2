@@ -84,7 +84,6 @@ protected:
   nSecondaryVarGrad,             /*!< \brief Number of primitive variables of the problem in the gradient computation. */
   nVarGrad,                      /*!< \brief Number of variables for deallocating the LS Cvector. */
   nDim,                          /*!< \brief Number of dimensions of the problem. */
-  nAuxVarAdapt,                  /*!< \brief Number of auxiliary variables needed for metric tensor. */
   nSymMat;                       /*!< \brief Number of symmetric matrix componenents for Hessian and metric tensor. */
   unsigned long nPoint;          /*!< \brief Number of points of the computational grid. */
   unsigned long nPointDomain;    /*!< \brief Number of points of the computational grid. */

@@ -2995,7 +2995,7 @@ void CConfig::SetConfig_Options() {
   addEnumOption("NUM_METHOD_HESS", Kind_Hessian_Method, Gradient_Map, GREEN_GAUSS);
 
   /*!\brief METRIC_SENSOR \n DESCRIPTION: Sensors for mesh adaptation */
-  addStringListOption("METRIC_SENSOR", nMetric_Sensor, Metric_Sensor);
+  addEnumListOption("METRIC_SENSOR", nMetric_Sensor, Metric_Sensor, Metric_Sensor_Map);
   /*!\brief METRIC_NORM \n DESCRIPTION: Lp-norm for mesh adaptation */
   addUnsignedShortOption("METRIC_NORM", Metric_Norm, 2);
   /*!\brief METRIC_COMPLEXITY \n DESCRIPTION: Constraint mesh complexity */
@@ -5669,22 +5669,16 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   }
 
   /*--- Checks for mesh adaptation ---*/
+  cout << "Number of metric sensors: " << nMetric_Sensor << endl;
   if (Compute_Metric) {
-    /*--- Check that sensor is valid ---*/
-    vector<string> Sensor_Avail{"GOAL", "MACH", "PRESSURE", "TEMPERATURE", "ENERGY", "DENSITY"};
+    /*--- Check that config is valid for requested sensor ---*/
     for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
-      if (find(begin(Sensor_Avail), end(Sensor_Avail), Metric_Sensor[iSensor]) != end(Sensor_Avail)) {
-        /*--- If using GOAL, it must be the only sensor and the discrete adjoint must be used ---*/
-        if (Metric_Sensor[iSensor] == "GOAL") {
-          if (nMetric_Sensor != 1)
-            SU2_MPI::Error("Adaptation sensor GOAL cannot be used with other sensors.", CURRENT_FUNCTION);
-
-          if (!DiscreteAdjoint)
-            SU2_MPI::Error("Adaptation sensor GOAL can only be computed for MATH_PROBLEM = DISCRETE_ADJOINT.", CURRENT_FUNCTION);
-        }
-      }
-      else {
-        SU2_MPI::Error(string("Invalid adaptation sensor: ") + Metric_Sensor[iSensor] + string("; must be GOAL, MACH, or PRES."), CURRENT_FUNCTION);
+      /*--- If using GOAL, it must be the only sensor and the discrete adjoint must be used ---*/
+      if (Metric_Sensor[iSensor] == METRIC_SENSOR::GOAL) {
+        if (nMetric_Sensor != 1)
+          SU2_MPI::Error("Adaptation sensor GOAL cannot be used with other sensors.", CURRENT_FUNCTION);
+        if (!DiscreteAdjoint)
+          SU2_MPI::Error("Adaptation sensor GOAL can only be computed for MATH_PROBLEM = DISCRETE_ADJOINT.", CURRENT_FUNCTION);
       }
     }
 
@@ -7840,7 +7834,20 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
         cout << "Adaptation sensor(s): ";
         for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
-          cout << Metric_Sensor[iSensor];
+          switch(Metric_Sensor[iSensor]) {
+            case METRIC_SENSOR::MACH:
+              cout << "Mach";
+              break;
+            case METRIC_SENSOR::PRESSURE:
+              cout << "Pressure";
+              break;
+            case METRIC_SENSOR::TEMPERATURE:
+              cout << "Temperature";
+              break;
+            case METRIC_SENSOR::GOAL:
+              cout << "Goal-oriented";
+              break;
+          }
           if (iSensor < nMetric_Sensor - 1 ) cout << ", ";
         }
         cout << endl;

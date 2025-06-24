@@ -1244,7 +1244,7 @@ private:
   bool Normalize_Metric;               /*!< \brief Determines if metric tensor normalization is taking place */
   unsigned short Kind_Hessian_Method;  /*!< \brief Numerical method for computation of Hessians. */
   unsigned short nMetric_Sensor;       /*!< \brief Number of sensors to use for adaptation. */
-  string *Metric_Sensor;               /*!< \brief Sensors to use for adaptation. */
+  METRIC_SENSOR* Metric_Sensor;        /*!< \brief Sensors to use for adaptation. */
   unsigned short Metric_Norm;          /*!< \brief Lp-norm for mesh adaptation */
   unsigned long Metric_Complexity;     /*!< \brief Constraint mesh complexity */
   su2double Metric_Hmax,               /*!< \brief Maximum cell size */
@@ -9834,7 +9834,7 @@ public:
    * \brief Check if goal-oriented error estimation is being carried out
    * \return <code>TRUE<\code> if goal-oriented error estimation is taking place
   */
-  bool GetGoal_Oriented_Metric(void) const { return (nMetric_Sensor > 0 && Metric_Sensor[0] == "GOAL"); }
+  bool GetGoal_Oriented_Metric(void) const { return (nMetric_Sensor > 0 && Metric_Sensor[0] == METRIC_SENSOR::GOAL); }
 
   /*!
    * \brief Get the kind of method for computation of Hessians used for anisotropy.
@@ -9845,7 +9845,7 @@ public:
   /*!
    * \brief Get adaptation sensor
    */
-  string GetMetric_Sensor(unsigned short iSens) const { return Metric_Sensor[iSens]; }
+  METRIC_SENSOR GetMetric_Sensor(unsigned short iSens) const { return Metric_Sensor[iSens]; }
 
   /*!
    * \brief Get number of adaptation sensors
