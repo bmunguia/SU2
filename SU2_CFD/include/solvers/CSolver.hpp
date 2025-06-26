@@ -4368,7 +4368,7 @@ public:
    * \param[in] iPoint - Index of current node.
    * \param[in] weights - Weights of each Hessian in the metric.
    */
-  void SetMetric(CSolver **solver, const CGeometry *geometry, const CConfig *config,
+  void AddMetric(CSolver **solver, const CGeometry *geometry, const CConfig *config,
                  unsigned long iPoint, vector<vector<double> > &weights);
 
 protected:

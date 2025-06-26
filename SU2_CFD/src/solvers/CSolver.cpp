@@ -4536,35 +4536,43 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
       }
     }
     for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-      SetMetric(solver, geometry, config, iPoint, weights);
+      AddMetric(solver, geometry, config, iPoint, weights);
     }
   }
-  if (!goal) {
-    //--- TODO: metric intersection of multiple features
-
-  }
-
 }
 
-void CSolver::SetMetric(CSolver **solver, const CGeometry*geometry, const CConfig *config,
-                                  unsigned long iPoint, vector<vector<double> > &weights) {
+void CSolver::AddMetric(CSolver **solver, const CGeometry*geometry, const CConfig *config,
+                        unsigned long iPoint, vector<vector<double> > &weights) {
 
   auto varFlo = solver[FLOW_SOL]->GetNodes();
 
-  const unsigned short nMet = 3*(nDim-1);
+  const unsigned short nSymMat = 3*(nDim-1);
   const unsigned short nVarFlo = solver[FLOW_SOL]->GetnVar();
   const unsigned short nSensor = config->GetnMetric_Sensor();
 
   const bool turb = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
   const bool goal = (config->GetGoal_Oriented_Metric());
 
+  const unsigned long time_iter = config->GetTimeIter();
+  const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||
+                             (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) ||
+                             (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING);
+
   if (goal) {
     //--- TODO: sum weighted Hessians
   }
   else {
-    for (auto iMet = 0; iMet < nMet; ++iMet) {
-      const double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, 0, iMet));
-      varFlo->SetMetric(iPoint, iMet, hess);
+    for (auto iMat = 0; iMat < nSymMat; ++iMat) {
+      double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, 0, iMat));
+      if (time_stepping) {
+        /*--- Integrate the unsteady metric ---*/
+        bool first_iter = (config->GetRestart_Iter() == time_iter);
+        bool last_iter = (config->GetnTime_Iter() == time_iter - 1);
+        const double coeff = (first_iter || last_iter)? 0.5 : 1.0;
+        const double time_step = SU2_TYPE::GetValue(config->GetTime_Step());
+        hess *= coeff * time_step;
+      }
+      varFlo->AddMetric(iPoint, iMat, hess);
     }
   }
 }
