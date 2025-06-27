@@ -5671,7 +5671,6 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   }
 
   /*--- Checks for mesh adaptation ---*/
-  cout << "Number of metric sensors: " << nMetric_Sensor << endl;
   if (Compute_Metric) {
     /*--- Check that config is valid for requested sensor ---*/
     for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {

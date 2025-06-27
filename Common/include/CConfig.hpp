@@ -1251,7 +1251,7 @@ private:
   su2double Metric_Hmax,               /*!< \brief Maximum cell size */
             Metric_Hmin,               /*!< \brief Minimum cell size */
             Metric_ARmax;              /*!< \brief Maximum cell aspect ratio */
-  
+
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
    * \param config - Config object to use the default values from.
