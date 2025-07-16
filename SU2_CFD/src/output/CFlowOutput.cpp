@@ -4108,15 +4108,13 @@ void CFlowOutput::AddMeshAdaptationOutputs(const CConfig* config) {
 
   // Anisotropic metric tensor, and dual-cell volume
   if(config->GetCompute_Metric()) {
-    if (nDim == 2){
-      AddVolumeOutput("METRIC_XX", "Metric_xx", "MESH_ADAPT", "x-x-component of the metric");
-      AddVolumeOutput("METRIC_XY", "Metric_xy", "MESH_ADAPT", "x-y-component of the metric");
-      AddVolumeOutput("METRIC_YY", "Metric_yy", "MESH_ADAPT", "y-y-component of the metric");
-    }
-    else{
-      AddVolumeOutput("METRIC_XX", "Metric_xx", "MESH_ADAPT", "x-x-component of the metric");
-      AddVolumeOutput("METRIC_XY", "Metric_xy", "MESH_ADAPT", "x-y-component of the metric");
-      AddVolumeOutput("METRIC_YY", "Metric_yy", "MESH_ADAPT", "y-y-component of the metric");
+    // Common metric components for both 2D and 3D
+    AddVolumeOutput("METRIC_XX", "Metric_xx", "MESH_ADAPT", "x-x-component of the metric");
+    AddVolumeOutput("METRIC_XY", "Metric_xy", "MESH_ADAPT", "x-y-component of the metric");
+    AddVolumeOutput("METRIC_YY", "Metric_yy", "MESH_ADAPT", "y-y-component of the metric");
+
+    // Additional components for 3D
+    if (nDim == 3) {
       AddVolumeOutput("METRIC_XZ", "Metric_xz", "MESH_ADAPT", "x-z-component of the metric");
       AddVolumeOutput("METRIC_YZ", "Metric_yz", "MESH_ADAPT", "y-z-component of the metric");
       AddVolumeOutput("METRIC_ZZ", "Metric_zz", "MESH_ADAPT", "z-z-component of the metric");
@@ -4125,25 +4123,23 @@ void CFlowOutput::AddMeshAdaptationOutputs(const CConfig* config) {
   }
 }
 
-void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver* const* solver, const CGeometry* geometry, 
+void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver* const* solver, const CGeometry* geometry,
                                             unsigned long iPoint) {
 
   const auto* Node_Flow = solver[FLOW_SOL]->GetNodes();
   const auto* Node_Geo = geometry->nodes;
   if(config->GetCompute_Metric()) {
-    if (nDim == 2){
-      SetVolumeOutputValue("METRIC_XX", iPoint, Node_Flow->GetMetric(iPoint, 0));
-      SetVolumeOutputValue("METRIC_XY", iPoint, Node_Flow->GetMetric(iPoint, 1));
-      SetVolumeOutputValue("METRIC_YY", iPoint, Node_Flow->GetMetric(iPoint, 2));
-    }
-    else{
-      SetVolumeOutputValue("METRIC_XX", iPoint, Node_Flow->GetMetric(iPoint, 0));
-      SetVolumeOutputValue("METRIC_XY", iPoint, Node_Flow->GetMetric(iPoint, 1));
-      SetVolumeOutputValue("METRIC_YY", iPoint, Node_Flow->GetMetric(iPoint, 2));
+    // Common metric components for both 2D and 3D
+    SetVolumeOutputValue("METRIC_XX", iPoint, Node_Flow->GetMetric(iPoint, 0));
+    SetVolumeOutputValue("METRIC_XY", iPoint, Node_Flow->GetMetric(iPoint, 1));
+    SetVolumeOutputValue("METRIC_YY", iPoint, Node_Flow->GetMetric(iPoint, 2));
+
+    // Additional components for 3D
+    if (nDim == 3) {
       SetVolumeOutputValue("METRIC_XZ", iPoint, Node_Flow->GetMetric(iPoint, 3));
       SetVolumeOutputValue("METRIC_YZ", iPoint, Node_Flow->GetMetric(iPoint, 4));
       SetVolumeOutputValue("METRIC_ZZ", iPoint, Node_Flow->GetMetric(iPoint, 5));
     }
-    SetVolumeOutputValue("VOLUME", iPoint, Node_Geo->GetVolume(iPoint));
+    SetVolumeOutputValue("VOLUME", iPoint, Node_Geo->GetVolume(iPoint) + Node_Geo->GetPeriodicVolume(iPoint));
   }
 }
