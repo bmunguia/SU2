@@ -127,6 +127,13 @@ if get_option('enable-cgns')
   su2_cpp_args += '-DHAVE_CGNS'
 endif
 
+# add libmeshb for gmf format
+if get_option('enable-gmf')
+  subdir('externals/libmeshb')
+  su2_deps     += gmf_dep
+  su2_cpp_args += '-DHAVE_GMF'
+endif
+
 # check for mixed precision floating point arithmetic
 if get_option('enable-mixedprec')
   su2_cpp_args += '-DUSE_MIXED_PRECISION'
