@@ -103,3 +103,6 @@ su2preconfig.timestamp
 
 # Clangd server files
 .cache
+
+# libMeshb
+share/
