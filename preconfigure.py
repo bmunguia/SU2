@@ -34,7 +34,6 @@ from init import remove_file
 
 
 def build_ninja():
-
     # If we are on windows, we don't need to compile ninja, we just download the executable
     if os.name == "nt":
         ninja_exe_url = "https://github.com/ninja-build/ninja/releases/download/v1.13.0/ninja-win.zip"
@@ -88,6 +87,7 @@ def run(
     own_mel=True,
     own_fado=True,
     own_mlpcpp=True,
+    own_libmeshb=True,
 ):
     # Set up the build environment, i.e. clone or download submodules
     init_submodules(
@@ -101,6 +101,7 @@ def run(
         own_mel=own_mel,
         own_fado=own_fado,
         own_mlpcpp=own_mlpcpp,
+        own_libmeshb=own_libmeshb,
     )
 
     if own_meson:
@@ -151,6 +152,11 @@ if __name__ == "__main__":
         help="do not download copy of MLpCpp",
         action="store_false",
     )
+    parser.add_argument(
+        "--no-libmeshb",
+        help="do not download own copy of libmeshb",
+        action="store_false",
+    )
     args = parser.parse_args()
 
     run(
@@ -163,4 +169,5 @@ if __name__ == "__main__":
         own_mel=args.no_mel,
         own_fado=args.no_fado,
         own_mlpcpp=args.no_mlpcpp,
+        own_libmeshb=args.no_libmeshb,
     )

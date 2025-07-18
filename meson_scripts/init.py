@@ -50,6 +50,7 @@ def init_submodules(
     own_mel=True,
     own_fado=True,
     own_mlpcpp=True,
+    own_libmeshb=True,
 ):
     cur_dir = sys.path[0]
 
@@ -75,6 +76,8 @@ def init_submodules(
     github_repo_fado = "https://github.com/pcarruscag/FADO"
     sha_version_mlpcpp = "e19ca0cafb28c4b7ba5b8cffef42883259b00dc0"
     github_repo_mlpcpp = "https://github.com/EvertBunschoten/MLPCpp"
+    sha_version_libmeshb = "c3e8d187ced5aa231d50b5bef55158af0870ec63"
+    github_repo_libmeshb = "https://github.com/LoicMarechal/libMeshb"
 
     medi_name = "MeDiPack"
     codi_name = "CoDiPack"
@@ -86,6 +89,7 @@ def init_submodules(
     mel_name = "MEL"
     fado_name = "FADO"
     mlpcpp_name = "MLPCpp"
+    libmeshb_name = "libmeshb"
 
     base_path = cur_dir + os.path.sep + "externals" + os.path.sep
     alt_name_medi = base_path + "medi"
@@ -95,6 +99,7 @@ def init_submodules(
     alt_name_ninja = base_path + "ninja"
     alt_name_mel = base_path + "mel"
     alt_name_fado = base_path + "FADO"
+    alt_name_libmeshb = base_path + "libmeshb"
     alt_name_mpp = cur_dir + os.path.sep + "subprojects" + os.path.sep + "Mutationpp"
     alt_name_coolprop = cur_dir + os.path.sep + "subprojects" + os.path.sep + "CoolProp"
     alt_name_mlpcpp = cur_dir + os.path.sep + "subprojects" + os.path.sep + "MLPCpp"
@@ -131,6 +136,8 @@ def init_submodules(
             submodule_status(alt_name_fado, sha_version_fado)
         if own_mlpcpp:
             submodule_status(alt_name_mlpcpp, sha_version_mlpcpp)
+        if own_libmeshb:
+            submodule_status(alt_name_libmeshb, sha_version_libmeshb)
     # Otherwise download the zip file from git
     else:
         if own_codi:
@@ -170,6 +177,10 @@ def init_submodules(
         if own_mlpcpp:
             download_module(
                 mlpcpp_name, alt_name_mlpcpp, github_repo_mlpcpp, sha_version_mlpcpp
+            )
+        if own_libmeshb:
+            download_module(
+                libmeshb_name, alt_name_libmeshb, github_repo_libmeshb, sha_version_libmeshb
             )
 
 
