@@ -27,7 +27,7 @@
 
 #pragma once
 
-#ifdef HAVE_CGNS
+#ifdef HAVE_GMF
 extern "C" {
 #include "libmeshb7.h"
 }
@@ -49,6 +49,11 @@ public:
    * \param[in] valDataSorter - The parallel sorted data to write
    */
   CGMFFileWriter(CParallelDataSorter* valDataSorter);
+
+  /*!
+   * \brief Destructor
+   */
+  ~CGMFFileWriter() override;
 
   /*!
    * \brief Write sorted data to file in GMF solution file format

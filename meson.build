@@ -129,8 +129,18 @@ endif
 
 # add libmeshb for gmf format
 if get_option('enable-gmf')
-  subdir('externals/libmeshb')
-  su2_deps     += gmf_dep
+  cmake = import('cmake')
+  cmake_opts = cmake.subproject_options()
+  cmake_opts.set_override_option('warning_level', '0')
+  cmake_opts.add_cmake_defines({
+    'CMAKE_MAKE_PROGRAM': join_paths(meson.project_source_root(), 'ninja'),
+    'CMAKE_POSITION_INDEPENDENT_CODE': true,
+    'CMAKE_Fortran_COMPILER': false,
+    'CMAKE_C_FLAGS': '-D_GNU_SOURCE',
+  })
+  libmeshb_subproj = cmake.subproject('libmeshb', options: cmake_opts)
+  libmeshb_dep = libmeshb_subproj.dependency('Meshb.7')
+  su2_deps += libmeshb_dep
   su2_cpp_args += '-DHAVE_GMF'
 endif
 

@@ -27,7 +27,7 @@
 
 #pragma once
 
-#ifdef HAVE_CGNS
+#ifdef HAVE_GMF
 extern "C" {
 #include "libmeshb7.h"
 }

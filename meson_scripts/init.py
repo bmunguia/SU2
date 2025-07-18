@@ -180,7 +180,10 @@ def init_submodules(
             )
         if own_libmeshb:
             download_module(
-                libmeshb_name, alt_name_libmeshb, github_repo_libmeshb, sha_version_libmeshb
+                libmeshb_name,
+                alt_name_libmeshb,
+                github_repo_libmeshb,
+                sha_version_libmeshb,
             )
 
 
