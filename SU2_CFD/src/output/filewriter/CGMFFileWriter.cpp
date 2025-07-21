@@ -36,7 +36,6 @@ CGMFFileWriter::CGMFFileWriter(CParallelDataSorter *valDataSorter)  :
 CGMFFileWriter::~CGMFFileWriter()= default;
 
 void CGMFFileWriter::WriteData(string val_filename){
-
 #ifdef HAVE_GMF
 
 #endif

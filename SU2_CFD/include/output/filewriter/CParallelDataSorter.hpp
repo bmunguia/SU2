@@ -250,6 +250,14 @@ public:
   unsigned long GetElemConnectivity(GEO_TYPE type, unsigned long iElem, unsigned long iNode) const ;
 
   /*!
+   * \brief Get the marker ID of specific element.
+   * \input type - The type of element, ref GEO_TYPE
+   * \input iElem - The element ID
+   * \return the connected node.
+   */
+  virtual unsigned long GetElemMarkerID(GEO_TYPE type, unsigned long iElem) const { return 0; };
+
+  /*!
    * \brief Beginning node ID of the linear partition owned by a specific processor.
    * \input rank - the processor rank.
    * \return The beginning node ID.

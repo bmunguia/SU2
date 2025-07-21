@@ -33,6 +33,12 @@ class CSurfaceFVMDataSorter final: public CParallelDataSorter{
 
   const CFVMDataSorter* volumeSorter;               //!< Pointer to the volume sorter instance
   map<unsigned long,unsigned long> Renumber2Global; //! Structure to map the local sorted point ID to the global point ID
+
+  unsigned short *Marker_Line_Par = nullptr;
+  unsigned short *Marker_Tria_Par = nullptr;
+  unsigned short *Marker_Quad_Par = nullptr;
+
+  const bool markersNeeded;
 public:
 
   /*!
@@ -40,8 +46,9 @@ public:
    * \param[in] config - Pointer to the current config structure
    * \param[in] geometry - Pointer to the current geometry
    * \param[in] valVolumeSorter - The datasorter containing the volume data
+   * \param[in] valMarkersNeeded - Whether marker data should be stored in the sorted data e.g. for GMF meshes.
    */
-  CSurfaceFVMDataSorter(CConfig *config, CGeometry* geometry, const CFVMDataSorter* valVolumeSorter);
+  CSurfaceFVMDataSorter(CConfig *config, CGeometry* geometry, const CFVMDataSorter* valVolumeSorter, bool valMarkersNeeded);
 
   /*!
    * \brief Sort the output data for each grid node into a linear partitioning across all processors.
@@ -89,6 +96,32 @@ public:
   unsigned long GetNodeBegin(unsigned short rank) const override {
     return nPoint_Recv[rank];
   }
+
+  /*!
+   * \brief Get the marker ID of specific element.
+   * \input type - The type of element, ref GEO_TYPE
+   * \input iElem - The element ID
+   * \return the connected node.
+   */
+  virtual unsigned long GetElemMarkerID(GEO_TYPE type, unsigned long iElem) const override {
+    switch (type) {
+      case LINE:
+        return Marker_Line_Par[iElem];
+        break;
+      case TRIANGLE:
+        return Marker_Tria_Par[iElem];
+        break;
+      case QUADRILATERAL:
+        return Marker_Quad_Par[iElem];
+        break;
+      default:
+        break;
+    }
+
+    SU2_MPI::Error("GEO_TYPE not found", CURRENT_FUNCTION);
+
+    return 0;
+  };
 
   /*!
    * \brief Get the Processor ID a Point belongs to.

@@ -38,31 +38,37 @@ extern "C" {
 class CGMFMeshFileWriter final: public CFileWriter{
 
 private:
-  unsigned short iZone, //!< Index of the current zone
-  nZone;                //!< Number of zones
+  unsigned short iZone, nZone;
+
 #ifdef HAVE_GMF
+  const CParallelDataSorter* surfaceSorter;
+  std::vector<std::string> markerList;
 #endif
-
 public:
-
-  /*!
-   * \brief File extension
-   */
   const static string fileExt;
 
   /*!
-   * \brief Construct a file writer using field names, dimension.
-   * \param[in] valDataSorter - The parallel sorted data to write
+   * \brief Construct a file writer using both volume and surface data sorters and marker list.
+   * \param[in] valVolumeSorter - The parallel sorted volume data
+   * \param[in] valSurfaceSorter - The parallel sorted surface data
+   * \param[in] markerList - The list of marker names
    * \param[in] valiZone - The index of the current zone
    * \param[in] valnZone - The total number of zones
    */
-  CGMFMeshFileWriter(CParallelDataSorter* valDataSorter,
+  CGMFMeshFileWriter(const CFVMDataSorter* valVolumeSorter,
+                     const CSurfaceFVMDataSorter* valSurfaceSorter,
+                     const std::vector<std::string>& markerList,
                      unsigned short valiZone, unsigned short valnZone);
 
   /*!
-   * \brief Write sorted data to file in GMF mesh file format
+   * \brief Write sorted data to file
    * \param[in] val_filename - The name of the file
    */
-  void WriteData(string val_filename) override ;
+  void WriteData(string val_filename) override;
 
+#ifdef HAVE_GMF
+  void WritePoints(int64_t mesh_id, unsigned short nDim);
+  void WriteElements(int64_t mesh_id, unsigned short nDim);
+  void WriteBoundaryElements(int64_t mesh_id, unsigned short nDim);
+#endif
 };
