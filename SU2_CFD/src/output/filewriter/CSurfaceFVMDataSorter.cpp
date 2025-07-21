@@ -1118,7 +1118,7 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
 
 #ifdef HAVE_MPI
   SU2_MPI::Request *send_req, *recv_req;
-  if (markersNeeded) SU2_MPI::Request *send_req_marker, *recv_req_marker;
+  SU2_MPI::Request *send_req_marker, *recv_req_marker;
   SU2_MPI::Status status;
   int ind;
 #endif
@@ -1338,7 +1338,7 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
 
   auto haloRecv = new unsigned short[nElem_Recv[size]] ();
 
-  unsigned long *markerRecv = nullptr;
+  unsigned short *markerRecv = nullptr;
   if (markersNeeded) markerRecv = new unsigned short[nElem_Recv[size]] ();
 
 #ifdef HAVE_MPI

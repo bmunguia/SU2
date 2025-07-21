@@ -48,7 +48,7 @@ public:
    * \param[in] valVolumeSorter - The datasorter containing the volume data
    * \param[in] valMarkersNeeded - Whether marker data should be stored in the sorted data e.g. for GMF meshes.
    */
-  CSurfaceFVMDataSorter(CConfig *config, CGeometry* geometry, const CFVMDataSorter* valVolumeSorter, bool valMarkersNeeded);
+  CSurfaceFVMDataSorter(CConfig *config, CGeometry* geometry, const CFVMDataSorter* valVolumeSorter, bool valMarkersNeeded = false);
 
   /*!
    * \brief Sort the output data for each grid node into a linear partitioning across all processors.

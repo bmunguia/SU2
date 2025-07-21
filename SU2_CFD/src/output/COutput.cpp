@@ -49,6 +49,8 @@
 #include "../../include/output/filewriter/CSU2FileWriter.hpp"
 #include "../../include/output/filewriter/CSU2BinaryFileWriter.hpp"
 #include "../../include/output/filewriter/CSU2MeshFileWriter.hpp"
+#include "../../include/output/filewriter/CGMFFileWriter.hpp"
+#include "../../include/output/filewriter/CGMFMeshFileWriter.hpp"
 
 namespace {
 volatile sig_atomic_t STOP;
@@ -338,6 +340,17 @@ void COutput::AllocateDataSorters(CConfig *config, CGeometry *geometry){
   /*---- Construct a data sorter object to partition and distribute
    *  the local data into linear chunks across the processors ---*/
 
+  /*--- Check if GMF_MESH is in any output_files in config ---*/
+  bool valMarkersNeeded = false;
+  const auto nVolumeFiles = config->GetnVolumeOutputFiles();
+  const auto* outputTypes = config->GetVolumeOutputFiles();
+  for (unsigned short i = 0; i < nVolumeFiles; ++i) {
+    if (outputTypes[i] == OUTPUT_TYPE::GMF_MESH) {
+      valMarkersNeeded = true;
+      break;
+    }
+  }
+
   if (femOutput){
 
     if (volumeDataSorter == nullptr)
@@ -360,8 +373,8 @@ void COutput::AllocateDataSorters(CConfig *config, CGeometry *geometry){
 
     if (surfaceDataSorter == nullptr)
       surfaceDataSorter = new CSurfaceFVMDataSorter(config, geometry,
-                                                  dynamic_cast<CFVMDataSorter*>(volumeDataSorter));
-
+                                                  dynamic_cast<CFVMDataSorter*>(volumeDataSorter),
+                                                  valMarkersNeeded);
   }
 
 }
@@ -769,6 +782,43 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
 
       LogOutputFiles("CGNS surface");
       fileWriter = new CCGNSFileWriter(surfaceDataSorter, true);
+
+      break;
+
+    case OUTPUT_TYPE::GMF_MESH:
+
+      extension = CGMFMeshFileWriter::fileExt;
+
+      if (fileName.empty())
+          fileName = config->GetFilename(volumeFilename, "", curTimeIter);
+
+      if (!config->GetWrt_Surface_Overwrite())
+          filename_iter = config->GetFilename_Iter(fileName, curInnerIter, curOuterIter);
+
+      /*--- Load and sort the output data and connectivity. ---*/
+      volumeDataSorter->SortConnectivity(config, geometry, true);
+      surfaceDataSorter->SortConnectivity(config, geometry);
+
+      LogOutputFiles("GMF_MESH");
+      fileWriter = new CGMFMeshFileWriter(volumeDataSorter, surfaceDataSorter, config->GetiZone(), config->GetnZone());
+
+      break;
+
+    case OUTPUT_TYPE::GMF_SOL:
+
+      extension = CGMFFileWriter::fileExt;
+
+      if (fileName.empty())
+          fileName = config->GetFilename(volumeFilename, "", curTimeIter);
+
+      if (!config->GetWrt_Surface_Overwrite())
+          filename_iter = config->GetFilename_Iter(fileName, curInnerIter, curOuterIter);
+
+      /*--- Load and sort the output data and connectivity. ---*/
+      volumeDataSorter->SortConnectivity(config, geometry, true);
+
+      LogOutputFiles("GMF_SOL");
+      fileWriter = new CGMFFileWriter(volumeDataSorter);
 
       break;
 

@@ -51,13 +51,11 @@ public:
    * \brief Construct a file writer using both volume and surface data sorters and marker list.
    * \param[in] valVolumeSorter - The parallel sorted volume data
    * \param[in] valSurfaceSorter - The parallel sorted surface data
-   * \param[in] markerList - The list of marker names
    * \param[in] valiZone - The index of the current zone
    * \param[in] valnZone - The total number of zones
    */
-  CGMFMeshFileWriter(const CFVMDataSorter* valVolumeSorter,
-                     const CSurfaceFVMDataSorter* valSurfaceSorter,
-                     const std::vector<std::string>& markerList,
+  CGMFMeshFileWriter(CParallelDataSorter* valVolumeSorter,
+                     CParallelDataSorter* valSurfaceSorter,
                      unsigned short valiZone, unsigned short valnZone);
 
   /*!
