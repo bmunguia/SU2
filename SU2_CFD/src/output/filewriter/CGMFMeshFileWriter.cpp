@@ -28,7 +28,7 @@
 #include "../../../include/output/filewriter/CGMFMeshFileWriter.hpp"
 
 
-const string CGMFMeshFileWriter::fileExt = ".mesh";
+const string CGMFMeshFileWriter::fileExt = ".meshb";
 
 CGMFMeshFileWriter::CGMFMeshFileWriter(CParallelDataSorter* valVolumeSorter,
                                        CParallelDataSorter* valSurfaceSorter,
@@ -49,6 +49,7 @@ void CGMFMeshFileWriter::WriteData(string val_filename) {
   /*--- Open the mesh file for writing. */
   int64_t mesh_id = GmfOpenMesh(val_filename.c_str(), GmfWrite, ver, nDim);
   if (!mesh_id) SU2_MPI::Error("Could not open GMF file for writing.", CURRENT_FUNCTION);
+  SU2_MPI::Barrier(SU2_MPI::GetComm());
 
   /*--- Write global number of points and coordinates. ---*/
   WritePoints(mesh_id, nDim);
