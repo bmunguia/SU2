@@ -1463,6 +1463,11 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
 
   for (int nn=ll; nn<kk; nn++, mm++) haloRecv[mm] = haloSend[nn];
 
+  if (markersNeeded) {
+    mm = nElem_Recv[rank];
+    for (int nn=ll; nn<kk; nn++, mm++) markerRecv[mm] = markerSend[nn];
+  }
+
   /*--- Wait for the non-blocking sends and recvs to complete. ---*/
 
 #ifdef HAVE_MPI
@@ -1497,11 +1502,12 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
    appropriate amount of memory for this section. ---*/
 
   if (nElem_Recv[size] > 0) Conn_Elem = new int[NODES_PER_ELEMENT*nElem_Recv[size]];
+  if (nElem_Recv[size] > 0 && markersNeeded) Marker_Elem = new unsigned short[nElem_Recv[size]];
   int count = 0; nElem_Total = 0;
   for (int ii = 0; ii < nElem_Recv[size]; ii++) {
     if (!haloRecv[ii]) {
       nElem_Total++;
-      if (markersNeeded) Marker_Elem[count] = markerRecv[ii];
+      if (markersNeeded) Marker_Elem[ii] = markerRecv[ii] + 1;
       for (int jj = 0; jj < NODES_PER_ELEMENT; jj++) {
         Conn_Elem[count] = (int)connRecv[ii*NODES_PER_ELEMENT+jj] + 1;
         count++;

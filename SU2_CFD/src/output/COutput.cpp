@@ -341,12 +341,12 @@ void COutput::AllocateDataSorters(CConfig *config, CGeometry *geometry){
    *  the local data into linear chunks across the processors ---*/
 
   /*--- Check if GMF_MESH is in any output_files in config ---*/
-  bool valMarkersNeeded = false;
+  bool markersNeeded = false;
   const auto nVolumeFiles = config->GetnVolumeOutputFiles();
   const auto* outputTypes = config->GetVolumeOutputFiles();
   for (unsigned short i = 0; i < nVolumeFiles; ++i) {
     if (outputTypes[i] == OUTPUT_TYPE::GMF_MESH) {
-      valMarkersNeeded = true;
+      markersNeeded = true;
       break;
     }
   }
@@ -374,7 +374,7 @@ void COutput::AllocateDataSorters(CConfig *config, CGeometry *geometry){
     if (surfaceDataSorter == nullptr)
       surfaceDataSorter = new CSurfaceFVMDataSorter(config, geometry,
                                                   dynamic_cast<CFVMDataSorter*>(volumeDataSorter),
-                                                  valMarkersNeeded);
+                                                  markersNeeded);
   }
 
 }

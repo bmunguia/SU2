@@ -120,9 +120,9 @@ void CGMFMeshFileWriter::WriteElements(int64_t mesh_id, GEO_TYPE type, unsigned 
           v[j] = sorter->GetElemConnectivity(type, i, j);
         }
         if (isSurf) {
-          /*--- Update ref for surface elements. ---*/
-          auto iMarker = sorter->GetElemMarkerID(type, i);
-          ref = iMarker + 1;
+          /*--- Update ref for surface elements. We store iMarker+1 as the MarkerID
+                in the surface datasorter. ---*/
+          ref = sorter->GetElemMarkerID(type, i);
         }
         switch(type) {
           case LINE: {
