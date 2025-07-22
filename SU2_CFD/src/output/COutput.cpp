@@ -799,7 +799,7 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
       volumeDataSorter->SortConnectivity(config, geometry, true);
       surfaceDataSorter->SortConnectivity(config, geometry);
 
-      LogOutputFiles("GMF_MESH");
+      LogOutputFiles("GMF mesh");
       fileWriter = new CGMFMeshFileWriter(volumeDataSorter, surfaceDataSorter, config->GetiZone(), config->GetnZone());
 
       break;
@@ -817,7 +817,7 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
       /*--- Load and sort the output data and connectivity. ---*/
       volumeDataSorter->SortConnectivity(config, geometry, true);
 
-      LogOutputFiles("GMF_SOL");
+      LogOutputFiles("GMF solution");
       fileWriter = new CGMFFileWriter(volumeDataSorter);
 
       break;
