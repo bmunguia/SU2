@@ -255,7 +255,7 @@ public:
    * \input iElem - The element ID
    * \return the connected node.
    */
-  virtual unsigned long GetElemMarkerID(GEO_TYPE type, unsigned long iElem) const { return 0; };
+  virtual unsigned short GetElemMarkerID(GEO_TYPE type, unsigned long iElem) const { return 0; };
 
   /*!
    * \brief Beginning node ID of the linear partition owned by a specific processor.

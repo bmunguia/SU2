@@ -46,167 +46,148 @@ void CGMFMeshFileWriter::WriteData(string val_filename) {
   unsigned nDim = dataSorter->GetnDim();
   const int ver = 2; // GMF file version
 
-  if (rank == MASTER_NODE) {
-    int64_t mesh_id = GmfOpenMesh(val_filename.c_str(), GmfWrite, ver, nDim);
-    if (!mesh_id) SU2_MPI::Error("Could not open GMF file for writing.", CURRENT_FUNCTION);
-    GmfSetKwd(mesh_id, GmfVertices, nGlobalPoints);
-    /*--- Set element counts for boundaries and volume ---*/
-    if (nDim == 2) {
-      /*--- 2D: Triangles, quadrilaterals, edges ---*/
-      unsigned long nTri = dataSorter->GetnElemGlobal(TRIANGLE);
-      unsigned long nQuad = dataSorter->GetnElemGlobal(QUADRILATERAL);
-      unsigned long nEdge = surfaceSorter->GetnElemGlobal(LINE);
+  /*--- Open the mesh file for writing. */
+  int64_t mesh_id = GmfOpenMesh(val_filename.c_str(), GmfWrite, ver, nDim);
+  if (!mesh_id) SU2_MPI::Error("Could not open GMF file for writing.", CURRENT_FUNCTION);
 
-      if (nTri > 0) GmfSetKwd(mesh_id, GmfTriangles, nTri);
-      if (nQuad > 0) GmfSetKwd(mesh_id, GmfQuadrilaterals, nQuad);
-      if (nEdge > 0) GmfSetKwd(mesh_id, GmfEdges, nEdge);
-    } else {
-      /*--- 3D: Tetrahedra, hexahedra, prisms, pyramids, triangles, and quadrilaterals ---*/
-      unsigned long nTet = dataSorter->GetnElemGlobal(TETRAHEDRON);
-      unsigned long nHex = dataSorter->GetnElemGlobal(HEXAHEDRON);
-      unsigned long nPri = dataSorter->GetnElemGlobal(PRISM);
-      unsigned long nPyr = dataSorter->GetnElemGlobal(PYRAMID);
-      unsigned long nTri = surfaceSorter->GetnElemGlobal(TRIANGLE);
-      unsigned long nQuad = surfaceSorter->GetnElemGlobal(QUADRILATERAL);
-
-      if (nTet > 0) GmfSetKwd(mesh_id, GmfTetrahedra, nTet);
-      if (nHex > 0) GmfSetKwd(mesh_id, GmfHexahedra, nHex);
-      if (nPri > 0) GmfSetKwd(mesh_id, GmfPrisms, nPri);
-      if (nPyr > 0) GmfSetKwd(mesh_id, GmfPyramids, nPyr);
-      if (nTri > 0) GmfSetKwd(mesh_id, GmfTriangles, nTri);
-      if (nQuad > 0) GmfSetKwd(mesh_id, GmfQuadrilaterals, nQuad);
-    }
-    GmfCloseMesh(mesh_id);
+  /*--- Write global number of points and coordinates. ---*/
+  WritePoints(mesh_id, nDim);
+  /*--- Write volume and boundary elements. */
+  if (nDim == 2) {
+    /*--- 2D: Triangles, quadrilaterals, edges ---*/
+    WriteElements(mesh_id, TRIANGLE, nDim);
+    WriteElements(mesh_id, QUADRILATERAL, nDim);
+    WriteElements(mesh_id, LINE, nDim, true);
+  } else {
+    /*--- 3D: Tetrahedra, hexahedra, prisms, pyramids, triangles, and quadrilaterals ---*/
+    WriteElements(mesh_id, TETRAHEDRON, nDim);
+    WriteElements(mesh_id, HEXAHEDRON, nDim);
+    WriteElements(mesh_id, PRISM, nDim);
+    WriteElements(mesh_id, PYRAMID, nDim);
+    WriteElements(mesh_id, TRIANGLE, nDim, true);
+    WriteElements(mesh_id, QUADRILATERAL, nDim, true);
   }
-  SU2_MPI::Barrier(SU2_MPI::GetComm());
 
-  for (int iProc = 0; iProc < size; ++iProc) {
-    if (rank == iProc) {
-      int64_t mesh_id = GmfOpenMesh(val_filename.c_str(), GmfWrite, ver, nDim);
-      if (!mesh_id) SU2_MPI::Error("Could not open GMF file for writing.", CURRENT_FUNCTION);
-      WritePoints(mesh_id, nDim);
-      WriteElements(mesh_id, nDim);
-      WriteBoundaryElements(mesh_id, nDim);
-      GmfCloseMesh(mesh_id);
-    }
-    SU2_MPI::Barrier(SU2_MPI::GetComm());
-  }
+  /*--- Close the mesh file. ---*/
+  GmfCloseMesh(mesh_id);
 #endif
 }
 
 #ifdef HAVE_GMF
 void CGMFMeshFileWriter::WritePoints(int64_t mesh_id, unsigned short nDim) {
+  if (rank == MASTER_NODE) {
+    unsigned long nGlobalPoints = dataSorter->GetnPointsGlobal();
+    GmfSetKwd(mesh_id, GmfVertices, nGlobalPoints);
+  }
   unsigned long nLocalPoints = dataSorter->GetnPoints();
-  for (unsigned long i = 0; i < nLocalPoints; ++i) {
-    double x = dataSorter->GetData(0, i);
-    double y = dataSorter->GetData(1, i);
-    double z = (nDim == 3) ? dataSorter->GetData(2, i) : 0.0;
-    int ref = 0;
-    if (nDim == 2)
-      GmfSetLin(mesh_id, GmfVertices, x, y, ref);
-    else
-      GmfSetLin(mesh_id, GmfVertices, x, y, z, ref);
+  for (int iProc = 0; iProc < size; iProc++) {
+    if (rank == iProc) {
+      for (unsigned long i = 0; i < nLocalPoints; i++) {
+        double x = dataSorter->GetData(0, i);
+        double y = dataSorter->GetData(1, i);
+        double z = (nDim == 3) ? dataSorter->GetData(2, i) : 0.0;
+        int ref = 0;
+        if (nDim == 2)
+          GmfSetLin(mesh_id, GmfVertices, x, y, ref);
+        else
+          GmfSetLin(mesh_id, GmfVertices, x, y, z, ref);
+      }
+    }
+    SU2_MPI::Barrier(SU2_MPI::GetComm());
   }
 }
 
-void CGMFMeshFileWriter::WriteElements(int64_t mesh_id, unsigned short nDim) {
-  /*--- Volume elements with ref = 0 ---*/
-  if (nDim == 2) {
-    unsigned long nTri = dataSorter->GetnElem(TRIANGLE);
-    for (unsigned long i = 0; i < nTri; ++i) {
-      int v1 = dataSorter->GetElemConnectivity(TRIANGLE, i, 0);
-      int v2 = dataSorter->GetElemConnectivity(TRIANGLE, i, 1);
-      int v3 = dataSorter->GetElemConnectivity(TRIANGLE, i, 2);
-      int ref = 0;
-      GmfSetLin(mesh_id, GmfTriangles, v1, v2, v3, ref);
+void CGMFMeshFileWriter::WriteElements(int64_t mesh_id, GEO_TYPE type, unsigned short nDim, bool isSurf) {
+  const CParallelDataSorter* sorter = isSurf ? surfaceSorter : dataSorter;
+  unsigned long nGlobalElems = sorter->GetnElemGlobal(type);
+
+  if (nGlobalElems == 0) return;
+
+  /*--- Set keyword for element type. ---*/
+  auto GmfKwd = GetElementKwd(type);
+  if (rank == MASTER_NODE) GmfSetKwd(mesh_id, GmfKwd, nGlobalElems);
+
+  /*--- Default to ref=0 for volume elements. ---*/
+  int ref = 0;
+  int v[8]; // max vertices for hexahedron
+  int nNodes = nPointsOfElementType(type);
+  unsigned long nLocalElems = sorter->GetnElem(type);
+  for (int iProc = 0; iProc < size; iProc++) {
+    if (rank == iProc) {
+      for (auto i = 0u; i < nLocalElems; i++) {
+        /*--- Get element vertices. ---*/
+        for (auto j = 0u; j < nNodes; j++) {
+          v[j] = sorter->GetElemConnectivity(type, i, j);
+        }
+        if (isSurf) {
+          /*--- Update ref for surface elements. ---*/
+          auto iMarker = sorter->GetElemMarkerID(type, i);
+          ref = iMarker + 1;
+        }
+        switch(type) {
+          case LINE: {
+            GmfSetLin(mesh_id, GmfKwd, v[0], v[1], ref);
+            break;
+          }
+          case TRIANGLE: {
+            GmfSetLin(mesh_id, GmfKwd, v[0], v[1], v[2], ref);
+            break;
+          }
+          case QUADRILATERAL: {
+            GmfSetLin(mesh_id, GmfKwd, v[0], v[1], v[2], v[3], ref);
+            break;
+          }
+          case TETRAHEDRON: {
+            GmfSetLin(mesh_id, GmfKwd, v[0], v[1], v[2], v[3], ref);
+            break;
+          }
+          case HEXAHEDRON: {
+            GmfSetLin(mesh_id, GmfKwd, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], ref);
+            break;
+          }
+          case PRISM: {
+            GmfSetLin(mesh_id, GmfKwd, v[0], v[1], v[2], v[3], v[4], v[5], ref);
+            break;
+          }
+          case PYRAMID: {
+            GmfSetLin(mesh_id, GmfKwd, v[0], v[1], v[2], v[3], v[4], ref);
+            break;
+          }
+          default:
+            break;
+        }
+      }
     }
-    unsigned long nQuad = dataSorter->GetnElem(QUADRILATERAL);
-    for (unsigned long i = 0; i < nQuad; ++i) {
-      int v1 = dataSorter->GetElemConnectivity(QUADRILATERAL, i, 0);
-      int v2 = dataSorter->GetElemConnectivity(QUADRILATERAL, i, 1);
-      int v3 = dataSorter->GetElemConnectivity(QUADRILATERAL, i, 2);
-      int v4 = dataSorter->GetElemConnectivity(QUADRILATERAL, i, 3);
-      int ref = 0;
-      GmfSetLin(mesh_id, GmfQuadrilaterals, v1, v2, v3, v4, ref);
-    }
-  } else {
-    unsigned long nTet = dataSorter->GetnElem(TETRAHEDRON);
-    for (unsigned long i = 0; i < nTet; ++i) {
-      int v1 = dataSorter->GetElemConnectivity(TETRAHEDRON, i, 0);
-      int v2 = dataSorter->GetElemConnectivity(TETRAHEDRON, i, 1);
-      int v3 = dataSorter->GetElemConnectivity(TETRAHEDRON, i, 2);
-      int v4 = dataSorter->GetElemConnectivity(TETRAHEDRON, i, 3);
-      int ref = 0;
-      GmfSetLin(mesh_id, GmfTetrahedra, v1, v2, v3, v4, ref);
-    }
-    unsigned long nHex = dataSorter->GetnElem(HEXAHEDRON);
-    for (unsigned long i = 0; i < nHex; ++i) {
-      int v1 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 0);
-      int v2 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 1);
-      int v3 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 2);
-      int v4 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 3);
-      int v5 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 4);
-      int v6 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 5);
-      int v7 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 6);
-      int v8 = dataSorter->GetElemConnectivity(HEXAHEDRON, i, 7);
-      int ref = 0;
-      GmfSetLin(mesh_id, GmfHexahedra, v1, v2, v3, v4, v5, v6, v7, v8, ref);
-    }
-    unsigned long nPri = dataSorter->GetnElem(PRISM);
-    for (unsigned long i = 0; i < nPri; ++i) {
-      int v1 = dataSorter->GetElemConnectivity(PRISM, i, 0);
-      int v2 = dataSorter->GetElemConnectivity(PRISM, i, 1);
-      int v3 = dataSorter->GetElemConnectivity(PRISM, i, 2);
-      int v4 = dataSorter->GetElemConnectivity(PRISM, i, 3);
-      int v5 = dataSorter->GetElemConnectivity(PRISM, i, 4);
-      int v6 = dataSorter->GetElemConnectivity(PRISM, i, 5);
-      int ref = 0;
-      GmfSetLin(mesh_id, GmfPrisms, v1, v2, v3, v4, v5, v6, ref);
-    }
-    unsigned long nPyr = dataSorter->GetnElem(PYRAMID);
-    for (unsigned long i = 0; i < nPyr; ++i) {
-      int v1 = dataSorter->GetElemConnectivity(PYRAMID, i, 0);
-      int v2 = dataSorter->GetElemConnectivity(PYRAMID, i, 1);
-      int v3 = dataSorter->GetElemConnectivity(PYRAMID, i, 2);
-      int v4 = dataSorter->GetElemConnectivity(PYRAMID, i, 3);
-      int v5 = dataSorter->GetElemConnectivity(PYRAMID, i, 4);
-      int ref = 0;
-      GmfSetLin(mesh_id, GmfPyramids, v1, v2, v3, v4, v5, ref);
-    }
+    SU2_MPI::Barrier(SU2_MPI::GetComm());
   }
 }
 
-void CGMFMeshFileWriter::WriteBoundaryElements(int64_t mesh_id, unsigned short nDim) {
-   /*--- Surface elements with ref = iMarker + 1 ---*/
-  if (nDim == 2) {
-    unsigned long nEdge = surfaceSorter->GetnElem(LINE);
-    for (unsigned long i = 0; i < nEdge; ++i) {
-      int v1 = surfaceSorter->GetElemConnectivity(LINE, i, 0);
-      int v2 = surfaceSorter->GetElemConnectivity(LINE, i, 1);
-      int iMarker = surfaceSorter->GetElemMarkerID(LINE, i);
-      int ref = iMarker + 1;
-      GmfSetLin(mesh_id, GmfEdges, v1, v2, ref);
-    }
-  } else {
-    unsigned long nTri = surfaceSorter->GetnElem(TRIANGLE);
-    for (unsigned long i = 0; i < nTri; ++i) {
-      int v1 = surfaceSorter->GetElemConnectivity(TRIANGLE, i, 0);
-      int v2 = surfaceSorter->GetElemConnectivity(TRIANGLE, i, 1);
-      int v3 = surfaceSorter->GetElemConnectivity(TRIANGLE, i, 2);
-      int iMarker = surfaceSorter->GetElemMarkerID(TRIANGLE, i);
-      int ref = iMarker + 1;
-      GmfSetLin(mesh_id, GmfTriangles, v1, v2, v3, ref);
-    }
-    unsigned long nQuad = surfaceSorter->GetnElem(QUADRILATERAL);
-    for (unsigned long i = 0; i < nQuad; ++i) {
-      int v1 = surfaceSorter->GetElemConnectivity(QUADRILATERAL, i, 0);
-      int v2 = surfaceSorter->GetElemConnectivity(QUADRILATERAL, i, 1);
-      int v3 = surfaceSorter->GetElemConnectivity(QUADRILATERAL, i, 2);
-      int v4 = surfaceSorter->GetElemConnectivity(QUADRILATERAL, i, 3);
-      int iMarker = surfaceSorter->GetElemMarkerID(QUADRILATERAL, i);
-      int ref = iMarker + 1;
-      GmfSetLin(mesh_id, GmfQuadrilaterals, v1, v2, v3, v4, ref);
-    }
+int CGMFMeshFileWriter::GetElementKwd(GEO_TYPE type) {
+  switch (type) {
+    case LINE:
+      return GmfEdges;
+      break;
+    case TRIANGLE:
+      return GmfTriangles;
+      break;
+    case QUADRILATERAL:
+      return GmfQuadrilaterals;
+      break;
+    case TETRAHEDRON:
+      return GmfTetrahedra;
+      break;
+    case HEXAHEDRON:
+      return GmfHexahedra;
+      break;
+    case PRISM:
+      return GmfPrisms;
+      break;
+    case PYRAMID:
+      return GmfPyramids;
+      break;
+    default:
+      return -1;
+      break;
   }
 }
 #endif  // HAVE_GMF

@@ -65,8 +65,27 @@ public:
   void WriteData(string val_filename) override;
 
 #ifdef HAVE_GMF
+  /*!
+   * \brief Write mesh vertex coordinates to GMF file.
+   * \param[in] mesh_id - GMF mesh file handle
+   * \param[in] nDim - Mesh spatial dimension
+   */
   void WritePoints(int64_t mesh_id, unsigned short nDim);
-  void WriteElements(int64_t mesh_id, unsigned short nDim);
-  void WriteBoundaryElements(int64_t mesh_id, unsigned short nDim);
+
+  /*!
+   * \brief Write mesh elements of a given type to GMF file.
+   * \param[in] mesh_id - GMF mesh file handle
+   * \param[in] type - Element type
+   * \param[in] nDim - Mesh spatial dimension
+   * \param[in] isSurf - True if writing surface/boundary elements
+   */
+  void WriteElements(int64_t mesh_id, GEO_TYPE type, unsigned short nDim, bool isSurf = false);
+
+  /*!
+   * \brief Get GMF keyword for a given element type.
+   * \param[in] type - Element type
+   * \return GMF keyword integer for the element type
+   */
+  int GetElementKwd(GEO_TYPE type);
 #endif
 };

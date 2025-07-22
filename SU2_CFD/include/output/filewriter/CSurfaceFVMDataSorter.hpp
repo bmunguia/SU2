@@ -103,7 +103,7 @@ public:
    * \input iElem - The element ID
    * \return the connected node.
    */
-  virtual unsigned long GetElemMarkerID(GEO_TYPE type, unsigned long iElem) const override {
+  virtual unsigned short GetElemMarkerID(GEO_TYPE type, unsigned long iElem) const override {
     switch (type) {
       case LINE:
         return Marker_Line_Par[iElem];
