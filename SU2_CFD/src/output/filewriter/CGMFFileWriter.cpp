@@ -37,6 +37,75 @@ CGMFFileWriter::~CGMFFileWriter()= default;
 
 void CGMFFileWriter::WriteData(string val_filename){
 #ifdef HAVE_GMF
+  val_filename.append(fileExt);
 
+  const int nDim = dataSorter->GetnDim();
+  const int ver = 2; // GMF file version
+
+  /*--- Open the solution file for writing. ---*/
+  int64_t sol_id = GmfOpenMesh(val_filename.c_str(), GmfWrite, ver, nDim);
+  if (!sol_id) SU2_MPI::Error("Could not open GMF solution file for writing.", CURRENT_FUNCTION);
+  SU2_MPI::Barrier(SU2_MPI::GetComm());
+
+  /*--- Prepare solution types and buffer. ---*/
+  std::vector<int> sol_types;
+  const auto& fieldNames = dataSorter->GetFieldNames();
+  const unsigned short nFields = fieldNames.size();
+  for (unsigned short iField = 0u; iField < nFields; ) {
+    auto GmfFieldKwd = GetFieldKwd(fieldNames[iField], nDim);
+    sol_types.push_back(GmfFieldKwd);
+    auto nComp = GetFieldSize(fieldNames[iField], nDim);
+    iField += nComp;
+  }
+
+  /*--- Set the keyword for the solution. ---*/
+  if (rank == MASTER_NODE) {
+    const unsigned long nGlobalPoints = dataSorter->GetnPointsGlobal();
+    GmfSetKwd(sol_id, GmfSolAtVertices, nGlobalPoints, sol_types.size(), sol_types.data());
+  }
+
+  /*--- Write solution data for each point. ---*/
+  std::vector<double> bufDbl;
+  const unsigned long nLocalPoints = dataSorter->GetnPoints();
+  for (int iProc = 0u; iProc < size; iProc++) {
+    if (rank == iProc) {
+      for (auto i = 0u; i < nLocalPoints; ++i) {
+        bufDbl.clear();
+        /*--- No special processing required. Just add all the field data. ---*/
+        for (auto j = 0u; j < nFields; ++j) {
+          bufDbl.push_back(dataSorter->GetData(j, i));
+        }
+        GmfSetLin(sol_id, GmfSolAtVertices, bufDbl.data());
+      }
+    }
+    SU2_MPI::Barrier(SU2_MPI::GetComm());
+  }
+
+  /*--- Close the solution file. ---*/
+  GmfCloseMesh(sol_id);
 #endif
 }
+
+#ifdef HAVE_GMF
+int CGMFFileWriter::GetFieldKwd(const std::string& fieldname, int nDim) {
+  /*--- Check for tensor components. ---*/
+  if (fieldname.find("_xx") != std::string::npos) return GmfSymMat;
+
+  /*--- Check for vector components. ---*/
+  if (fieldname.find("_x") != std::string::npos && fieldname.find("_xx") == std::string::npos) return GmfVec;
+
+  /*--- Otherwise, it's scalar. ---*/
+  return GmfSca;
+}
+
+int CGMFFileWriter::GetFieldSize(const std::string& fieldname, int nDim) {
+  /*--- Symmetric tensor: 3 components for 2D, 6 for 3D. ---*/
+  if (fieldname.find("_xx") != std::string::npos) return 3 * (nDim - 1);
+
+  /*--- Vector: 2 components for 2D, 3 for 3D. ---*/
+  if (fieldname.find("_x") != std::string::npos && fieldname.find("_xx") == std::string::npos) return nDim;
+
+  /*--- Scalar: 1 component. ---*/
+  return 1;
+}
+#endif

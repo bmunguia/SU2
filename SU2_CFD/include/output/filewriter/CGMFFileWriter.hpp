@@ -1,7 +1,7 @@
 /*!
  * \file CGMFFileWriter.hpp
  * \brief Headers for GMF solution file writer class.
- * \author T. Albring
+ * \author B. Munguía
  * \version 8.2.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
@@ -61,5 +61,22 @@ public:
    */
   void WriteData(string val_filename) override ;
 
+#ifdef HAVE_GMF
+  /*!
+   * \brief Get GMF keyword for a given solution type.
+   * \param[in] fieldname - String for solution field
+   * \param[in] nDim - Mesh spatial dimension
+   * \return GMF keyword integer for the solution type
+   */
+  int GetFieldKwd(const std::string& fieldname, int nDim);
+
+  /*!
+   * \brief Get field size for a given solution type (scalar, vector, symmetric matrix).
+   * \param[in] fieldname - String for solution field
+   * \param[in] nDim - Mesh spatial dimension
+   * \return Field size for the solution type
+   */
+  int GetFieldSize(const std::string& fieldname, int nDim);
+#endif
 };
 

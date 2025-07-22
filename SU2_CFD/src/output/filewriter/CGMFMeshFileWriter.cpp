@@ -42,18 +42,17 @@ void CGMFMeshFileWriter::WriteData(string val_filename) {
               overwrite the existing mesh ---*/
   val_filename.append(fileExt);
 
-  unsigned long nGlobalPoints = dataSorter->GetnPointsGlobal();
-  unsigned nDim = dataSorter->GetnDim();
+  const unsigned nDim = dataSorter->GetnDim();
   const int ver = 2; // GMF file version
 
-  /*--- Open the mesh file for writing. */
+  /*--- Open the mesh file for writing. ---*/
   int64_t mesh_id = GmfOpenMesh(val_filename.c_str(), GmfWrite, ver, nDim);
-  if (!mesh_id) SU2_MPI::Error("Could not open GMF file for writing.", CURRENT_FUNCTION);
+  if (!mesh_id) SU2_MPI::Error("Could not open GMF mesh file for writing.", CURRENT_FUNCTION);
   SU2_MPI::Barrier(SU2_MPI::GetComm());
 
   /*--- Write global number of points and coordinates. ---*/
   WritePoints(mesh_id, nDim);
-  /*--- Write volume and boundary elements. */
+  /*--- Write volume and boundary elements. ---*/
   if (nDim == 2) {
     /*--- 2D: Triangles, quadrilaterals, edges ---*/
     WriteElements(mesh_id, TRIANGLE, nDim);
@@ -77,10 +76,10 @@ void CGMFMeshFileWriter::WriteData(string val_filename) {
 #ifdef HAVE_GMF
 void CGMFMeshFileWriter::WritePoints(int64_t mesh_id, unsigned short nDim) {
   if (rank == MASTER_NODE) {
-    unsigned long nGlobalPoints = dataSorter->GetnPointsGlobal();
+    const unsigned long nGlobalPoints = dataSorter->GetnPointsGlobal();
     GmfSetKwd(mesh_id, GmfVertices, nGlobalPoints);
   }
-  unsigned long nLocalPoints = dataSorter->GetnPoints();
+  const unsigned long nLocalPoints = dataSorter->GetnPoints();
   for (int iProc = 0; iProc < size; iProc++) {
     if (rank == iProc) {
       for (unsigned long i = 0; i < nLocalPoints; i++) {
@@ -100,19 +99,19 @@ void CGMFMeshFileWriter::WritePoints(int64_t mesh_id, unsigned short nDim) {
 
 void CGMFMeshFileWriter::WriteElements(int64_t mesh_id, GEO_TYPE type, unsigned short nDim, bool isSurf) {
   const CParallelDataSorter* sorter = isSurf ? surfaceSorter : dataSorter;
-  unsigned long nGlobalElems = sorter->GetnElemGlobal(type);
+  const unsigned long nGlobalElems = sorter->GetnElemGlobal(type);
 
   if (nGlobalElems == 0) return;
 
   /*--- Set keyword for element type. ---*/
-  auto GmfKwd = GetElementKwd(type);
+  const auto GmfKwd = GetElementKwd(type);
   if (rank == MASTER_NODE) GmfSetKwd(mesh_id, GmfKwd, nGlobalElems);
 
   /*--- Default to ref=0 for volume elements. ---*/
   int ref = 0;
   int v[8]; // max vertices for hexahedron
   int nNodes = nPointsOfElementType(type);
-  unsigned long nLocalElems = sorter->GetnElem(type);
+  const unsigned long nLocalElems = sorter->GetnElem(type);
   for (int iProc = 0; iProc < size; iProc++) {
     if (rank == iProc) {
       for (auto i = 0u; i < nLocalElems; i++) {
