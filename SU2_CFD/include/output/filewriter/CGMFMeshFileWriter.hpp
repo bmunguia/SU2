@@ -3,6 +3,9 @@
  * \brief Headers for GMF mesh file writer class.
  * \author B. Munguía
  * \version 8.2.0 "Harrier"
+ * \bug
+ *   Only supports serial mesh writing; parallel output is not
+ *   supported due to GMF/libMeshb limitations.
  *
  * SU2 Project Website: https://su2code.github.io
  *

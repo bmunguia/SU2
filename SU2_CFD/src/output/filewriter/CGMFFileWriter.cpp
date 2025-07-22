@@ -3,6 +3,9 @@
  * \brief Filewriter class for GMF format solution.
  * \author B. Munguía
  * \version 8.2.0 "Harrier"
+ * \bug
+ *   Only supports serial mesh writing; parallel output is not
+ *   supported due to GMF/libMeshb limitations.
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -37,6 +40,9 @@ CGMFFileWriter::~CGMFFileWriter()= default;
 
 void CGMFFileWriter::WriteData(string val_filename){
 #ifdef HAVE_GMF
+  /*--- TODO: currently doesn't work, since GmfOpenMesh seems to
+              overwrite the existing mesh; hopefully libmeshb v8
+              can resolve this ---*/
   val_filename.append(fileExt);
 
   const int nDim = dataSorter->GetnDim();
