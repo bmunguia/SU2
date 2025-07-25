@@ -40,6 +40,7 @@ CBaselineSolver::CBaselineSolver(CGeometry *geometry, CConfig *config) {
   /*--- Define geometry constants in the solver structure ---*/
 
   nDim = geometry->GetnDim();
+  nSymMat = 3 * (nDim - 1);
 
   /*--- Routines to access the number of variables and string names. ---*/
 
@@ -62,6 +63,7 @@ CBaselineSolver::CBaselineSolver(CGeometry *geometry, CConfig *config, unsigned 
 
   nPoint = geometry->GetnPoint();
   nDim = geometry->GetnDim();
+  nSymMat = 3 * (nDim - 1);
   nVar = val_nvar;
   fields = std::move(field_names);
 

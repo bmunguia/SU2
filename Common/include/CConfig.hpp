@@ -5507,6 +5507,11 @@ public:
   string GetMesh_FileName(void) const { return Mesh_FileName; }
 
   /*!
+   * \brief Set name of the input grid.
+   */
+  void SetMesh_FileName(string val_mesh_filename) { Mesh_FileName = val_mesh_filename; }
+
+  /*!
    * \brief Get name of the output grid, this parameter is important for grid
    *        adaptation and deformation.
    * \return File name of the output grid.

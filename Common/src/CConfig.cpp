@@ -3341,6 +3341,7 @@ void CConfig::SetHeader(SU2_COMPONENT val_software) const{
     case SU2_COMPONENT::SU2_DEF: cout << "|   |___/\\___//___|   Suite (Mesh Deformation Code)                     |\n"; break;
     case SU2_COMPONENT::SU2_DOT: cout << "|   |___/\\___//___|   Suite (Gradient Projection Code)                  |\n"; break;
     case SU2_COMPONENT::SU2_GEO: cout << "|   |___/\\___//___|   Suite (Geometry Definition Code)                  |\n"; break;
+    case SU2_COMPONENT::SU2_ITP: cout << "|   |___/\\___//___|   Suite (Solution Interpolation Code)               |\n"; break;
     case SU2_COMPONENT::SU2_SOL: cout << "|   |___/\\___//___|   Suite (Solution Exporting Code)                   |\n"; break;
     }
     cout << "|                                                                       |\n";
@@ -4264,7 +4265,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
    there is no grid motion ---*/
 
   if (GetGrid_Movement()){
-    if ((Kind_SU2 == SU2_COMPONENT::SU2_CFD || Kind_SU2 == SU2_COMPONENT::SU2_SOL) &&
+    if ((Kind_SU2 == SU2_COMPONENT::SU2_CFD || Kind_SU2 == SU2_COMPONENT::SU2_SOL || Kind_SU2 == SU2_COMPONENT::SU2_ITP) &&
         (TimeMarching == TIME_MARCHING::STEADY && !Time_Domain)){
 
       if((Kind_GridMovement != ROTATING_FRAME) &&
@@ -7854,7 +7855,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
     }
   }
 
-  if (val_software == SU2_COMPONENT::SU2_CFD || val_software == SU2_COMPONENT::SU2_SOL) {
+  if (val_software == SU2_COMPONENT::SU2_CFD || val_software == SU2_COMPONENT::SU2_SOL || Kind_SU2 == SU2_COMPONENT::SU2_ITP) {
     if (Compute_Metric) {
         cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
         cout << "Adaptation sensor(s): ";
