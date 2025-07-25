@@ -36,11 +36,10 @@
 #include "../../Common/include/CConfig.hpp"
 
 void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name,
-                      const char* config_file_name, int iZone, int nZone, SU2_MPI::Comm MPICommunicator,
-                      bool isSource = true)
+                      char* config_file_name, int iZone, int nZone, SU2_MPI::Comm MPICommunicator,
+                      bool isSource = true);
 
-void InitializeGeometry(CConfig* config, CGeometry*& geometry, COutput* output,
-                       int iZone, int iInst);
+void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iInst, int nZone);
 
 void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container, COutput* output,
                 unsigned long TimeIter);

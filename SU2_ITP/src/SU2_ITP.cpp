@@ -128,8 +128,8 @@ int main(int argc, char* argv[]) {
   /*--- Read the geometry for each zone ---*/
   for (iZone = 0; iZone < nZone; iZone++) {
     for (iInst = 0; iInst < nInst[iZone]; iInst++) {
-      InitializeGeometry(config_src[iZone], geometry_src[iZone][iInst], output, iZone, iInst);
-      InitializeGeometry(config_dst[iZone], geometry_dst[iZone][iInst], output, iZone, iInst);
+      InitializeGeometry(config_src[iZone], geometry_src[iZone][iInst], iZone, iInst, nZone);
+      InitializeGeometry(config_dst[iZone], geometry_dst[iZone][iInst], iZone, iInst, nZone);
     }
   }
 
@@ -360,7 +360,7 @@ int main(int argc, char* argv[]) {
   return EXIT_SUCCESS;
 }
 
-void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name, const char* config_file_name,
+void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name, char* config_file_name,
                       int iZone, int nZone, SU2_MPI::Comm MPICommunicator, bool isSource) {
   if (driver_config->GetnConfigFiles() > 0) {
     strcpy(zone_file_name, driver_config->GetConfigFilename(iZone).c_str());
@@ -375,7 +375,7 @@ void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* 
   const bool multizone = config_container[iZone]->GetMultizone_Problem();
   if (multizone) {
     /*--- Set the interface markers for multizone ---*/
-    config_container[iZone]->SetMultizone(driver_config, config_src);
+    config_container[iZone]->SetMultizone(driver_config, config_container);
   }
 
   /*--- Read MESH_FILENAME if source, otherwise read destination mesh ---*/
@@ -385,8 +385,9 @@ void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* 
   }
 }
 
-void InitializeGeometry(CConfig* config, CGeometry*& geometry, COutput* output,
-                        int iZone, int iInst) {
+void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iInst, int nZone) {
+  int rank = SU2_MPI::GetRank();
+
   /*--- Mesh initialization ---*/
   config->SetiInst(iInst);
   CGeometry* geometry_aux = nullptr;
@@ -461,7 +462,6 @@ void InitializeGeometry(CConfig* config, CGeometry*& geometry, COutput* output,
   geometry->SetGlobal_to_Local_Point();
 
   /*--- Create the data structure for MPI point-to-point communications ---*/
-  const bool fem_solver = config[ZONE_0]->GetFEMSolver();
   if (!fem_solver)
     geometry->PreprocessP2PComms(geometry, config);
   if (fem_solver) {
@@ -485,14 +485,16 @@ void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container
 
   /*--- Set the filenames ---*/
 
+  output->SetRestartFilename(config->GetRestart_FileName());
+
   output->SetVolumeFilename(config->GetVolume_FileName());
 
   output->SetSurfaceFilename(config->GetSurfCoeff_FileName());
 
+  auto FileFormat = config->GetVolumeOutputFiles();
   for (unsigned short iFile = 0; iFile < config->GetnVolumeOutputFiles(); iFile++) {
-    auto FileFormat = config->GetVolumeOutputFiles();
-    if (FileFormat[iFile] != OUTPUT_TYPE::RESTART_ASCII && FileFormat[iFile] != OUTPUT_TYPE::RESTART_BINARY &&
-        FileFormat[iFile] != OUTPUT_TYPE::CSV)
+    // if (FileFormat[iFile] != OUTPUT_TYPE::RESTART_ASCII && FileFormat[iFile] != OUTPUT_TYPE::RESTART_BINARY &&
+    //     FileFormat[iFile] != OUTPUT_TYPE::CSV)
       output->WriteToFile(config, geometry, FileFormat[iFile]);
   }
 }

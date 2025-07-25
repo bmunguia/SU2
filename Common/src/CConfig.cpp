@@ -7469,7 +7469,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
 
   }
 
-  if (val_software == SU2_COMPONENT::SU2_SOL) {
+  if (val_software == SU2_COMPONENT::SU2_SOL || val_software == SU2_COMPONENT::SU2_ITP) {
     switch (Tab_FileFormat) {
       case TAB_OUTPUT::TAB_CSV: cout << "The tabular file format is CSV (.csv)." << endl; break;
       case TAB_OUTPUT::TAB_TECPLOT: cout << "The tabular file format is Tecplot (.dat)." << endl; break;
