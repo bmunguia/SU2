@@ -2147,6 +2147,8 @@ void CConfig::SetConfig_Options() {
   addStringOption("MESH_FILENAME", Mesh_FileName, string("mesh.su2"));
   /*!\brief MESH_OUT_FILENAME \n DESCRIPTION: Mesh output file name. Used when converting, scaling, or deforming a mesh. \n DEFAULT: mesh_out.su2 \ingroup Config*/
   addStringOption("MESH_OUT_FILENAME", Mesh_Out_FileName, string("mesh_out.su2"));
+    /*!\brief MESH_ITP_FILENAME \n DESCRIPTION: Destination mesh file name. Used when interpolating a solution. \n DEFAULT: mesh_itp.su2 \ingroup Config*/
+  addStringOption("MESH_ITP_FILENAME", Mesh_Itp_FileName, string("mesh_itp.su2"));
 
   /* DESCRIPTION: List of the number of grid points in the RECTANGLE or BOX grid in the x,y,z directions. (default: (33,33,33) ). */
   addShortListOption("MESH_BOX_SIZE", nMesh_Box_Size, Mesh_Box_Size);
@@ -6669,6 +6671,10 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
   }
 
   cout << "Input mesh file name: " << Mesh_FileName << endl;
+
+  if (val_software == SU2_COMPONENT::SU2_ITP) {
+    cout << "Destination mesh file name: " << Mesh_Itp_FileName << endl;
+  }
 
   if (val_software == SU2_COMPONENT::SU2_DOT) {
     if (DiscreteAdjoint) {

@@ -811,6 +811,7 @@ private:
   unsigned short Mesh_Box_PSolFEM; /*!< \brief FEM polynomial degree of the solution for the RECTANGLE and BOX grid formats. */
   string Mesh_FileName,          /*!< \brief Mesh input file. */
   Mesh_Out_FileName,             /*!< \brief Mesh output file. */
+  Mesh_Itp_FileName,             /*!< \brief Destination mesh for interpolation. */
   Solution_FileName,             /*!< \brief Flow solution input file. */
   Solution_AdjFileName,          /*!< \brief Adjoint solution input file for drag functional. */
   Volume_FileName,               /*!< \brief Flow variables output file. */
@@ -5517,6 +5518,12 @@ public:
    * \return File name of the output grid.
    */
   string GetMesh_Out_FileName(void) const { return Mesh_Out_FileName; }
+
+  /*!
+   * \brief Get name of the interpolation destination grid.
+   * \return File name of the destination grid.
+   */
+  string GetMesh_Itp_FileName(void) const { return Mesh_Itp_FileName; }
 
   /*!
    * \brief Get the name of the file with the solution of the flow problem.
