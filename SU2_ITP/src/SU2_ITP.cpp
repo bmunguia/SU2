@@ -167,13 +167,8 @@ int main(int argc, char* argv[]) {
       if (Physical_t >= config_src[ZONE_0]->GetMax_Time()) StopCalc = true;
 
       if ((TimeIter + 1 == config_src[ZONE_0]->GetnTime_Iter()) ||
-          ((TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0) && (TimeIter != 0) &&
-           (config_src[ZONE_0]->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_1ST) &&
-           (config_src[ZONE_0]->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_2ND)) ||
-          (StopCalc) ||
-          (((config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||
-            (config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND)) &&
-           ((TimeIter == 0) || (TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0)))) {
+          (TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0) ||
+          (StopCalc)) {
         /*--- Read in the restart file for this time step ---*/
         for (iZone = 0; iZone < nZone; iZone++) {
           /*--- Set the current iteration number in the config class. ---*/
