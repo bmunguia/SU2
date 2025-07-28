@@ -469,7 +469,6 @@ void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iI
 }
 
 std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry* geometry) {
-  /*--- Build surface ADT for wall distance computation or general surface interpolation ---*/
   const unsigned short nDim = geometry->GetnDim();
 
   /*--- Initialize an array for the mesh points mapping ---*/
@@ -485,22 +484,22 @@ std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry*
   for (unsigned short iMarker = 0; iMarker < geometry->GetnMarker(); iMarker++) {
     /*--- Loop over surface elements of this marker ---*/
     for (unsigned long iElem = 0; iElem < geometry->GetnElem_Bound(iMarker); iElem++) {
-      unsigned short VTK_Type = geometry->bound[iMarker][iElem]->GetVTK_Type();
-      unsigned short nNodes = geometry->bound[iMarker][iElem]->GetnNodes();
+      const unsigned short VTK_Type = geometry->bound[iMarker][iElem]->GetVTK_Type();
+      const unsigned short nDOFsPerElem = geometry->bound[iMarker][iElem]->GetnNodes();
 
       /*--- Set flag for mesh points on this surface ---*/
-      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
-        meshToSurface[geometry->bound[iMarker][iElem]->GetNode(iNode)] = 1;
+      for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
+        unsigned long iPoint = geometry->bound[iMarker][iElem]->GetNode(iNode);
+        meshToSurface[iPoint] = 1;
       }
 
-      /*--- Store connectivity and metadata ---*/
-      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
-        surfaceConn.push_back(geometry->bound[iMarker][iElem]->GetNode(iNode));
-      }
-
+      /*--- Store the required data ---*/
       markerIDs.push_back(iMarker);
       VTK_TypeElem.push_back(VTK_Type);
       elemIDs.push_back(iElem);
+      for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
+        surfaceConn.push_back(geometry->bound[iMarker][iElem]->GetNode(iNode));
+      }
     }
   }
 
@@ -508,11 +507,11 @@ std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry*
   vector<su2double> surfaceCoor;
   unsigned long nVertex_Surface = 0;
 
-  for (unsigned long iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
-    if (meshToSurface[iPoint]) {
-      meshToSurface[iPoint] = nVertex_Surface++;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        surfaceCoor.push_back(geometry->nodes->GetCoord(iPoint, iDim));
+  for (unsigned long i = 0; i < geometry->GetnPoint(); ++i) {
+    if (meshToSurface[i]) {
+      meshToSurface[i] = nVertex_Surface++;
+      for (unsigned short k = 0; k < nDim; ++k) {
+        surfaceCoor.push_back(geometry->nodes->GetCoord(i, k));
       }
     }
   }
@@ -528,12 +527,7 @@ std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry*
 }
 
 std::unique_ptr<CADTElemClass> BuildVolumeADT(CGeometry* geometry) {
-  /*--- Build volume ADT for element searching ---*/
   const unsigned short nDim = geometry->GetnDim();
-  const unsigned long nPoint = geometry->GetnPoint();
-  const unsigned long nElem = geometry->GetnElem();
-
-  const unsigned short maxNodePerElem = (nDim == 2) ? 4 : 8;
 
   /*--- Prepare coordinate and connectivity data for ADT ---*/
   vector<su2double> volCoor;
@@ -543,24 +537,23 @@ std::unique_ptr<CADTElemClass> BuildVolumeADT(CGeometry* geometry) {
   vector<unsigned long> parElemID;
 
   /*--- Copy coordinates ---*/
-  for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      volCoor.push_back(geometry->nodes->GetCoord(iPoint, iDim));
+  for (unsigned long i = 0; i <  geometry->GetnPoint(); ++i) {
+    for (unsigned short k = 0; k < nDim; ++k) {
+      volCoor.push_back(geometry->nodes->GetCoord(i, k));
     }
   }
 
   /*--- Copy element connectivity and metadata ---*/
-  for (unsigned long iElem = 0; iElem < nElem; iElem++) {
-    unsigned short VTK_Type = geometry->elem[iElem]->GetVTK_Type();
-    unsigned short nNodes = geometry->elem[iElem]->GetnNodes();
-
-    for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
-      elemConn.push_back(geometry->elem[iElem]->GetNode(iNode));
-    }
+  for (unsigned long iElem = 0; iElem < geometry->GetnElem(); iElem++) {
+    const unsigned short VTK_Type = geometry->elem[iElem]->GetVTK_Type();
+    const unsigned short nDOFsPerElem = geometry->elem[iElem]->GetnNodes();
 
     vtkType.push_back(VTK_Type);
     subElemID.push_back(0);  // TODO: FEM subelements
     parElemID.push_back(iElem);
+    for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
+      elemConn.push_back(geometry->elem[iElem]->GetNode(iNode));
+    }
   }
 
   /*--- Create and return the volume ADT ---*/
@@ -593,8 +586,8 @@ void InterpolateSolution(const CConfig* config, CGeometry* geometry_src, CGeomet
   vector<su2double> coorDst;
   vector<su2double> coorDstCorrected;
   for (unsigned long iPoint = 0; iPoint < nPoint_dst; iPoint++) {
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      coorDst.push_back(geometry_dst->nodes->GetCoord(iPoint, iDim));
+    for (unsigned short k = 0; k < nDim; ++k) {
+      coorDst.push_back(geometry_dst->nodes->GetCoord(iPoint, k));
     }
   }
   ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst, coorDstCorrected);
@@ -662,9 +655,8 @@ void VolumeInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, C
         unsigned long nodeID = geometry_src->elem[elemID]->GetNode(iNode);
 
         for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-          su2double solValue = solver_src->GetNodes()->GetSolution(nodeID, iVar);
-          su2double currentValue = solver_dst->GetNodes()->GetSolution(l, iVar);
-          solver_dst->GetNodes()->SetSolution(l, iVar, currentValue + weightsInterpol[iNode] * solValue);
+          su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
+          solver_dst->GetNodes()->Add_DeltaSolution(l, iVar, weightsInterpol[iNode] * val);
         }
       }
     } else {
@@ -712,61 +704,41 @@ void SurfaceInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, 
     /*--- Loop over failed points for minimum distance search ---*/
     for (unsigned long l = 0; l < pointsFailed.size(); ++l) {
       /*--- Get coordinates of failed point ---*/
-      const unsigned long pointIndex = pointsFailed[l];
-      const su2double* coor = coor_dst.data() + pointIndex * nDim;
+      const unsigned long pointID = pointsFailed[l];
+      const su2double* coor = coor_dst.data() + pointID * nDim;
 
       /*--- Find nearest surface element ---*/
-      unsigned short nearestMarker;
-      unsigned long nearestElemID;
+      unsigned short markerID;
+      unsigned long elemID;
       int rankID;
-      su2double distance;
+      su2double dist;
+      su2double surfCoor[3];
 
-      surfaceADT.DetermineNearestElement(coor, distance, nearestMarker, nearestElemID, rankID);
-
-      /*--- Compute nearest point on surface element ---*/
-      su2double wallCoor[3];
-      ComputeNearestPointOnSurfaceElement(geometry_src, nearestMarker, nearestElemID,
-                                         coor, wallCoor, nDim);
+      /*--- Find the closest point on the source surface mesh ---*/
+      surfaceADT.DetermineNearestElement(coor, dist, markerID, elemID, rankID);
+      NearestPointOnElement(geometry_src, markerID, elemID, coor, surfCoor,
+                            dist, nDim);
 
       /*--- Use nearest surface element nodes for interpolation ---*/
-      /*--- This is a simplified approach - could be improved with better surface projection ---*/
-      unsigned short nNodes = geometry_src->bound[nearestMarker][nearestElemID]->GetnNodes();
+      su2double parCoor[3], weightsInterpol[4];
+      surfaceADT.DetermineContainingElement(surfCoor, markerID, elemID, rankID, parCoor, weightsInterpol);
 
-      /*--- Simple inverse distance weighting from surface element nodes ---*/
-      vector<su2double> weights(nNodes, 0.0);
-      su2double totalWeight = 0.0;
+      /*--- Get element information ---*/
+      unsigned short nNodes = geometry_src->elem[elemID]->GetnNodes();
 
-      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
-        unsigned long nodeID = geometry_src->bound[nearestMarker][nearestElemID]->GetNode(iNode);
-
-        /*--- Compute distance from interpolation point to node ---*/
-        su2double dist2 = 0.0;
-        for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-          su2double diff = coor[iDim] - geometry_src->nodes->GetCoord(nodeID, iDim);
-          dist2 += diff * diff;
-        }
-
-        /*--- Inverse distance weighting (with small epsilon to avoid division by zero) ---*/
-        weights[iNode] = 1.0 / (sqrt(dist2) + 1e-12);
-        totalWeight += weights[iNode];
-      }
-
-      /*--- Normalize weights ---*/
-      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
-        weights[iNode] /= totalWeight;
-      }
-
-      /*--- Interpolate solution using weighted average ---*/
+      /*--- Initialize interpolated solution to zero ---*/
       for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-        su2double interpolatedValue = 0.0;
+        solver_dst->GetNodes()->SetSolution(l, iVar, 0.0);
+      }
 
-        for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
-          unsigned long nodeID = geometry_src->bound[nearestMarker][nearestElemID]->GetNode(iNode);
-          su2double solValue = solver_src->GetNodes()->GetSolution(nodeID, iVar);
-          interpolatedValue += weights[iNode] * solValue;
+      /*--- Interpolate using shape function weights ---*/
+      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+        unsigned long nodeID = geometry_src->elem[elemID]->GetNode(iNode);
+
+        for (unsigned short iVar = 0; iVar < nVar; iVar++) {
+          su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
+          solver_dst->GetNodes()->Add_DeltaSolution(l, iVar, weightsInterpol[iNode] * val);
         }
-
-        solver_dst->GetNodes()->SetSolution(pointIndex, iVar, interpolatedValue);
       }
 
       nExtrapolated++;
@@ -785,214 +757,59 @@ void SurfaceInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, 
   }
 }
 
-void ComputeNearestPointOnSurfaceElement(CGeometry* geometry, unsigned short markerID,
-                                         unsigned long elemID, const su2double* coor,
-                                         su2double* nearestPoint, const unsigned short nDim) {
+void NearestPointOnElement(CGeometry* geometry, unsigned short markerID, unsigned long elemID,
+                           const su2double* coor, su2double* surfCoor, su2double& dist2Elem,
+                           const unsigned short nDim) {
   unsigned short VTK_Type = geometry->bound[markerID][elemID]->GetVTK_Type();
   unsigned short nNodes = geometry->bound[markerID][elemID]->GetnNodes();
 
+  auto updateNearest = [&](su2double dist2Line, su2double* surfCoorLine) {
+    if (dist2Line < dist2Elem) {
+      dist2Elem = dist2Line;
+      for (unsigned short k = 0; k < nDim; ++k) surfCoor[k] = surfCoorLine[k];
+    }
+  };
+
   switch(VTK_Type) {
+    case LINE: {
+      const unsigned long i0 = geometry->bound[markerID][elemID]->GetNode(0);
+      const unsigned long i1 = geometry->bound[markerID][elemID]->GetNode(1);
+      NearestPointOnLine(geometry, i0, i1, coor, surfCoor, dist2Elem, nDim);
+      break;
+    }
     case TRIANGLE: {
-      su2double x0[3], x1[3], x2[3];
-      for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
-        x0[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(0), iDim);
-        x1[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(1), iDim);
-        x2[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(2), iDim);
-      }
+      const unsigned long i0 = geometry->bound[markerID][elemID]->GetNode(0);
+      const unsigned long i1 = geometry->bound[markerID][elemID]->GetNode(1);
+      const unsigned long i2 = geometry->bound[markerID][elemID]->GetNode(2);
+      if (!NearestPointOnTriangle(geometry, i0, i1, i2, coor, surfCoor, dist2Elem, nDim)) {
+        NearestPointOnLine(geometry, i0, i1, coor, surfCoor, dist2Elem, nDim);
 
-      /*--- Compute nearest point on triangle using parametric approach ---*/
-      /*--- Based on CADTElemClass::Dist2ToTriangle logic ---*/
-      su2double V0[3], V1[3], V2[3];
-      for (unsigned short k = 0; k < nDim; ++k) {
-        V0[k] = coor[k] - 0.5 * (x1[k] + x2[k]);
-        V1[k] = 0.5 * (x1[k] - x0[k]);
-        V2[k] = 0.5 * (x2[k] - x0[k]);
-      }
-
-      /*--- Compute dot products ---*/
-      su2double dotV0V1 = 0.0, dotV0V2 = 0.0, dotV1V1 = 0.0, dotV1V2 = 0.0, dotV2V2 = 0.0;
-      for (unsigned short k = 0; k < nDim; ++k) {
-        dotV0V1 += V0[k] * V1[k];
-        dotV0V2 += V0[k] * V2[k];
-        dotV1V1 += V1[k] * V1[k];
-        dotV1V2 += V1[k] * V2[k];
-        dotV2V2 += V2[k] * V2[k];
-      }
-
-      /*--- Solve for parametric coordinates ---*/
-      const su2double detInv = 1.0 / (dotV1V1 * dotV2V2 - dotV1V2 * dotV1V2);
-      su2double r = detInv * (dotV0V1 * dotV2V2 - dotV0V2 * dotV1V2);
-      su2double s = detInv * (dotV0V2 * dotV1V1 - dotV0V1 * dotV1V2);
-
-      /*--- Check if projection is inside triangle ---*/
-      const su2double tolInsideElem = 1.e-10;
-      const su2double paramLowerBound = -1.0 - tolInsideElem;
-
-      if ((r >= paramLowerBound) && (s >= paramLowerBound) && ((r + s) <= tolInsideElem)) {
-        /*--- Projection is inside triangle, compute nearest point ---*/
-        for (unsigned short k = 0; k < nDim; ++k) {
-          nearestPoint[k] = 0.5 * (x1[k] + x2[k]) + r * V1[k] + s * V2[k];
-        }
-      } else {
-        /*--- Projection is outside triangle, find nearest point on edges ---*/
-        su2double minDist2 = 1e30;
-        su2double bestPoint[3];
-
-        /*--- Check each edge ---*/
-        for (int iEdge = 0; iEdge < 3; ++iEdge) {
-          su2double* p0 = (iEdge == 0) ? x0 : (iEdge == 1) ? x1 : x2;
-          su2double* p1 = (iEdge == 0) ? x1 : (iEdge == 1) ? x2 : x0;
-
-          /*--- Find nearest point on this edge ---*/
-          su2double edge[3], toCoor[3];
-          su2double edgeLength2 = 0.0, dotProduct = 0.0;
-
-          for (unsigned short k = 0; k < nDim; ++k) {
-            edge[k] = p1[k] - p0[k];
-            toCoor[k] = coor[k] - p0[k];
-            edgeLength2 += edge[k] * edge[k];
-            dotProduct += edge[k] * toCoor[k];
-          }
-
-          su2double t = (edgeLength2 > 1e-12) ? dotProduct / edgeLength2 : 0.0;
-          t = max(0.0, min(1.0, t)); // Clamp to [0,1]
-
-          su2double edgePoint[3], dist2 = 0.0;
-          for (unsigned short k = 0; k < nDim; ++k) {
-            edgePoint[k] = p0[k] + t * edge[k];
-            su2double diff = coor[k] - edgePoint[k];
-            dist2 += diff * diff;
-          }
-
-          if (dist2 < minDist2) {
-            minDist2 = dist2;
-            for (unsigned short k = 0; k < nDim; ++k) {
-              bestPoint[k] = edgePoint[k];
-            }
-          }
-        }
-
-        for (unsigned short k = 0; k < nDim; ++k) {
-          nearestPoint[k] = bestPoint[k];
-        }
+        su2double dist2Line;
+        su2double surfCoorLine[3];
+        NearestPointOnLine(geometry, i1, i2, coor, surfCoorLine, dist2Line, nDim);
+        updateNearest(dist2Line, surfCoorLine);
+        NearestPointOnLine(geometry, i2, i0, coor, surfCoorLine, dist2Line, nDim);
+        updateNearest(dist2Line, surfCoorLine);
       }
       break;
     }
 
     case QUADRILATERAL: {
-      su2double x0[3], x1[3], x2[3], x3[3];
-      for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
-        x0[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(0), iDim);
-        x1[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(1), iDim);
-        x2[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(2), iDim);
-        x3[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(3), iDim);
-      }
+      const unsigned long i0 = geometry->bound[markerID][elemID]->GetNode(0);
+      const unsigned long i1 = geometry->bound[markerID][elemID]->GetNode(1);
+      const unsigned long i2 = geometry->bound[markerID][elemID]->GetNode(2);
+      const unsigned long i3 = geometry->bound[markerID][elemID]->GetNode(3);
+      if (!NearestPointOnQuadrilateral(geometry, i0, i1, i2, i3, coor, surfCoor, dist2Elem, nDim)) {
+        NearestPointOnLine(geometry, i0, i1, coor, surfCoor, dist2Elem, nDim);
 
-      /*--- Project to quad using two triangles (0-1-2 and 0-2-3), then check edges if outside ---*/
-      auto nearest_on_triangle = [&](const su2double* a, const su2double* b, const su2double* c, const su2double* p, su2double* out) {
-        /*--- Barycentric projection ---*/
-        su2double ab[3], ac[3], ap[3];
-        for (unsigned short k = 0; k < nDim; ++k) {
-          ab[k] = b[k] - a[k];
-          ac[k] = c[k] - a[k];
-          ap[k] = p[k] - a[k];
-        }
-        su2double d1 = 0, d2 = 0, d3 = 0, d4 = 0, d5 = 0;
-        for (unsigned short k = 0; k < nDim; ++k) {
-          d1 += ab[k] * ab[k];
-          d2 += ab[k] * ac[k];
-          d3 += ac[k] * ac[k];
-          d4 += ab[k] * ap[k];
-          d5 += ac[k] * ap[k];
-        }
-        su2double denom = d1 * d3 - d2 * d2;
-        su2double v = (d3 * d4 - d2 * d5) / denom;
-        su2double w = (d1 * d5 - d2 * d4) / denom;
-        su2double u = 1.0 - v - w;
-        /*--- Clamp to triangle ---*/
-        if (u >= 0 && v >= 0 && w >= 0) {
-          for (unsigned short k = 0; k < nDim; ++k)
-            out[k] = u * a[k] + v * b[k] + w * c[k];
-          return true;
-        }
-        return false;
-      };
-
-      su2double tri0[3], tri1[3];
-      bool inTri0 = nearest_on_triangle(x0, x1, x2, coor, tri0);
-      bool inTri1 = nearest_on_triangle(x0, x2, x3, coor, tri1);
-      su2double dist0 = 1e30, dist1 = 1e30;
-      if (inTri0) {
-        dist0 = 0.0;
-        for (unsigned short k = 0; k < nDim; ++k) {
-          su2double d = coor[k] - tri0[k];
-          dist0 += d * d;
-        }
-      }
-      if (inTri1) {
-        dist1 = 0.0;
-        for (unsigned short k = 0; k < nDim; ++k) {
-          su2double d = coor[k] - tri1[k];
-          dist1 += d * d;
-        }
-      }
-      if (inTri0 || inTri1) {
-        if (dist0 < dist1) {
-          for (unsigned short k = 0; k < nDim; ++k) nearestPoint[k] = tri0[k];
-        } else {
-          for (unsigned short k = 0; k < nDim; ++k) nearestPoint[k] = tri1[k];
-        }
-      } else {
-        // If not inside, check all 4 edges
-        su2double minDist2 = 1e30, best[3];
-        const su2double* pts[4] = {x0, x1, x2, x3};
-        for (int i = 0; i < 4; ++i) {
-          const su2double* p0 = pts[i];
-          const su2double* p1 = pts[(i+1)%4];
-          su2double edge[3], toCoor[3];
-          su2double edgeLength2 = 0.0, dotProduct = 0.0;
-          for (unsigned short k = 0; k < nDim; ++k) {
-            edge[k] = p1[k] - p0[k];
-            toCoor[k] = coor[k] - p0[k];
-            edgeLength2 += edge[k] * edge[k];
-            dotProduct += edge[k] * toCoor[k];
-          }
-          su2double t = (edgeLength2 > 1e-12) ? dotProduct / edgeLength2 : 0.0;
-          t = max(0.0, min(1.0, t));
-          su2double edgePoint[3], dist2 = 0.0;
-          for (unsigned short k = 0; k < nDim; ++k) {
-            edgePoint[k] = p0[k] + t * edge[k];
-            su2double diff = coor[k] - edgePoint[k];
-            dist2 += diff * diff;
-          }
-          if (dist2 < minDist2) {
-            minDist2 = dist2;
-            for (unsigned short k = 0; k < nDim; ++k) best[k] = edgePoint[k];
-          }
-        }
-        for (unsigned short k = 0; k < nDim; ++k) nearestPoint[k] = best[k];
-      }
-      break;
-    }
-
-    case LINE: {
-      su2double p0[3], p1[3];
-      for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
-        p0[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(0), iDim);
-        p1[iDim] = geometry->nodes->GetCoord(geometry->bound[markerID][elemID]->GetNode(1), iDim);
-      }
-      su2double edge[3], toCoor[3];
-      su2double edgeLength2 = 0.0, dotProduct = 0.0;
-      for (unsigned short k = 0; k < nDim; ++k) {
-        edge[k] = p1[k] - p0[k];
-        toCoor[k] = coor[k] - p0[k];
-        edgeLength2 += edge[k] * edge[k];
-        dotProduct += edge[k] * toCoor[k];
-      }
-      su2double t = (edgeLength2 > 1e-12) ? dotProduct / edgeLength2 : 0.0;
-      t = max(0.0, min(1.0, t));
-      for (unsigned short k = 0; k < nDim; ++k) {
-        nearestPoint[k] = p0[k] + t * edge[k];
+        su2double dist2Line;
+        su2double surfCoorLine[3];
+        NearestPointOnLine(geometry, i1, i2, coor, surfCoorLine, dist2Line, nDim);
+        updateNearest(dist2Line, surfCoorLine);
+        NearestPointOnLine(geometry, i2, i3, coor, surfCoorLine, dist2Line, nDim);
+        updateNearest(dist2Line, surfCoorLine);
+        NearestPointOnLine(geometry, i3, i0, coor, surfCoorLine, dist2Line, nDim);
+        updateNearest(dist2Line, surfCoorLine);
       }
       break;
     }
@@ -1002,6 +819,117 @@ void ComputeNearestPointOnSurfaceElement(CGeometry* geometry, unsigned short mar
       SU2_MPI::Error("Element type not recognized.", CURRENT_FUNCTION);
 
   }
+}
+
+void NearestPointOnLine(CGeometry* geometry, const unsigned long i0, const unsigned long i1,
+                        const su2double* coor, su2double* surfCoor, su2double& dist2Line,
+                        const unsigned short nDim) {
+  su2double x0[3], x1[3];
+  for (unsigned short k = 0; k < nDim; ++k) {
+    x0[k] = geometry->nodes->GetCoord(i0, k);
+    x1[k] = geometry->nodes->GetCoord(i1, k);
+  }
+
+  /*--- Use the same parametrization as CADTElemClass::Dist2ToLine ---*/
+  /*--- X = X0 + (r+1)*(X1-X0)/2, -1 <= r <= 1 ---*/
+  /*--- V0 = coor - (X1+X0)/2, V1 = (X1-X0)/2 ---*/
+  su2double V0[3], V1[3];
+  for (unsigned short k = 0; k < nDim; ++k) {
+    V0[k] = coor[k] - 0.5 * (x1[k] + x0[k]);
+    V1[k] = 0.5 * (x1[k] - x0[k]);
+  }
+
+  /*--- Determine the value of r for minimum distance ---*/
+  su2double dotV0V1 = 0.0, dotV1V1 = 0.0;
+  for (unsigned short k = 0; k < nDim; ++k) {
+    dotV0V1 += V0[k] * V1[k];
+    dotV1V1 += V1[k] * V1[k];
+  }
+  su2double r = dotV0V1 / dotV1V1;
+  r = max(-1.0, min(1.0, r));
+
+  /*--- Compute the nearest point using the parametric equation ---*/
+  dist2Line = 0.0;
+  for (unsigned short k = 0; k < nDim; ++k) {
+    surfCoor[k] = x0[k] + 0.5 * (r + 1.0) * (x1[k] - x0[k]);
+
+    /*--- Also compute minimum distance squared ---*/
+    const su2double ds = V0[k] - r * V1[k];
+    dist2Line += ds * ds;
+  }
+}
+
+bool NearestPointOnTriangle(CGeometry* geometry, const unsigned long i0, const unsigned long i1,
+                            const unsigned long i2, const su2double* coor, su2double* surfCoor,
+                            su2double& dist2Tria, const unsigned short nDim) {
+  su2double x0[3], x1[3], x2[3];
+  for (unsigned short k = 0; k < nDim; ++k) {
+    x0[k] = geometry->nodes->GetCoord(i0, k);
+    x1[k] = geometry->nodes->GetCoord(i1, k);
+    x2[k] = geometry->nodes->GetCoord(i2, k);
+  }
+
+  /*--- Use the same parametrization as CADTElemClass::Dist2ToTriangle ---*/
+  /*--- X = X0 + (r+1)*(X1-X0)/2 + (s+1)*(X2-X0)/2, r, s >= -1, r+s <= 0 ---*/
+  /*--- V0 = coor - (X1+X2)/2, V1 = (X1-X0)/2, V2 = (X2-X0)/2 ---*/
+  su2double V0[3], V1[3], V2[3];
+  for (unsigned short k = 0; k < nDim; ++k) {
+    V0[k] = coor[k] - 0.5 * (x1[k] + x2[k]);
+    V1[k] = 0.5 * (x1[k] - x0[k]);
+    V2[k] = 0.5 * (x2[k] - x0[k]);
+  }
+
+  /*--- Compute dot products ---*/
+  su2double dotV0V1 = 0.0, dotV0V2 = 0.0, dotV1V1 = 0.0, dotV1V2 = 0.0, dotV2V2 = 0.0;
+  for (unsigned short k = 0; k < nDim; ++k) {
+    dotV0V1 += V0[k] * V1[k];
+    dotV0V2 += V0[k] * V2[k];
+    dotV1V1 += V1[k] * V1[k];
+    dotV1V2 += V1[k] * V2[k];
+    dotV2V2 += V2[k] * V2[k];
+  }
+
+  /*--- Solve for parametric coordinates ---*/
+  const su2double detInv = 1.0 / (dotV1V1 * dotV2V2 - dotV1V2 * dotV1V2);
+  su2double r = detInv * (dotV0V1 * dotV2V2 - dotV0V2 * dotV1V2);
+  su2double s = detInv * (dotV0V2 * dotV1V1 - dotV0V1 * dotV1V2);
+
+  /*--- Check if projection is inside triangle ---*/
+  const su2double tolInsideElem = 1.e-10;
+  const su2double paramLowerBound = -1.0 - tolInsideElem;
+
+  if ((r >= paramLowerBound) && (s >= paramLowerBound) && ((r + s) <= tolInsideElem)) {
+    /*--- Projection is inside triangle, compute nearest point ---*/
+    dist2Tria = 0.0;
+    for (unsigned short k = 0; k < nDim; ++k) {
+      surfCoor[k] = x0[k] + 0.5 * (r + 1.0) * (x1[k] - x0[k]) + 0.5 * (s + 1.0) * (x2[k] - x0[k]);
+
+      /*--- Also compute minimum distance squared ---*/
+      const su2double ds = V0[k] - r * V1[k] - s * V2[k];
+      dist2Tria += ds * ds;
+    }
+
+    return true;
+  }
+
+  /*--- The projection of the coordinate is outside the triangle.
+        Return false. ---*/
+  return false;
+}
+
+bool NearestPointOnQuadrilateral(CGeometry* geometry, const unsigned long i0, const unsigned long i1,
+                                 const unsigned long i2, const unsigned long i3, const su2double* coor,
+                                 su2double* surfCoor, su2double& dist2Quad, const unsigned short nDim) {
+  su2double x0[3], x1[3], x2[3], x3[3];
+  for (unsigned short k = 0; k < nDim; ++k) {
+    x0[k] = geometry->nodes->GetCoord(i0, k);
+    x1[k] = geometry->nodes->GetCoord(i1, k);
+    x2[k] = geometry->nodes->GetCoord(i2, k);
+    x3[k] = geometry->nodes->GetCoord(i3, k);
+  }
+
+  /*--- TODO: Use the same parametrization as CADTElem::Dist2ToQuadrilateral ---*/
+  return false;
 }
 
 void ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
@@ -1026,22 +954,24 @@ void ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CG
       unsigned long srcElemID, dstElemID;
       int srcRankID, dstRankID;
       su2double srcDist, dstDist;
-      su2double wallCoorSrc[3], wallCoorDst[3];
+      su2double surfCoorSrc[3], surfCoorDst[3];
 
       su2double* coor = coor_corrected.data() + l * nDim;
 
-      /*--- Find the closest point on the source surface element ---*/
+      /*--- Find the closest point on the source surface mesh ---*/
       srcSurfaceADT.DetermineNearestElement(coor, srcDist, srcMarkerID, srcElemID, srcRankID);
-      ComputeNearestPointOnSurfaceElement(geometry_src, srcMarkerID, srcElemID, coor, wallCoorSrc, nDim);
+      NearestPointOnElement(geometry_src, srcMarkerID, srcElemID, coor, surfCoorSrc,
+                            srcDist, nDim);
 
-      /*--- Find the closest point on the destination surface element ---*/
-      dstSurfaceADT.DetermineNearestElement(coor, dstDist, dstMarkerID, dstElemID, dstRankID);
-      ComputeNearestPointOnSurfaceElement(geometry_dst, dstMarkerID, dstElemID, coor, wallCoorDst, nDim);
+      /*--- Find the closest point on the destination surface mesh to the source wall point ---*/
+      dstSurfaceADT.DetermineNearestElement(surfCoorSrc, dstDist, dstMarkerID, dstElemID, dstRankID);
+      NearestPointOnElement(geometry_dst, dstMarkerID, dstElemID, surfCoorSrc, surfCoorDst,
+                            dstDist, nDim);
 
       /*--- Determine the curvature correction, which is the vector from the     */
       /*    wall coordinate of the output grid to the wall coordinates on the    */
       /*    input grid                                                        ---*/
-      for (unsigned short iDim = 0; iDim < nDim; ++iDim) coor[iDim] += wallCoorSrc[iDim] - wallCoorDst[iDim];
+      for (unsigned short k = 0; k < nDim; ++k) coor[k] += surfCoorSrc[k] - surfCoorDst[k];
     }
   }
 }

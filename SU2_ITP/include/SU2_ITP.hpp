@@ -58,10 +58,21 @@ void VolumeInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, C
 void SurfaceInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
                                   const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed);
 
+void NearestPointOnElement(CGeometry* geometry, unsigned short markerID, unsigned long elemID,
+                           const su2double* coor, su2double* surfCoor, su2double& dist2Elem,
+                           const unsigned short nDim);
 
-void ComputeNearestPointOnSurfaceElement(CGeometry* geometry, unsigned short markerID,
-                                         unsigned long elemID, const su2double* coor,
-                                         su2double* nearestPoint, const unsigned short nDim);
+void NearestPointOnLine(CGeometry* geometry, const unsigned long i0, const unsigned long i1,
+                        const su2double* coor, su2double* surfCoor, su2double& dist2Line,
+                        const unsigned short nDim);
+
+bool NearestPointOnTriangle(CGeometry* geometry, const unsigned long i0, const unsigned long i1,
+                            const unsigned long i2, const su2double* coor, su2double* surfCoor,
+                            su2double& dist2Tria, const unsigned short nDim);
+
+bool NearestPointOnQuadrilateral(CGeometry* geometry, const unsigned long i0, const unsigned long i1,
+                                 const unsigned long i2, const unsigned long i3, const su2double* coor,
+                                 su2double* surfCoor, su2double& dist2Quad, const unsigned short nDim);
 
 void ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                               const unsigned short nDim, const vector<su2double> &coor_dst,
