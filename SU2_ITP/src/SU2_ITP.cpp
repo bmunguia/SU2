@@ -166,9 +166,18 @@ int main(int argc, char* argv[]) {
       Physical_t = (TimeIter + 1) * Physical_dt;
       if (Physical_t >= config_src[ZONE_0]->GetMax_Time()) StopCalc = true;
 
-      if ((TimeIter + 1 == config_src[ZONE_0]->GetnTime_Iter()) ||
-          (TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0) ||
-          (StopCalc)) {
+      const bool dual_time_1st = (config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST);
+      const bool dual_time_2nd = (config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
+      const bool dual_time = dual_time_1st || dual_time_2nd;
+
+      const bool IsTime0 = (TimeIter == 0);
+      const bool IsTimeWrt = (TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0);
+      const bool IsTimeEnd = (TimeIter + 1 == config_src[ZONE_0]->GetnTime_Iter()) ||
+                             (dual_time && TimeIter + 2 == config_src[ZONE_0]->GetnTime_Iter()) ||
+                             (dual_time_2nd && TimeIter + 3 == config_src[ZONE_0]->GetnTime_Iter());
+      const bool IsTimeRestart = ((long)TimeIter == SU2_TYPE::Int(config_src[ZONE_0]->GetRestart_Iter()));
+
+      if (StopCalc || IsTime0 || IsTimeWrt || IsTimeEnd || IsTimeRestart) {
         /*--- Read in the restart file for this time step ---*/
         for (iZone = 0; iZone < nZone; iZone++) {
           /*--- Set the current iteration number in the config class. ---*/
@@ -176,11 +185,7 @@ int main(int argc, char* argv[]) {
           config_dst[iZone]->SetTimeIter(TimeIter);
 
           /*--- Either instantiate the solution class or load a restart file. ---*/
-          if (!SolutionInstantiated[iZone] &&
-              (TimeIter == 0 || (config_src[ZONE_0]->GetRestart() &&
-                                 ((long)TimeIter == SU2_TYPE::Int(config_src[ZONE_0]->GetRestart_Iter()) ||
-                                  TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0 ||
-                                  TimeIter + 1 == config_src[ZONE_0]->GetnTime_Iter())))) {
+          if (!SolutionInstantiated[iZone]) {
             /*--- Initialize the solution classes ---*/
             solver_src[iZone][INST_0] = new CBaselineSolver(geometry_src[iZone][INST_0], config_src[iZone]);
             solver_dst[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_dst[iZone]);
@@ -719,25 +724,53 @@ void SurfaceInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, 
       NearestPointOnElement(geometry_src, markerID, elemID, coor, surfCoor,
                             dist, nDim);
 
-      /*--- Use nearest surface element nodes for interpolation ---*/
-      su2double parCoor[3], weightsInterpol[4];
-      surfaceADT.DetermineContainingElement(surfCoor, markerID, elemID, rankID, parCoor, weightsInterpol);
 
-      /*--- Get element information ---*/
-      unsigned short nNodes = geometry_src->elem[elemID]->GetnNodes();
+        /*--- Get surface element information ---*/
+        unsigned short nNodes = geometry_src->bound[markerID][elemID]->GetnNodes();
+
+      /*--- Use nearest surface element nodes for interpolation ---*/
+      su2double weightsInterpol[4];
+      if (geometry_src->GetnDim() == 3) {
+        /*--- Use surface ADT to get interpolation weights*/
+        su2double parCoor[3];
+        surfaceADT.DetermineContainingElement(surfCoor, markerID, elemID, rankID, parCoor, weightsInterpol);
+      } else {
+        /*--- For 2D case (LINE elements), use inverse distance weighting ---*/
+        su2double totalWeight = 0.0;
+
+        for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+          unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
+
+          /*--- Compute distance from interpolation point to node ---*/
+          su2double dist2 = 0.0;
+          for (unsigned short k = 0; k < nDim; ++k) {
+            su2double diff = coor[k] - geometry_src->nodes->GetCoord(nodeID, k);
+            dist2 += diff * diff;
+          }
+
+          /*--- Inverse distance weighting (with small epsilon to avoid division by zero) ---*/
+          weightsInterpol[iNode] = 1.0 / (sqrt(dist2) + 1e-12);
+          totalWeight += weightsInterpol[iNode];
+        }
+
+        /*--- Normalize weights ---*/
+        for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+          weightsInterpol[iNode] /= totalWeight;
+        }
+      }
 
       /*--- Initialize interpolated solution to zero ---*/
       for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-        solver_dst->GetNodes()->SetSolution(l, iVar, 0.0);
+        solver_dst->GetNodes()->SetSolution(pointID, iVar, 0.0);
       }
 
       /*--- Interpolate using shape function weights ---*/
       for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
-        unsigned long nodeID = geometry_src->elem[elemID]->GetNode(iNode);
+        unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
 
         for (unsigned short iVar = 0; iVar < nVar; iVar++) {
           su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
-          solver_dst->GetNodes()->Add_DeltaSolution(l, iVar, weightsInterpol[iNode] * val);
+          solver_dst->GetNodes()->Add_DeltaSolution(pointID, iVar, weightsInterpol[iNode] * val);
         }
       }
 
