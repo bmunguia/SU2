@@ -151,6 +151,7 @@ int main(int argc, char* argv[]) {
 
     su2double Physical_dt, Physical_t;
     unsigned long TimeIter = 0;
+    const bool dual_time_2nd = (config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
     bool StopCalc = false;
     bool* SolutionInstantiated = new bool[nZone];
 
@@ -166,15 +167,10 @@ int main(int argc, char* argv[]) {
       Physical_t = (TimeIter + 1) * Physical_dt;
       if (Physical_t >= config_src[ZONE_0]->GetMax_Time()) StopCalc = true;
 
-      const bool dual_time_1st = (config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST);
-      const bool dual_time_2nd = (config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
-      const bool dual_time = dual_time_1st || dual_time_2nd;
-
       const bool IsTime0 = (TimeIter == 0);
       const bool IsTimeWrt = (TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0);
       const bool IsTimeEnd = (TimeIter + 1 == config_src[ZONE_0]->GetnTime_Iter()) ||
-                             (dual_time && TimeIter + 2 == config_src[ZONE_0]->GetnTime_Iter()) ||
-                             (dual_time_2nd && TimeIter + 3 == config_src[ZONE_0]->GetnTime_Iter());
+                             (TimeIter + 2 == config_src[ZONE_0]->GetnTime_Iter() && dual_time_2nd);
       const bool IsTimeRestart = ((long)TimeIter == SU2_TYPE::Int(config_src[ZONE_0]->GetRestart_Iter()));
 
       if (StopCalc || IsTime0 || IsTimeWrt || IsTimeEnd || IsTimeRestart) {
@@ -221,6 +217,8 @@ int main(int argc, char* argv[]) {
       TimeIter++;
       if (StopCalc) break;
     }
+
+    delete[] SolutionInstantiated;
 
   }
 
