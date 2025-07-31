@@ -2195,6 +2195,8 @@ void CConfig::SetConfig_Options() {
   addStringOption("SOLUTION_FILENAME", Solution_FileName, string("solution.dat"));
   /*!\brief SOLUTION_ADJ_FILENAME\n DESCRIPTION: Restart adjoint input file. Objective function abbreviation is expected. \ingroup Config*/
   addStringOption("SOLUTION_ADJ_FILENAME", Solution_AdjFileName, string("solution_adj.dat"));
+    /*!\brief SOLUTION_REF_FILENAME \n DESCRIPTION: Restart flow input file with reference flow solution \n DEFAULT: solution_ref.dat \ingroup Config */
+  addStringOption("SOLUTION_REF_FILENAME", Solution_RefFileName, string("solution_ref.dat"));
   /*!\brief RESTART_FLOW_FILENAME \n DESCRIPTION: Output file restart flow \ingroup Config*/
   addStringOption("RESTART_FILENAME", Restart_FileName, string("restart.dat"));
   /*!\brief RESTART_ADJ_FILENAME  \n DESCRIPTION: Output file restart adjoint. Objective function abbreviation will be appended. \ingroup Config*/
@@ -6675,6 +6677,9 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
 
   if (val_software == SU2_COMPONENT::SU2_ERR || val_software == SU2_COMPONENT::SU2_ITP) {
     cout << "Destination mesh file name: " << Mesh_Itp_FileName << endl;
+  }
+  if (val_software == SU2_COMPONENT::SU2_ERR) {
+    cout << "Reference flow solution file name: " << Solution_RefFileName << "." << endl;
   }
 
   if (val_software == SU2_COMPONENT::SU2_DOT) {

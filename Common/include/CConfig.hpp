@@ -814,6 +814,7 @@ private:
   Mesh_Itp_FileName,             /*!< \brief Destination mesh for interpolation. */
   Solution_FileName,             /*!< \brief Flow solution input file. */
   Solution_AdjFileName,          /*!< \brief Adjoint solution input file for drag functional. */
+  Solution_RefFileName,          /*!< \brief Reference solution input file for error estimation. */
   Volume_FileName,               /*!< \brief Flow variables output file. */
   Conv_FileName,                 /*!< \brief Convergence history output file. */
   Breakdown_FileName,            /*!< \brief Breakdown output file. */
@@ -5538,6 +5539,13 @@ public:
    *         drag objective function.
    */
   string GetSolution_AdjFileName(void) const { return Solution_AdjFileName; }
+
+  /*!
+   * \brief Get the name of the file with the reference solution of the flow problem
+   *        to be used for error estimation.
+   * \return Name of the file with the reference solution of the flow problem.
+   */
+  string GetSolution_RefFileName(void) const { return Solution_RefFileName; }
 
   /*!
    * \brief Get the format of the input/output grid.
