@@ -3342,6 +3342,7 @@ void CConfig::SetHeader(SU2_COMPONENT val_software) const{
     case SU2_COMPONENT::SU2_CFD: cout << "|   |___/\\___//___|   Suite (Computational Fluid Dynamics Code)         |\n"; break;
     case SU2_COMPONENT::SU2_DEF: cout << "|   |___/\\___//___|   Suite (Mesh Deformation Code)                     |\n"; break;
     case SU2_COMPONENT::SU2_DOT: cout << "|   |___/\\___//___|   Suite (Gradient Projection Code)                  |\n"; break;
+    case SU2_COMPONENT::SU2_ERR: cout << "|   |___/\\___//___|   Suite (Error Estimation Code)                     |\n"; break;
     case SU2_COMPONENT::SU2_GEO: cout << "|   |___/\\___//___|   Suite (Geometry Definition Code)                  |\n"; break;
     case SU2_COMPONENT::SU2_ITP: cout << "|   |___/\\___//___|   Suite (Solution Interpolation Code)               |\n"; break;
     case SU2_COMPONENT::SU2_SOL: cout << "|   |___/\\___//___|   Suite (Solution Exporting Code)                   |\n"; break;
@@ -4267,7 +4268,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
    there is no grid motion ---*/
 
   if (GetGrid_Movement()){
-    if ((Kind_SU2 == SU2_COMPONENT::SU2_CFD || Kind_SU2 == SU2_COMPONENT::SU2_SOL || Kind_SU2 == SU2_COMPONENT::SU2_ITP) &&
+    if ((Kind_SU2 == SU2_COMPONENT::SU2_CFD || Kind_SU2 == SU2_COMPONENT::SU2_SOL) &&
         (TimeMarching == TIME_MARCHING::STEADY && !Time_Domain)){
 
       if((Kind_GridMovement != ROTATING_FRAME) &&
@@ -6672,7 +6673,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
 
   cout << "Input mesh file name: " << Mesh_FileName << endl;
 
-  if (val_software == SU2_COMPONENT::SU2_ITP) {
+  if (val_software == SU2_COMPONENT::SU2_ERR || val_software == SU2_COMPONENT::SU2_ITP) {
     cout << "Destination mesh file name: " << Mesh_Itp_FileName << endl;
   }
 
@@ -7475,7 +7476,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
 
   }
 
-  if (val_software == SU2_COMPONENT::SU2_SOL || val_software == SU2_COMPONENT::SU2_ITP) {
+  if (val_software == SU2_COMPONENT::SU2_SOL || val_software == SU2_COMPONENT::SU2_ERR ||val_software == SU2_COMPONENT::SU2_ITP) {
     switch (Tab_FileFormat) {
       case TAB_OUTPUT::TAB_CSV: cout << "The tabular file format is CSV (.csv)." << endl; break;
       case TAB_OUTPUT::TAB_TECPLOT: cout << "The tabular file format is Tecplot (.dat)." << endl; break;
@@ -7861,7 +7862,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
     }
   }
 
-  if (val_software == SU2_COMPONENT::SU2_CFD || val_software == SU2_COMPONENT::SU2_SOL || Kind_SU2 == SU2_COMPONENT::SU2_ITP) {
+  if (val_software == SU2_COMPONENT::SU2_CFD || val_software == SU2_COMPONENT::SU2_SOL ||
+      val_software == SU2_COMPONENT::SU2_ERR || Kind_SU2 == SU2_COMPONENT::SU2_ITP) {
     if (Compute_Metric) {
         cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
         cout << "Adaptation sensor(s): ";

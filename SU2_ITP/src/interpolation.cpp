@@ -28,13 +28,14 @@
 
 #include "../include/interpolation.hpp"
 
-void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name, char* config_file_name,
-                      int iZone, int nZone, SU2_MPI::Comm MPICommunicator, bool isSource) {
+void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name,
+                      char* config_file_name, SU2_COMPONENT val_software, int iZone, int nZone,
+                      SU2_MPI::Comm MPICommunicator, bool isSource) {
   if (driver_config->GetnConfigFiles() > 0) {
     strcpy(zone_file_name, driver_config->GetConfigFilename(iZone).c_str());
-    config_container[iZone] = new CConfig(driver_config, zone_file_name, SU2_COMPONENT::SU2_ITP, iZone, nZone, true);
+    config_container[iZone] = new CConfig(driver_config, zone_file_name, val_software, iZone, nZone, true);
   } else {
-    config_container[iZone] = new CConfig(driver_config, config_file_name, SU2_COMPONENT::SU2_ITP, iZone, nZone, true);
+    config_container[iZone] = new CConfig(driver_config, config_file_name, val_software, iZone, nZone, true);
   }
   config_container[iZone]->SetMPICommunicator(MPICommunicator);
 

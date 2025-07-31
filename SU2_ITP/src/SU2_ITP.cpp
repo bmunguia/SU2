@@ -28,8 +28,6 @@
 
 #include "../include/interpolation.hpp"
 
-using namespace std;
-
 int main(int argc, char* argv[]) {
   unsigned short iZone, iInst;
   su2double StartTime = 0.0, StopTime = 0.0, UsedTime = 0.0;
@@ -100,8 +98,8 @@ int main(int argc, char* argv[]) {
    differential equation on a single block, unstructured mesh. ---*/
 
   for (iZone = 0; iZone < nZone; iZone++) {
-    InitializeConfig(driver_config, config_src, zone_file_name, config_file_name, iZone, nZone, MPICommunicator);
-    InitializeConfig(driver_config, config_dst, zone_file_name, config_file_name, iZone, nZone, MPICommunicator, false);
+    InitializeConfig(driver_config, config_src, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ITP, iZone, nZone, MPICommunicator);
+    InitializeConfig(driver_config, config_dst, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ITP, iZone, nZone, MPICommunicator, false);
   }
 
   /*--- Set the multizone part of the problem. ---*/
@@ -360,5 +358,3 @@ int main(int argc, char* argv[]) {
 
   return EXIT_SUCCESS;
 }
-
-

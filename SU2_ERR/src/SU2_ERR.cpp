@@ -27,8 +27,6 @@
 
 #include "../include/SU2_ERR.hpp"
 
-using namespace std;
-
 int main(int argc, char* argv[]) {
   unsigned short iZone, iInst;
   su2double StartTime = 0.0, StopTime = 0.0, UsedTime = 0.0;
@@ -65,7 +63,7 @@ int main(int argc, char* argv[]) {
   }
 
   CConfig* config = nullptr;
-  config = new CConfig(config_file_name, SU2_COMPONENT::SU2_ITP);
+  config = new CConfig(config_file_name, SU2_COMPONENT::SU2_ERR);
 
   const auto nZone = config->GetnZone();
 
@@ -86,7 +84,7 @@ int main(int argc, char* argv[]) {
   }
 
   /*--- Initialize the configuration of the driver ---*/
-  driver_config = new CConfig(config_file_name, SU2_COMPONENT::SU2_ITP, false);
+  driver_config = new CConfig(config_file_name, SU2_COMPONENT::SU2_ERR, false);
 
   /*--- Initialize a char to store the zone filename ---*/
   char zone_file_name[MAX_STRING_SIZE];
@@ -99,8 +97,8 @@ int main(int argc, char* argv[]) {
    differential equation on a single block, unstructured mesh. ---*/
 
   for (iZone = 0; iZone < nZone; iZone++) {
-    InitializeConfig(driver_config, config_src, zone_file_name, config_file_name, iZone, nZone, MPICommunicator);
-    InitializeConfig(driver_config, config_dst, zone_file_name, config_file_name, iZone, nZone, MPICommunicator, false);
+    InitializeConfig(driver_config, config_src, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator);
+    InitializeConfig(driver_config, config_dst, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator, false);
   }
 
   /*--- Set the multizone part of the problem. ---*/

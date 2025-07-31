@@ -40,8 +40,8 @@
 #include "../../Common/include/CConfig.hpp"
 
 void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name,
-                      char* config_file_name, int iZone, int nZone, SU2_MPI::Comm MPICommunicator,
-                      bool isSource = true);
+                      char* config_file_name, SU2_COMPONENT val_software, int iZone, int nZone,
+                      SU2_MPI::Comm MPICommunicator, bool isSource = true);
 
 void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iInst, int nZone);
 
@@ -80,5 +80,3 @@ void ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CG
 
 void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container,
                 COutput* output, unsigned long TimeIter);
-
-using namespace std;
