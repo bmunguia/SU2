@@ -1,7 +1,7 @@
 /*!
- * \file SU2_ITP.hpp
- * \brief Headers of the main subroutines of the code SU2_ITP.
- *        The subroutines and functions are in the <i>SU2_ITP.cpp</i> file.
+ * \file interpolation.hpp
+ * \brief Headers of the main solution interpolation subroutines.
+ *        The subroutines and functions are in the <i>interpolation.cpp</i> file.
  * \author B. Munguía, E. van der Weide
  *
  * SU2 Project Website: https://su2code.github.io

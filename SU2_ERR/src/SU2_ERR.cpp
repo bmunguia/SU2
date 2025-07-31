@@ -1,8 +1,7 @@
 /*!
- * \file SU2_ITP.cpp
- * \brief Main file for the solution interpolation code (SU2_ITP).
- *        All interpolation logic is implemented in the <i>interpolation.cpp</i> file.
- * \author B. Munguía, E. van der Weide
+ * \file SU2_ERR.cpp
+ * \brief Main file for the solution error estimation code (SU2_ERR).
+ * \author B. Munguía
  * \version 8.2.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
@@ -26,7 +25,7 @@
  * License along with SU2. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "../include/interpolation.hpp"
+#include "../include/SU2_ERR.hpp"
 
 using namespace std;
 
@@ -353,12 +352,10 @@ int main(int argc, char* argv[]) {
   /*--- Exit the solver cleanly ---*/
 
   if (rank == MASTER_NODE)
-    cout << endl << "------------------------- Exit Success (SU2_ITP) ------------------------" << endl << endl;
+    cout << endl << "------------------------- Exit Success (SU2_ERR) ------------------------" << endl << endl;
 
   /*--- Finalize MPI parallelization ---*/
   SU2_MPI::Finalize();
 
   return EXIT_SUCCESS;
 }
-
-

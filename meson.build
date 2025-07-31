@@ -350,6 +350,8 @@ subdir('SU2_DOT/src')
 subdir('SU2_GEO/src')
 # compile SU2_ITP executable
 subdir('SU2_ITP/src')
+# compile SU2_ERR executable
+subdir('SU2_ERR/src')
 # compile SU2_SOL executable
 subdir('SU2_SOL/src')
 # install python scripts
