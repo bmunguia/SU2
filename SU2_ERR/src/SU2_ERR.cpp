@@ -48,8 +48,10 @@ int main(int argc, char* argv[]) {
   CGeometry*** geometry_dst = nullptr;
   CSolver*** solver_src = nullptr;
   CSolver*** solver_dst = nullptr;
+  CSolver*** solver_ref = nullptr;
   CConfig** config_src = nullptr;
   CConfig** config_dst = nullptr;
+  CConfig** config_ref = nullptr;
   CConfig* driver_config = nullptr;
   unsigned short* nInst = nullptr;
 
@@ -71,8 +73,10 @@ int main(int argc, char* argv[]) {
 
   solver_src = new CSolver**[nZone]();
   solver_dst = new CSolver**[nZone]();
+  solver_ref = new CSolver**[nZone]();
   config_src = new CConfig*[nZone]();
   config_dst = new CConfig*[nZone]();
+  config_ref = new CConfig*[nZone]();
   geometry_src = new CGeometry**[nZone]();
   geometry_dst = new CGeometry**[nZone]();
   nInst = new unsigned short[nZone];
@@ -99,6 +103,10 @@ int main(int argc, char* argv[]) {
   for (iZone = 0; iZone < nZone; iZone++) {
     InitializeConfig(driver_config, config_src, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator);
     InitializeConfig(driver_config, config_dst, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator, false);
+    InitializeConfig(driver_config, config_ref, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator, false);
+
+    /*--- Load the reference solution ---*/
+    config_ref[iZone]->SetSolution_FileName(config_ref[iZone]->GetSolution_RefFileName());
   }
 
   /*--- Set the multizone part of the problem. ---*/
@@ -183,6 +191,7 @@ int main(int argc, char* argv[]) {
             /*--- Initialize the solution classes ---*/
             solver_src[iZone][INST_0] = new CBaselineSolver(geometry_src[iZone][INST_0], config_src[iZone]);
             solver_dst[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_dst[iZone]);
+            solver_ref[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_ref[iZone]);
 
             /*--- Initialize and preprocess the output ---*/
             output[iZone] = new CBaselineOutput(config_dst[iZone], geometry_dst[iZone][INST_0]->GetnDim(),
@@ -196,12 +205,20 @@ int main(int argc, char* argv[]) {
           /*--- Load the solution on the source mesh ---*/
           config_src[iZone]->SetiInst(INST_0);
           config_dst[iZone]->SetiInst(INST_0);
-          solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone], TimeIter,
-                                                 true);
+          config_ref[iZone]->SetiInst(INST_0);
+          solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone],
+                                                 TimeIter, true);
 
           /*--- Interpolate the solution ---*/
           InterpolateSolution(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
                               solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+
+          /*--- Load the reference solution on the destination mesh ---*/
+          solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
+                                                 TimeIter, true);
+
+          /*--- Estimate the error ---*/
+
         }
 
         if (rank == MASTER_NODE) cout << "Writing the volume solution for time step " << TimeIter << "." << endl;
@@ -230,6 +247,7 @@ int main(int argc, char* argv[]) {
       /*--- Initialize the solution classes ---*/
       solver_src[iZone][INST_0] = new CBaselineSolver(geometry_src[iZone][INST_0], config_src[iZone]);
       solver_dst[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_dst[iZone]);
+      solver_ref[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_ref[iZone]);
 
       /*--- Initialize and preprocess the output ---*/
       output[iZone] =
@@ -238,11 +256,18 @@ int main(int argc, char* argv[]) {
       output[iZone]->PreprocessHistoryOutput(config_dst[iZone], false);
 
       /*--- Load the solution on the source mesh ---*/
-      solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone], 0, true);
+      solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone],
+                                             0, true);
 
       /*--- Interpolate the solution ---*/
       InterpolateSolution(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
                           solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+
+      /*--- Load the reference solution on the destination mesh ---*/
+      solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
+                                             0, true);
+      /*--- Estimate the error ---*/
+
     }
     for (iZone = 0; iZone < nZone; iZone++) {
       WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0], output[iZone], 0);
@@ -301,6 +326,17 @@ int main(int argc, char* argv[]) {
     }
     delete[] solver_dst;
   }
+  if (solver_ref != nullptr) {
+    for (iZone = 0; iZone < nZone; iZone++) {
+      for (iInst = 0; iInst < nInst[iZone]; iInst++) {
+        if (solver_ref[iZone][iInst] != nullptr) {
+          delete solver_ref[iZone][iInst];
+        }
+      }
+      if (solver_ref[iZone] != nullptr) delete[] solver_ref[iZone];
+    }
+    delete[] solver_dst;
+  }
   if (rank == MASTER_NODE) cout << "Deleted CSolver containers." << endl;
 
   if (config_src != nullptr) {
@@ -318,6 +354,14 @@ int main(int argc, char* argv[]) {
       }
     }
     delete[] config_dst;
+  }
+  if (config_ref != nullptr) {
+    for (iZone = 0; iZone < nZone; iZone++) {
+      if (config_ref[iZone] != nullptr) {
+        delete config_ref[iZone];
+      }
+    }
+    delete[] config_ref;
   }
   if (rank == MASTER_NODE) cout << "Deleted CConfig containers." << endl;
 

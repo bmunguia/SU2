@@ -5511,7 +5511,7 @@ public:
   /*!
    * \brief Set name of the input grid.
    */
-  void SetMesh_FileName(string val_mesh_filename) { Mesh_FileName = val_mesh_filename; }
+  void SetMesh_FileName(string val_filename) { Mesh_FileName = val_filename; }
 
   /*!
    * \brief Get name of the output grid, this parameter is important for grid
@@ -5531,6 +5531,11 @@ public:
    * \return Name of the file with the solution of the flow problem.
    */
   string GetSolution_FileName(void) const { return Solution_FileName; }
+
+  /*!
+   * \brief Set name of the input solution.
+   */
+  void SetSolution_FileName(string val_filename) { Solution_FileName = val_filename; }
 
   /*!
    * \brief Get the name of the file with the solution of the adjoint flow problem
