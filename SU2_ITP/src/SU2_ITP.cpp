@@ -179,6 +179,10 @@ int main(int argc, char* argv[]) {
           config_src[iZone]->SetTimeIter(TimeIter);
           config_dst[iZone]->SetTimeIter(TimeIter);
 
+          /*--- Only implemented for single-instance problems ---*/
+          config_src[iZone]->SetiInst(INST_0);
+          config_dst[iZone]->SetiInst(INST_0);
+
           /*--- Either instantiate the solution class or load a restart file. ---*/
           if (!SolutionInstantiated[iZone]) {
             /*--- Initialize the solution classes ---*/
@@ -195,8 +199,6 @@ int main(int argc, char* argv[]) {
           }
 
           /*--- Load the solution on the source mesh ---*/
-          config_src[iZone]->SetiInst(INST_0);
-          config_dst[iZone]->SetiInst(INST_0);
           solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone], TimeIter,
                                                  true);
 

@@ -141,22 +141,23 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  /*--- TODO: multizone, FSI, harmonic balance, or FEM.---*/
   const bool fsi = config_src[ZONE_0]->GetFSI_Simulation();
   const bool fem_solver = config_src[ZONE_0]->GetFEMSolver();
 
   /*--- Set up a timer for performance benchmarking (preprocessing time is included) ---*/
-
   StartTime = SU2_MPI::Wtime();
 
   if (rank == MASTER_NODE)
     cout << endl << "------------------------- Solution Postprocessing -----------------------" << endl;
 
-  /*--- TODO: multizone, FSI, harmonic balance, or FEM.---*/
+  /*--- TODO: allow for multiple sensors ---*/
+  vector<unsigned long> time_iters;
+  vector<su2double> sensor_errors;
 
   if (config_src[ZONE_0]->GetTime_Domain()) {
     /*--- Unsteady simulation: merge all unsteady time steps. First,
       find the frequency and total number of files to write. ---*/
-
     su2double Physical_dt, Physical_t;
     unsigned long TimeIter = 0;
     const bool dual_time_2nd = (config_src[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
@@ -189,6 +190,11 @@ int main(int argc, char* argv[]) {
           config_dst[iZone]->SetTimeIter(TimeIter);
           config_ref[iZone]->SetTimeIter(TimeIter);
 
+          /*--- Only implemented for single-instance problems ---*/
+          config_src[iZone]->SetiInst(INST_0);
+          config_dst[iZone]->SetiInst(INST_0);
+          config_ref[iZone]->SetiInst(INST_0);
+
           /*--- Either instantiate the solution class or load a restart file. ---*/
           if (!SolutionInstantiated[iZone]) {
             /*--- Initialize the solution classes ---*/
@@ -206,9 +212,6 @@ int main(int argc, char* argv[]) {
           }
 
           /*--- Load the solution on the source mesh ---*/
-          config_src[iZone]->SetiInst(INST_0);
-          config_dst[iZone]->SetiInst(INST_0);
-          config_ref[iZone]->SetiInst(INST_0);
           solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone],
                                                  TimeIter, true);
 
@@ -231,12 +234,19 @@ int main(int argc, char* argv[]) {
           if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldRef << " in reference solution." << endl;
 
           /*--- Estimate the error ---*/
-          su2double field_error = EstimateError(config_ref[iZone], geometry_dst[iZone][INST_0],
-                                                solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
-                                                iFieldDst, iFieldRef);
+          su2double sensor_error = EstimateFieldError(config_ref[iZone], geometry_dst[iZone][INST_0],
+                                                      solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                                      iFieldDst, iFieldRef);
+
+          /*--- Add to the vector to be output ---*/
+          if (rank == MASTER_NODE) {
+            time_iters.push_back(TimeIter);
+            sensor_errors.push_back(sensor_error);
+          }
 
           if (rank == MASTER_NODE) {
-            cout << "Field error (L" << config_ref[iZone]->GetMetric_Norm() << "-norm): " << field_error << endl;
+            string sensor_string = GetSensorString(config_src[ZONE_0]);
+            cout << sensor_string << "L" << config_ref[iZone]->GetMetric_Norm() << "-norm field error: " << sensor_error << endl;
           }
         }
 
@@ -262,6 +272,7 @@ int main(int argc, char* argv[]) {
     for (iZone = 0; iZone < nZone; iZone++) {
       config_src[iZone]->SetiInst(INST_0);
       config_dst[iZone]->SetiInst(INST_0);
+      config_ref[iZone]->SetiInst(INST_0);
 
       /*--- Initialize the solution classes ---*/
       solver_src[iZone][INST_0] = new CBaselineSolver(geometry_src[iZone][INST_0], config_src[iZone]);
@@ -297,17 +308,58 @@ int main(int argc, char* argv[]) {
       if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldRef << " in reference solution." << endl;
 
       /*--- Estimate the error ---*/
-      su2double field_error = EstimateError(config_ref[iZone], geometry_dst[iZone][INST_0],
-                                            solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
-                                            iFieldDst, iFieldRef);
+      su2double sensor_error = EstimateFieldError(config_ref[iZone], geometry_dst[iZone][INST_0],
+                                                  solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                                  iFieldDst, iFieldRef);
+
+      /*--- Add to the output data ---*/
+      if (rank == MASTER_NODE) {
+        time_iters.push_back(0);
+        sensor_errors.push_back(sensor_error);
+      }
 
       if (rank == MASTER_NODE) {
-        cout << "Field error (L" << config_ref[iZone]->GetMetric_Norm() << "-norm): " << field_error << endl;
+        string sensor_string = GetSensorString(config_src[ZONE_0]);
+        cout << sensor_string << "L" << config_ref[iZone]->GetMetric_Norm() << "-norm field error: " << sensor_error << endl;
       }
     }
     for (iZone = 0; iZone < nZone; iZone++) {
       WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0], output[iZone], 0);
     }
+  }
+
+  ofstream Error_file;
+  const bool tabTecplot = config_src[ZONE_0]->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT;
+
+  if (rank == MASTER_NODE) {
+    /*--- Write the interpolation error in an external file ---*/
+    string filename = config_src[ZONE_0]->GetSensor_Error_FileName();
+    unsigned short lastindex = filename.find_last_of('.');
+    filename = filename.substr(0, lastindex);
+    if (tabTecplot)
+      filename += ".dat";
+    else
+      filename += ".csv";
+    Error_file.open(filename.c_str(), ios::out);
+
+    if (tabTecplot) {
+      Error_file << "TITLE = \"SU2_ERR Evaluation\"" << endl;
+      Error_file << "VARIABLES = ";
+    }
+
+    /*--- TODO: allow for multiple sensors ---*/
+    string sensor_string = GetSensorString(config_src[ZONE_0]);
+    Error_file << "\"Time Iter\",\"" << sensor_string << "\"";
+    if (tabTecplot)
+      Error_file << "\nZONE T= \"Error estimates\"" << endl;
+    else
+      Error_file << endl;
+
+    for (auto i = 0; i < sensor_errors.size(); ++i) {
+      Error_file << time_iters[i] << ", " << sensor_errors[i] << endl;
+    }
+
+    Error_file.close();
   }
 
   delete config;
@@ -438,9 +490,10 @@ int main(int argc, char* argv[]) {
   return EXIT_SUCCESS;
 }
 
-int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
+string GetSensorString(const CConfig* config) {
   /*--- Get corresponding field string from metric sensor ---*/
-  std::string sensor_name;
+  /*--- TODO: allow for multiple sensors ---*/
+  string sensor_name;
   switch (config->GetMetric_Sensor(0)) {
     case METRIC_SENSOR::MACH:
       sensor_name = "Mach";
@@ -455,8 +508,16 @@ int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
       SU2_MPI::Error("Unsupported metric sensor.", CURRENT_FUNCTION);
   }
 
+  return sensor_name;
+}
+
+int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
+  /*--- Get corresponding field string from metric sensor ---*/
+  /*--- TODO: allow for multiple sensors ---*/
+  string sensor_name = GetSensorString(config);
+
   /*--- Find index in solution fields ---*/
-  auto strip_quotes = [](const std::string& s) -> std::string {
+  auto strip_quotes = [](const string& s) -> string {
     if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
       return s.substr(1, s.size() - 2);
     }
@@ -474,9 +535,9 @@ int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
   return -1;
 }
 
-su2double EstimateError(const CConfig* config, CGeometry* geometry,
-                        CSolver* solver_dst, CSolver* solver_ref,
-                        int iFieldDst, int iFieldRef) {
+su2double EstimateFieldError(const CConfig* config, CGeometry* geometry,
+                             CSolver* solver_dst, CSolver* solver_ref,
+                             int iFieldDst, int iFieldRef) {
 
   /*--- Get the norm and number of points from configuration and geometry ---*/
   const unsigned short p = config->GetMetric_Norm();

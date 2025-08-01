@@ -2212,6 +2212,9 @@ void CConfig::SetConfig_Options() {
   /*!\brief VALUE_OBJFUNC_FILENAME
    *  \n DESCRIPTION: Output objective function  \ingroup Config*/
   addStringOption("VALUE_OBJFUNC_FILENAME", ObjFunc_Value_FileName, string("of_func.dat"));
+  /*!\brief SENSOR_ERROR_FILENAME
+   *  \n DESCRIPTION: Output interpolation error in mesh adaptation sensor  \ingroup Config*/
+  addStringOption("SENSOR_ERROR_FILENAME", Sensor_Error_FileName, string("sensor_error.dat"));
   /*!\brief SURFACE_FLOW_FILENAME
    *  \n DESCRIPTION: Output file surface flow coefficient (w/o extension)  \ingroup Config*/
   addStringOption("SURFACE_FILENAME", SurfCoeff_FileName, string("surface"));
@@ -6679,7 +6682,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
     cout << "Destination mesh file name: " << Mesh_Itp_FileName << endl;
   }
   if (val_software == SU2_COMPONENT::SU2_ERR) {
-    cout << "Reference flow solution file name: " << Solution_RefFileName << "." << endl;
+    cout << "Reference flow solution file name: " << Sensor_Error_FileName << endl;
+    cout << "Interpolation error output file name: " << Sensor_Error_FileName << endl;
   }
 
   if (val_software == SU2_COMPONENT::SU2_DOT) {

@@ -33,6 +33,15 @@
 #include "../../SU2_ITP/include/interpolation.hpp"
 
 /*!
+ * \brief Get the string corresponding to the metric sensor.
+ *
+ * \param[in] config - Definition of the particular problem.
+ * \return String representing the kind of metric sensor.
+ * \throws SU2_MPI::Error if the sensor field is not supported
+ */
+string GetSensorString(const CConfig* config);
+
+/*!
  * \brief Get the index of the solution field corresponding to the metric sensor.
  *
  * \param[in] config - Definition of the particular problem.
@@ -52,7 +61,7 @@ int GetSensorFieldIndex(const CConfig* config, const CSolver* solver);
  * \param[in] iFieldRef - Index of sensor in reference solution.
  * \return Lp-norm error for the specified field.
  */
-su2double EstimateError(const CConfig* config, CGeometry* geometry,
-                        CSolver* solver_dst, CSolver* solver_ref,
-                        int iFieldDst, int iFieldRef);
+su2double EstimateFieldError(const CConfig* config, CGeometry* geometry,
+                             CSolver* solver_dst, CSolver* solver_ref,
+                             int iFieldDst, int iFieldRef);
 
