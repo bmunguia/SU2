@@ -32,3 +32,27 @@
 
 #include "../../SU2_ITP/include/interpolation.hpp"
 
+/*!
+ * \brief Get the index of the solution field corresponding to the metric sensor.
+ *
+ * \param[in] config - Definition of the particular problem.
+ * \param[in] solver - Container with the solution.
+ * \return Index of the field in the solution fields vector corresponding to the metric sensor.
+ * \throws SU2_MPI::Error if the sensor field is not found in the solution fields.
+ */
+int GetSensorFieldIndex(const CConfig* config, const CSolver* solver);
+
+/*!
+ * \brief Estimate the error between two solutions based on the specified metric sensor and norm.
+ * \param[in] config - Definition of the particular problem.
+ * \param[in] geometry - Geometrical definition of the problem.
+ * \param[in] solver_dst - Container with the destination (interpolated) solution.
+ * \param[in] solver_ref - Container with the reference (fine-mesh) solution.
+ * \param[in] iFieldDst - Index of sensor in destination solution.
+ * \param[in] iFieldRef - Index of sensor in reference solution.
+ * \return Lp-norm error for the specified field.
+ */
+su2double EstimateError(const CConfig* config, CGeometry* geometry,
+                        CSolver* solver_dst, CSolver* solver_ref,
+                        int iFieldDst, int iFieldRef);
+

@@ -123,11 +123,13 @@ int main(int argc, char* argv[]) {
     geometry_dst[iZone] = new CGeometry*[nInst[iZone]];
     solver_src[iZone] = new CSolver*[nInst[iZone]];
     solver_dst[iZone] = new CSolver*[nInst[iZone]];
+    solver_ref[iZone] = new CSolver*[nInst[iZone]];
     for (iInst = 0; iInst < nInst[iZone]; iInst++) {
       geometry_src[iZone][iInst] = nullptr;
       geometry_dst[iZone][iInst] = nullptr;
       solver_src[iZone][iInst] = nullptr;
       solver_dst[iZone][iInst] = nullptr;
+      solver_ref[iZone][iInst] = nullptr;
     }
   }
 
@@ -185,6 +187,7 @@ int main(int argc, char* argv[]) {
           /*--- Set the current iteration number in the config class. ---*/
           config_src[iZone]->SetTimeIter(TimeIter);
           config_dst[iZone]->SetTimeIter(TimeIter);
+          config_ref[iZone]->SetTimeIter(TimeIter);
 
           /*--- Either instantiate the solution class or load a restart file. ---*/
           if (!SolutionInstantiated[iZone]) {
@@ -217,8 +220,24 @@ int main(int argc, char* argv[]) {
           solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
                                                  TimeIter, true);
 
-          /*--- Estimate the error ---*/
+          /*--- Get the correct field index ---*/
+          if (rank == MASTER_NODE) {
+            cout << endl << "---------------------------- Error Estimation ---------------------------" << endl;
+            cout << "Calculating L" << config_ref[iZone] ->GetMetric_Norm() << "-norm error in sensor..." << endl;
+          }
+          int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0]);
+          if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldDst << " in interpolated solution." << endl;
+          int iFieldRef = GetSensorFieldIndex(config_ref[iZone], solver_ref[iZone][INST_0]);
+          if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldRef << " in reference solution." << endl;
 
+          /*--- Estimate the error ---*/
+          su2double field_error = EstimateError(config_ref[iZone], geometry_dst[iZone][INST_0],
+                                                solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                                iFieldDst, iFieldRef);
+
+          if (rank == MASTER_NODE) {
+            cout << "Field error (L" << config_ref[iZone]->GetMetric_Norm() << "-norm): " << field_error << endl;
+          }
         }
 
         if (rank == MASTER_NODE) cout << "Writing the volume solution for time step " << TimeIter << "." << endl;
@@ -266,8 +285,25 @@ int main(int argc, char* argv[]) {
       /*--- Load the reference solution on the destination mesh ---*/
       solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
                                              0, true);
-      /*--- Estimate the error ---*/
 
+      /*--- Get the correct field index ---*/
+      if (rank == MASTER_NODE) {
+        cout << endl << "---------------------------- Error Estimation ---------------------------" << endl;
+        cout << "Calculating L" << config_ref[iZone] ->GetMetric_Norm() << "-norm error in sensor..." << endl;
+      }
+      int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0]);
+      if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldDst << " in interpolated solution." << endl;
+      int iFieldRef = GetSensorFieldIndex(config_ref[iZone], solver_ref[iZone][INST_0]);
+      if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldRef << " in reference solution." << endl;
+
+      /*--- Estimate the error ---*/
+      su2double field_error = EstimateError(config_ref[iZone], geometry_dst[iZone][INST_0],
+                                            solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                            iFieldDst, iFieldRef);
+
+      if (rank == MASTER_NODE) {
+        cout << "Field error (L" << config_ref[iZone]->GetMetric_Norm() << "-norm): " << field_error << endl;
+      }
     }
     for (iZone = 0; iZone < nZone; iZone++) {
       WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0], output[iZone], 0);
@@ -335,7 +371,7 @@ int main(int argc, char* argv[]) {
       }
       if (solver_ref[iZone] != nullptr) delete[] solver_ref[iZone];
     }
-    delete[] solver_dst;
+    delete[] solver_ref;
   }
   if (rank == MASTER_NODE) cout << "Deleted CSolver containers." << endl;
 
@@ -400,4 +436,75 @@ int main(int argc, char* argv[]) {
   SU2_MPI::Finalize();
 
   return EXIT_SUCCESS;
+}
+
+int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
+  /*--- Get corresponding field string from metric sensor ---*/
+  std::string sensor_name;
+  switch (config->GetMetric_Sensor(0)) {
+    case METRIC_SENSOR::MACH:
+      sensor_name = "Mach";
+      break;
+    case METRIC_SENSOR::PRESSURE:
+      sensor_name = "Pressure";
+      break;
+    case METRIC_SENSOR::TEMPERATURE:
+      sensor_name = "Temperature";
+      break;
+    default:
+      SU2_MPI::Error("Unsupported metric sensor.", CURRENT_FUNCTION);
+  }
+
+  /*--- Find index in solution fields ---*/
+  auto strip_quotes = [](const std::string& s) -> std::string {
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+      return s.substr(1, s.size() - 2);
+    }
+    return s;
+  };
+
+  const auto& fields = solver->GetSolutionFields();
+  for (size_t i = 0; i < fields.size(); ++i) {
+    if (strip_quotes(fields[i]) == sensor_name) {
+      return static_cast<int>(i);
+    }
+  }
+
+  SU2_MPI::Error("Sensor not found in solution.", CURRENT_FUNCTION);
+  return -1;
+}
+
+su2double EstimateError(const CConfig* config, CGeometry* geometry,
+                        CSolver* solver_dst, CSolver* solver_ref,
+                        int iFieldDst, int iFieldRef) {
+
+  /*--- Get the norm and number of points from configuration and geometry ---*/
+  const unsigned short p = config->GetMetric_Norm();
+  const unsigned long nPointDomain = geometry->GetnPointDomain();
+
+  su2double local_sum = 0.0;
+
+  /*--- Get pointers to the solution variables ---*/
+  const CVariable* nodes_dst = solver_dst->GetNodes();
+  const CVariable* nodes_ref = solver_ref->GetNodes();
+
+  /*--- Loop over all domain points ---*/
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+    su2double field_dst = nodes_dst->GetSolution(iPoint, iFieldDst);
+    su2double field_ref = nodes_ref->GetSolution(iPoint, iFieldRef);
+    su2double volume = geometry->nodes->GetVolume(iPoint);
+    su2double local_error = fabs(field_dst - field_ref) * volume;
+
+    /*--- Add to Lp-norm sum ---*/
+    local_sum += pow(local_error, p);
+  }
+
+  /*--- Parallel sum across all MPI ranks ---*/
+  su2double global_sum = 0.0;
+  SU2_MPI::Allreduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+
+  /*--- Take the p-th root for Lp norm ---*/
+  su2double global_error = pow(global_sum, 1.0 / p);
+
+  return global_error;
 }

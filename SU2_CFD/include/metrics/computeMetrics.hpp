@@ -186,7 +186,7 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
   ScalarType localScale = 0.;
   ScalarType globalScale = 0.;
 
-  const ScalarType p = SU2_TYPE::GetValue(config.GetMetric_Norm());
+  const ScalarType p = config.GetMetric_Norm();
   const ScalarType eigmax = 1./(pow(SU2_TYPE::GetValue(config.GetMetric_Hmin()),2.));
   const ScalarType eigmin = 1./(pow(SU2_TYPE::GetValue(config.GetMetric_Hmax()),2.));
   const ScalarType armax2 = pow(SU2_TYPE::GetValue(config.GetMetric_ARmax()), 2.);

@@ -9944,7 +9944,7 @@ public:
   /*!
    * \brief Get adaptation norm value (Lp)
    */
-  su2double GetMetric_Norm(void) const { return Metric_Norm; }
+  unsigned short GetMetric_Norm(void) const { return Metric_Norm; }
 
   /*!
    * \brief Get maximum cell size
