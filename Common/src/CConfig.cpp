@@ -3042,6 +3042,8 @@ void CConfig::SetConfig_Options() {
   addPythonOption("ADAPT_ITER");
   /*!\brief ADAPT_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
   addPythonOption("ADAPT_TIME_SUBINTERVAL");
+  /*!\brief METRIC_COMPLEXITY_LIST \n DESCRIPTION: List of constraint mesh complexities for mesh convergence study */
+  addPythonOption("METRIC_COMPLEXITY_LIST");
 
   /* END_CONFIG_OPTIONS */
 
