@@ -4375,8 +4375,9 @@ inline void CustomSourceResidual(CGeometry *geometry, CSolver **solver_container
    * \param[in] solver - Physical definition of the problem.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
+   * \param[in] restartMetric - Whether this is the initial sub-interval metric computation for an unsteady restart.
    */
-  void ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config);
+  void ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config, bool restartMetric);
 
   /*!
    * \brief Sum up the weighted Hessians to obtain the goal-oriented metric.
@@ -4385,9 +4386,10 @@ inline void CustomSourceResidual(CGeometry *geometry, CSolver **solver_container
    * \param[in] config - Definition of the particular problem.
    * \param[in] iPoint - Index of current node.
    * \param[in] weights - Weights of each Hessian in the metric.
+   * \param[in] restartMetric - Whether this is the initial sub-interval metric computation for an unsteady restart.
    */
   void AddMetric(CSolver **solver, const CGeometry *geometry, const CConfig *config,
-                 unsigned long iPoint, vector<vector<double> > &weights);
+                 unsigned long iPoint, vector<vector<double> > &weights, bool restartMetric);
 
 protected:
   /*!

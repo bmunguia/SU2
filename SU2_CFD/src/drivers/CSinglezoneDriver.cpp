@@ -65,6 +65,10 @@ void CSinglezoneDriver::StartSolver() {
   if (config_container[ZONE_0]->GetRestart() && driver_config->GetTime_Domain())
     TimeIter = config_container[ZONE_0]->GetRestart_Iter();
 
+  /*--- Compute the initial metric tensor if performing an unsteady restart. ---*/
+  if (config_container[ZONE_0]->GetRestart() && driver_config->GetTime_Domain() && config_container[ZONE_0]->GetCompute_Metric())
+    ComputeMetricField(true);
+
   /*--- Run the problem until the number of time iterations required is reached. ---*/
   /*--- or until a SIGTERM signal stops the loop. We catch SIGTERM and exit gracefully ---*/
   while ( TimeIter < config_container[ZONE_0]->GetnTime_Iter()) {
@@ -318,7 +322,7 @@ bool CSinglezoneDriver::GetTimeConvergence() const{
   return output_container[ZONE_0]->GetCauchyCorrectedTimeConvergence(config_container[ZONE_0]);
 }
 
-void CSinglezoneDriver::ComputeMetricField() {
+void CSinglezoneDriver::ComputeMetricField(bool restartMetric) {
 
   auto solver = solver_container[ZONE_0][INST_0][MESH_0];
   auto solver_flow = solver_container[ZONE_0][INST_0][MESH_0][FLOW_SOL];
@@ -346,5 +350,5 @@ void CSinglezoneDriver::ComputeMetricField() {
 
   //--- Metric
   if(rank == MASTER_NODE) cout << "Computing feature-based metric tensor." << endl;
-  solver_flow->ComputeMetric(solver, geometry, config);
+  solver_flow->ComputeMetric(solver, geometry, config, restartMetric);
 }

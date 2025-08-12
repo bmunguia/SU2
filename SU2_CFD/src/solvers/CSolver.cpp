@@ -4480,7 +4480,7 @@ void CSolver::SavelibROM(CGeometry *geometry, CConfig *config, bool converged) {
 
 }
 
-void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config) {
+void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config, bool restartMetric) {
 
   const unsigned long nPointDomain = geometry->GetnPointDomain();
 
@@ -4536,13 +4536,13 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
       }
     }
     for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-      AddMetric(solver, geometry, config, iPoint, weights);
+      AddMetric(solver, geometry, config, iPoint, weights, restartMetric);
     }
   }
 }
 
 void CSolver::AddMetric(CSolver **solver, const CGeometry*geometry, const CConfig *config,
-                        unsigned long iPoint, vector<vector<double> > &weights) {
+                        unsigned long iPoint, vector<vector<double> > &weights, bool restartMetric) {
 
   auto varFlo = solver[FLOW_SOL]->GetNodes();
 
@@ -4557,6 +4557,8 @@ void CSolver::AddMetric(CSolver **solver, const CGeometry*geometry, const CConfi
   const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||
                              (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) ||
                              (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING);
+  const bool is_first_iter = (time_iter == 0) || (restartMetric);
+  const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1);
 
   if (goal) {
     //--- TODO: sum weighted Hessians
@@ -4566,9 +4568,7 @@ void CSolver::AddMetric(CSolver **solver, const CGeometry*geometry, const CConfi
       double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, 0, iMat));
       if (time_stepping) {
         /*--- Integrate the unsteady metric ---*/
-        bool first_iter = (config->GetRestart_Iter() == time_iter);
-        bool last_iter = (config->GetnTime_Iter() == time_iter - 1);
-        const double coeff = (first_iter || last_iter)? 0.5 : 1.0;
+        const double coeff = (is_first_iter || is_last_iter)? 0.5 : 1.0;
         const double time_step = SU2_TYPE::GetValue(config->GetTime_Step());
         hess *= coeff * time_step;
       }
