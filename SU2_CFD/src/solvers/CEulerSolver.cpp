@@ -89,6 +89,7 @@ CEulerSolver::CEulerSolver(CGeometry *geometry, CConfig *config,
       else if (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST)
         Unst_RestartIter = SU2_TYPE::Int(config->GetRestart_Iter())-1;
       else Unst_RestartIter = SU2_TYPE::Int(config->GetRestart_Iter())-2;
+      if (SU2_TYPE::Int(config->GetRestart_Iter()) == 0) Unst_RestartIter = 0; // BCM: hack for unsteady adaptation restart
     }
 
     /*--- Modify file name for a time stepping unsteady restart ---*/
@@ -96,6 +97,7 @@ CEulerSolver::CEulerSolver(CGeometry *geometry, CConfig *config,
     if (time_stepping) {
       if (adjoint) Unst_RestartIter = SU2_TYPE::Int(config->GetUnst_AdjointIter())-1;
       else Unst_RestartIter = SU2_TYPE::Int(config->GetRestart_Iter())-1;
+      if (SU2_TYPE::Int(config->GetRestart_Iter()) == 0) Unst_RestartIter = 0; // BCM: hack for unsteady adaptation restart
     }
 
     /*--- Read and store the restart metadata. ---*/

@@ -1119,6 +1119,7 @@ void CDriver::RestartSolver(CSolver ***solver, CGeometry **geometry,
   if (time_domain) {
     if (adjoint) val_iter = config->GetUnst_AdjointIter() - 1;
     else val_iter = config->GetRestart_Iter() - 1 - dt_step_2nd;
+    if (config->GetRestart_Iter() == 0) val_iter = 0; // BCM: hack for unsteady adaptation restart
   }
 
   /*--- Restart direct solvers. ---*/

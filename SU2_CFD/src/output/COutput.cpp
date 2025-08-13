@@ -99,7 +99,7 @@ COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
 
   /*--- Append the restart iteration ---*/
 
-  if (config->GetTime_Domain() && config->GetRestart()) {
+  if (config->GetTime_Domain() && config->GetRestart() && config->GetRestart_Iter() > 0) { // BCM: hack for unsteady adaptation restart
     historyFilename = config->GetUnsteady_FileName(historyFilename, config->GetRestart_Iter(), hist_ext);
   }
 
