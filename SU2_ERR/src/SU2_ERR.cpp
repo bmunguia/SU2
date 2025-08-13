@@ -53,6 +53,7 @@ int main(int argc, char* argv[]) {
   CConfig** config_dst = nullptr;
   CConfig** config_ref = nullptr;
   CConfig* driver_config = nullptr;
+  CVolumeInterpolator** interpolator = nullptr;
   unsigned short* nInst = nullptr;
 
   /*--- Load in the number of zones and spatial dimensions in the mesh file (if no config
@@ -79,6 +80,7 @@ int main(int argc, char* argv[]) {
   config_ref = new CConfig*[nZone]();
   geometry_src = new CGeometry**[nZone]();
   geometry_dst = new CGeometry**[nZone]();
+  interpolator = new CVolumeInterpolator*[nZone]();
   nInst = new unsigned short[nZone];
   driver_config = nullptr;
   output = new COutput*[nZone]();
@@ -96,14 +98,26 @@ int main(int argc, char* argv[]) {
   /*--- Store a boolean for multizone problems ---*/
   const bool multizone = config->GetMultizone_Problem();
 
+  /*--- Initialize the interpolator ---*/
+  for (iZone = 0; iZone < nZone; iZone++) {
+    /*--- TODO: some config setting for specifying the interpolator ---*/
+    interpolator[iZone] = new CLinearVolumeInterpolator(MPICommunicator);
+  }
+
   /*--- Loop over all zones to initialize the various classes. In most
    cases, nZone is equal to one. This represents the solution of a partial
    differential equation on a single block, unstructured mesh. ---*/
 
   for (iZone = 0; iZone < nZone; iZone++) {
-    InitializeConfig(driver_config, config_src, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator);
-    InitializeConfig(driver_config, config_dst, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator, false);
-    InitializeConfig(driver_config, config_ref, zone_file_name, config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone, MPICommunicator, false);
+    interpolator[iZone]->InitializeConfig(driver_config, config_src, zone_file_name,
+                                          config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone,
+                                          MPICommunicator, true);
+    interpolator[iZone]->InitializeConfig(driver_config, config_dst, zone_file_name,
+                                          config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone,
+                                          MPICommunicator, false);
+    interpolator[iZone]->InitializeConfig(driver_config, config_ref, zone_file_name,
+                                          config_file_name, SU2_COMPONENT::SU2_ERR, iZone, nZone,
+                                          MPICommunicator, false);
 
     /*--- Load the reference solution ---*/
     config_ref[iZone]->SetSolution_FileName(config_ref[iZone]->GetSolution_RefFileName());
@@ -136,8 +150,10 @@ int main(int argc, char* argv[]) {
   /*--- Read the geometry for each zone ---*/
   for (iZone = 0; iZone < nZone; iZone++) {
     for (iInst = 0; iInst < nInst[iZone]; iInst++) {
-      InitializeGeometry(config_src[iZone], geometry_src[iZone][iInst], iZone, iInst, nZone);
-      InitializeGeometry(config_dst[iZone], geometry_dst[iZone][iInst], iZone, iInst, nZone);
+      interpolator[iZone]->InitializeGeometry(config_src[iZone], geometry_src[iZone][iInst],
+                                              iZone, iInst, nZone, true);
+      interpolator[iZone]->InitializeGeometry(config_dst[iZone], geometry_dst[iZone][iInst],
+                                              iZone, iInst, nZone, false);
     }
   }
 
@@ -216,8 +232,8 @@ int main(int argc, char* argv[]) {
                                                  TimeIter, true);
 
           /*--- Interpolate the solution ---*/
-          InterpolateSolution(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
-                              solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+          interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
+                                           solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
 
           /*--- Load the reference solution on the destination mesh ---*/
           solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
@@ -253,8 +269,8 @@ int main(int argc, char* argv[]) {
         if (rank == MASTER_NODE) cout << "Writing the volume solution for time step " << TimeIter << "." << endl;
 
         for (iZone = 0; iZone < nZone; iZone++) {
-          WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0], output[iZone],
-                     TimeIter);
+          interpolator[iZone]->WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0],
+                                          output[iZone], TimeIter);
         }
       }
 
@@ -290,8 +306,8 @@ int main(int argc, char* argv[]) {
                                              0, true);
 
       /*--- Interpolate the solution ---*/
-      InterpolateSolution(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
-                          solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+      interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
+                                       solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
 
       /*--- Load the reference solution on the destination mesh ---*/
       solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
@@ -324,7 +340,8 @@ int main(int argc, char* argv[]) {
       }
     }
     for (iZone = 0; iZone < nZone; iZone++) {
-      WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0], output[iZone], 0);
+      interpolator[iZone]->WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0],
+                                      output[iZone], 0);
     }
   }
 
@@ -462,6 +479,16 @@ int main(int argc, char* argv[]) {
     delete[] output;
   }
   if (rank == MASTER_NODE) cout << "Deleted COutput class." << endl;
+
+  if (interpolator != nullptr) {
+    for (iZone = 0; iZone < nZone; iZone++) {
+      if (interpolator[iZone] != nullptr) {
+        delete interpolator[iZone];
+      }
+    }
+    delete[] interpolator;
+  }
+  if (rank == MASTER_NODE) cout << "Deleted CVolumeInterpolator class." << endl;
 
   /*--- Synchronization point after a single solver iteration. Compute the
    wall clock time required. ---*/

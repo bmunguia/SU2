@@ -30,7 +30,8 @@
 #include <cmath>
 #include <memory>
 
-#include "../../SU2_ITP/include/interpolation.hpp"
+#include "../../SU2_ITP/include/CConservativeVolumeInterpolator.hpp"
+#include "../../SU2_ITP/include/CLinearVolumeInterpolator.hpp"
 
 /*!
  * \brief Get the string corresponding to the metric sensor.
