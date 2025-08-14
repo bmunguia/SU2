@@ -158,9 +158,60 @@ void CVolumeInterpolator::InitializeGeometry(CConfig* config, CGeometry*& geomet
   else nDim = geometry->GetnDim();
 }
 
-std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildSurfaceADT(const CConfig* config, CGeometry* geometry) {
-  const unsigned short nDim = geometry->GetnDim();
+void CVolumeInterpolator::InitializeADTs(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst, bool update) {
+  if (!srcVolumeADT_ptr || update) {
+    if (rank == MASTER_NODE) cout << "Building volume ADT." << flush;
+    srcVolumeADT_ptr = BuildVolumeADT(geometry_src);
+    if (rank == MASTER_NODE) cout << " Done." << endl;
+  }
 
+  if (!srcSurfaceADT_ptr || update) {
+    if (rank == MASTER_NODE) cout << "Building source surface ADT." << flush;
+    srcSurfaceADT_ptr = BuildSurfaceADT(config, geometry_src);
+    if (rank == MASTER_NODE) cout << " Done." << endl;
+  }
+
+  if (!dstSurfaceADT_ptr || update) {
+    if (rank == MASTER_NODE) cout << "Building destination surface ADT." << flush;
+    dstSurfaceADT_ptr = BuildSurfaceADT(config, geometry_dst);
+    if (rank == MASTER_NODE) cout << " Done." << endl;
+  }
+}
+
+std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildVolumeADT(CGeometry* geometry) {
+  /*--- Prepare coordinate and connectivity data for ADT ---*/
+  vector<su2double> volCoor;
+  vector<unsigned long> elemConn;
+  vector<unsigned short> vtkType;
+  vector<unsigned short> subElemID;
+  vector<unsigned long> parElemID;
+
+  /*--- Copy coordinates ---*/
+  for (unsigned long i = 0; i <  geometry->GetnPoint(); ++i) {
+    for (unsigned short k = 0; k < nDim; ++k) {
+      volCoor.push_back(geometry->nodes->GetCoord(i, k));
+    }
+  }
+
+  /*--- Copy element connectivity and metadata ---*/
+  for (unsigned long iElem = 0; iElem < geometry->GetnElem(); iElem++) {
+    const unsigned short VTK_Type = geometry->elem[iElem]->GetVTK_Type();
+    const unsigned short nDOFsPerElem = geometry->elem[iElem]->GetnNodes();
+
+    vtkType.push_back(VTK_Type);
+    subElemID.push_back(0);  // TODO: FEM subelements
+    parElemID.push_back(iElem);
+    for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
+      elemConn.push_back(geometry->elem[iElem]->GetNode(iNode));
+    }
+  }
+
+  /*--- Create and return the volume ADT ---*/
+  return std::unique_ptr<CADTElemClass>(
+      new CADTElemClass(nDim, volCoor, elemConn, vtkType, subElemID, parElemID, false));
+}
+
+std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildSurfaceADT(const CConfig* config, CGeometry* geometry) {
   /*--- Initialize an array for the mesh points mapping ---*/
   vector<unsigned long> meshToSurface(geometry->GetnPoint(), 0);
 
@@ -214,41 +265,6 @@ std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildSurfaceADT(const CConfi
   /*--- Build and return the surface ADT ---*/
   return std::unique_ptr<CADTElemClass>(
       new CADTElemClass(nDim, surfaceCoor, surfaceConn, VTK_TypeElem, markerIDs, elemIDs, true));
-}
-
-std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildVolumeADT(CGeometry* geometry) {
-  const unsigned short nDim = geometry->GetnDim();
-
-  /*--- Prepare coordinate and connectivity data for ADT ---*/
-  vector<su2double> volCoor;
-  vector<unsigned long> elemConn;
-  vector<unsigned short> vtkType;
-  vector<unsigned short> subElemID;
-  vector<unsigned long> parElemID;
-
-  /*--- Copy coordinates ---*/
-  for (unsigned long i = 0; i <  geometry->GetnPoint(); ++i) {
-    for (unsigned short k = 0; k < nDim; ++k) {
-      volCoor.push_back(geometry->nodes->GetCoord(i, k));
-    }
-  }
-
-  /*--- Copy element connectivity and metadata ---*/
-  for (unsigned long iElem = 0; iElem < geometry->GetnElem(); iElem++) {
-    const unsigned short VTK_Type = geometry->elem[iElem]->GetVTK_Type();
-    const unsigned short nDOFsPerElem = geometry->elem[iElem]->GetnNodes();
-
-    vtkType.push_back(VTK_Type);
-    subElemID.push_back(0);  // TODO: FEM subelements
-    parElemID.push_back(iElem);
-    for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
-      elemConn.push_back(geometry->elem[iElem]->GetNode(iNode));
-    }
-  }
-
-  /*--- Create and return the volume ADT ---*/
-  return std::unique_ptr<CADTElemClass>(
-      new CADTElemClass(nDim, volCoor, elemConn, vtkType, subElemID, parElemID, false));
 }
 
 void CVolumeInterpolator::NearestPointOnElement(CGeometry* geometry, unsigned short markerID, unsigned long elemID,
@@ -432,12 +448,9 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
   /*--- Initialize corrected coordinates to original coordinates ---*/
   coor_corrected = coor_dst;
 
-  /*--- Build surface ADTs for both source and destination grids ---*/
-  std::unique_ptr<CADTElemClass> srcSurfaceADT_ptr = BuildSurfaceADT(config, geometry_src);
-  std::unique_ptr<CADTElemClass> dstSurfaceADT_ptr = BuildSurfaceADT(config, geometry_dst);
-
-  CADTElemClass& srcSurfaceADT = *srcSurfaceADT_ptr;
-  CADTElemClass& dstSurfaceADT = *dstSurfaceADT_ptr;
+  /*--- Get references to the ADTs for both source and destination grids ---*/
+  CADTElemClass& srcSurfaceADT = GetSourceSurfaceADT();
+  CADTElemClass& dstSurfaceADT = GetDestinationSurfaceADT();
 
   /*--- Apply curvature correction if both surfaces exist ---*/
   if (!srcSurfaceADT.IsEmpty() && !dstSurfaceADT.IsEmpty()) {

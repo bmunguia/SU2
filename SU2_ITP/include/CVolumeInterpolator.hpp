@@ -55,6 +55,13 @@ class CVolumeInterpolator {
     unsigned long nElem_src = 0;   /*!< \brief Number of elements on the source mesh. */
     unsigned long nElem_dst = 0;   /*!< \brief Number of elements on the destination mesh. */
 
+    /*--- Volume ADT data structure for volume interpolation ---*/
+    std::unique_ptr<CADTElemClass> srcVolumeADT_ptr; /*!< \brief ADT for source surface mesh. */
+
+    /*--- Surface ADT data structures for curvature correction and surface interpolation ---*/
+    std::unique_ptr<CADTElemClass> srcSurfaceADT_ptr; /*!< \brief ADT for source surface mesh. */
+    std::unique_ptr<CADTElemClass> dstSurfaceADT_ptr; /*!< \brief ADT for destination surface mesh. */
+
     /*!
      * \brief Constructor of the class.
      * \param[in] MPICommunicator - MPI communicator for SU2.
@@ -89,18 +96,60 @@ class CVolumeInterpolator {
                     COutput* output, unsigned long TimeIter);
 
   protected:
-    std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry* geometry);
+    /*!
+     * \brief Initialize volume and surface ADTs for both source and destination meshes.
+     * \param[in] config - Configuration object
+     * \param[in] geometry_src - Source mesh geometry
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] update - <code>TRUE</code> means to re-initialize the ADTs
+     */
+    void InitializeADTs(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst, bool update = false);
 
     std::unique_ptr<CADTElemClass> BuildVolumeADT(CGeometry* geometry);
 
-    virtual void InterpolateSolution(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                    CSolver* solver_src, CSolver* solver_dst) { }
+    std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry* geometry);
 
-    virtual void VolumeInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                            const vector<su2double> &coor_corrected, vector<unsigned long> &pointsFailed) { }
+    /*!
+     * \brief Get reference to source volume ADT.
+     * \return Reference to source volume ADT
+     */
+    CADTElemClass& GetSourceVolumeADT() {
+      if (!srcVolumeADT_ptr) {
+        SU2_MPI::Error("Source volume ADT not initialized. Call InitializeADT first.", CURRENT_FUNCTION);
+      }
+      return *srcVolumeADT_ptr;
+    }
 
-    virtual void SurfaceInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                              const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed) { }
+    /*!
+     * \brief Get reference to source surface ADT.
+     * \return Reference to source surface ADT
+     */
+    CADTElemClass& GetSourceSurfaceADT() {
+      if (!srcSurfaceADT_ptr) {
+        SU2_MPI::Error("Source surface ADT not initialized. Call InitializeADT first.", CURRENT_FUNCTION);
+      }
+      return *srcSurfaceADT_ptr;
+    }
+
+    /*!
+     * \brief Get reference to destination surface ADT.
+     * \return Reference to destination surface ADT
+     */
+    CADTElemClass& GetDestinationSurfaceADT() {
+      if (!dstSurfaceADT_ptr) {
+        SU2_MPI::Error("Destination surface ADT not initialized. Call InitializeADT first.", CURRENT_FUNCTION);
+      }
+      return *dstSurfaceADT_ptr;
+    }
+
+    virtual void LinearInterpolation(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,
+                                     CSolver* solver_src, CSolver* solver_dst) { }
+
+    virtual void VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
+                                     const vector<su2double> &coor_corrected, vector<unsigned long> &pointsFailed) { }
+
+    virtual void SurfaceInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
+                                      const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed) { }
 
     void NearestPointOnElement(CGeometry* geometry, unsigned short markerID, unsigned long elemID,
                               const su2double* coor, su2double* surfCoor, su2double& dist2Elem,

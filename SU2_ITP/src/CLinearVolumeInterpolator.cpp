@@ -33,28 +33,23 @@ CLinearVolumeInterpolator::CLinearVolumeInterpolator(SU2_Comm MPICommunicator)
 
 void CLinearVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                             CSolver* solver_src, CSolver* solver_dst) {
-  /*--- Call the internal interpolation method ---*/
-  InterpolateSolution(config, geometry_src, geometry_dst, solver_src, solver_dst);
-}
-
-void CLinearVolumeInterpolator::InterpolateSolution(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                                    CSolver* solver_src, CSolver* solver_dst) {
   if (rank == MASTER_NODE) {
     cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
     cout << "Performing linear solution interpolation from source mesh to destination mesh..." << endl;
-  }
-
-  const unsigned short nDim = geometry_src->GetnDim();
-  const unsigned long nPoint_src = geometry_src->GetnPoint();
-  const unsigned long nPoint_dst = geometry_dst->GetnPoint();
-  const unsigned long nElem_src = geometry_src->GetnElem();
-
-  if (rank == MASTER_NODE) {
     cout << "Source mesh: " << geometry_src->GetGlobal_nPointDomain() << " points, ";
     cout << geometry_src->GetGlobal_nElemDomain() << " elements" << endl;
     cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points" << endl;
   }
 
+  /*--- Build the ADTs ---*/
+  InitializeADTs(config, geometry_src, geometry_dst);
+
+  /*--- Call the internal interpolation method ---*/
+  LinearInterpolation(config, geometry_src, geometry_dst, solver_src, solver_dst);
+}
+
+void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
+                                                    CSolver* solver_src, CSolver* solver_dst) {
   /*--- Apply the curvature correction ---*/
   if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
   vector<su2double> coorDst;
@@ -69,7 +64,7 @@ void CLinearVolumeInterpolator::InterpolateSolution(const CConfig* config, CGeom
   /*--- Volume interpolation ---*/
   if (rank == MASTER_NODE) cout << "Performing volume interpolation." << endl;
   vector<unsigned long> pointsFailed;
-  VolumeInterpolationSolution(geometry_src, solver_src, solver_dst, coorDstCorrected, pointsFailed);
+  VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDstCorrected, pointsFailed);
 
   /*--- Carry out a surface interpolation, via a minimum distance search,       */
   /*    for the points that could not be interpolated via the regular volume    */
@@ -80,22 +75,15 @@ void CLinearVolumeInterpolator::InterpolateSolution(const CConfig* config, CGeom
       cout << "A minimum distance search to the boundary of the domain is used for these points. " << endl;
     }
     unsigned long nPointsBeforeSurface = pointsFailed.size();
-    SurfaceInterpolationSolution(geometry_src, solver_src, solver_dst, coorDst, pointsFailed);
+    SurfaceInterpolation(geometry_src, solver_src, solver_dst, coorDst, pointsFailed);
   }
 }
 
-void CLinearVolumeInterpolator::VolumeInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                                            const vector<su2double>& coor_corrected, vector<unsigned long>& pointsFailed) {
-  /*--- Step 1: Build the volume ADT for element searching ---*/
-  if (rank == MASTER_NODE) cout << "Building volume ADT." << flush;
+void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
+                                                    const vector<su2double>& coor_corrected, vector<unsigned long>& pointsFailed) {
+  CADTElemClass& volumeADT = GetSourceVolumeADT();
 
-  unique_ptr<CADTElemClass> volumeADT_ptr = BuildVolumeADT(geometry_src);
-  CADTElemClass& volumeADT = *volumeADT_ptr;
-
-  if (rank == MASTER_NODE) cout << " Done." << endl;
-
-  /*--- Step 2: Search for donor elements for the given coordinates ---*/
-  const unsigned short nDim = geometry_src->GetnDim();
+  /*--- Step 1: Search for donor elements for the given coordinates ---*/
   const unsigned long nDOFsDst = coor_corrected.size() / nDim;
   const unsigned short nVar = solver_src->GetnVar();
 
@@ -142,8 +130,8 @@ void CLinearVolumeInterpolator::VolumeInterpolationSolution(CGeometry* geometry_
   }
 }
 
-void CLinearVolumeInterpolator::SurfaceInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                                             const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed) {
+void CLinearVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
+                                                     const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed) {
   if (pointsFailed.empty()) return;
 
   /*--- Step 1: Build the surface ADT for minimum distance search ---*/
@@ -151,7 +139,6 @@ void CLinearVolumeInterpolator::SurfaceInterpolationSolution(CGeometry* geometry
     cout << "Building surface ADT for minimum distance search." << flush;
   }
 
-  const unsigned short nDim = geometry_src->GetnDim();
   const unsigned short nVar = solver_src->GetnVar();
 
   /*--- Build surface ADT using existing function ---*/

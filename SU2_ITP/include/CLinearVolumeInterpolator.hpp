@@ -59,12 +59,12 @@ class CLinearVolumeInterpolator : public CVolumeInterpolator {
                      CSolver* solver_src, CSolver* solver_dst) override;
 
   private:
-    void InterpolateSolution(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,
+    void LinearInterpolation(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,
                              CSolver* solver_src, CSolver* solver_dst);
 
-    void VolumeInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                     const vector<su2double> &coor_corrected, vector<unsigned long> &pointsFailed);
+    void VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
+                             const vector<su2double> &coor_corrected, vector<unsigned long> &pointsFailed);
 
-    void SurfaceInterpolationSolution(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                      const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed);
+    void SurfaceInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
+                              const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed);
 };

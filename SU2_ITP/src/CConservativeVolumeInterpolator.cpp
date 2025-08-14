@@ -34,9 +34,15 @@ CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICom
 void CConservativeVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                                   CSolver* solver_src, CSolver* solver_dst) {
   if (rank == MASTER_NODE) {
-    cout << endl << "----------------------- Conservative Interpolation ----------------------" << endl;
-    cout << "Performing conservative solution interpolation using Alauzet 2010 method..." << endl;
+    cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
+    cout << "Performing conservative solution interpolation from source mesh to destination mesh..." << endl;
+    cout << "Source mesh: " << geometry_src->GetGlobal_nPointDomain() << " points, ";
+    cout << geometry_src->GetGlobal_nElemDomain() << " elements" << endl;
+    cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points" << endl;
   }
+
+  /*--- Build the ADTs ---*/
+  InitializeADTs(config, geometry_src, geometry_dst);
 
   /*--- Call the conservative interpolation method ---*/
   ConservativeInterpolation(geometry_src, geometry_dst, solver_src, solver_dst);
@@ -44,9 +50,5 @@ void CConservativeVolumeInterpolator::Interpolate(const CConfig* config, CGeomet
 
 void CConservativeVolumeInterpolator::ConservativeInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst,
                                                                 CSolver* solver_src, CSolver* solver_dst) {
-  if (rank == MASTER_NODE) {
-    cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
-    cout << "Performing linear solution interpolation from source mesh to destination mesh..." << endl;
-  }
 
 }
