@@ -351,6 +351,18 @@ static const MapType<std::string, INTERFACE_INTERPOLATOR> Interpolator_Map = {
 };
 
 /*!
+ * \brief Types of volume interpolators
+ */
+enum class VOLUME_INTERPOLATOR {
+  LINEAR,        /*!< \brief Linear interpolation */
+  CONSERVATIVE,  /*!< \brief Conservative interpolation (Alauzet 2015) */
+};
+static const MapType<std::string, VOLUME_INTERPOLATOR> Volume_Interpolator_Map = {
+  MakePair("LINEAR", VOLUME_INTERPOLATOR::LINEAR)
+  MakePair("CONSERVATIVE", VOLUME_INTERPOLATOR::CONSERVATIVE)
+};
+
+/*!
  * \brief Types of radial basis functions
  */
 enum class RADIAL_BASIS {

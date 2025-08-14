@@ -146,6 +146,29 @@ void CVolumeInterpolator::InitializeGeometry(CConfig* config, CGeometry*& geomet
     DGMesh->CreateFaces(config);
   }
 
+  /*--- If we have any periodic markers in this calculation, we must
+       match the periodic points found on both sides of the periodic BC.
+       Note that the current implementation requires a 1-to-1 matching of
+       periodic points on the pair of periodic faces after the translation
+       or rotation is taken into account. ---*/
+
+  if ((config->GetnMarker_Periodic() != 0) && !fem_solver) {
+    /*--- Note that we loop over pairs of periodic markers individually
+          so that repeated nodes on adjacent periodic faces are properly
+          accounted for in multiple places. ---*/
+
+    for (unsigned short iPeriodic = 1; iPeriodic <= config->GetnMarker_Periodic()/2; iPeriodic++) {
+      geometry->MatchPeriodic(config, iPeriodic);
+    }
+
+    /*--- For Streamwise Periodic flow, find a unique reference node on the dedicated inlet marker. ---*/
+    if (config->GetKind_Streamwise_Periodic() != ENUM_STREAMWISE_PERIODIC::NONE)
+      geometry->FindUniqueNode_PeriodicBound(config);
+
+    /*--- Initialize the communication framework for the periodic BCs. ---*/
+    geometry->PreprocessPeriodicComms(geometry, config);
+  }
+
   if (isSource) {
     nPoint_src = geometry->GetnPoint();
     nElem_src = geometry->GetnElem();
@@ -156,6 +179,59 @@ void CVolumeInterpolator::InitializeGeometry(CConfig* config, CGeometry*& geomet
 
   if (nDim != 0) assert(geometry->GetnDim() == nDim);
   else nDim = geometry->GetnDim();
+}
+
+void CVolumeInterpolator::InitializeSolver(CConfig* config, CGeometry* geometry, CSolver**& solver_container, int iZone,
+                                           int iInst, int nZone) {
+  switch (config->GetKindVolumeInterpolation()) {
+    case VOLUME_INTERPOLATOR::LINEAR: {
+      /*--- Initialize a baseline solver ---*/
+      solver_container = new CSolver*[MAX_SOLS]();
+      solver_container[FLOW_SOL] = new CBaselineSolver(geometry, config);
+      break;
+    }
+    case VOLUME_INTERPOLATOR::CONSERVATIVE: {
+      /*--- Only interpolating the conserved quantities, so initialize specific solvers ---*/
+      MAIN_SOLVER kindSolver = config->GetKind_Solver();
+      solver_container = CSolverFactory::CreateSolverContainer(kindSolver, config, geometry, 0);
+      break;
+    }
+    default:
+      SU2_MPI::Error("Volume interpolator not supported", CURRENT_FUNCTION);
+  }
+
+}
+
+void CVolumeInterpolator::InitializeOutput(CConfig* config, CGeometry* geometry, CSolver** solver_container, COutput*& output,
+                                           int iZone, int iInst, int nZone) {
+  switch (config->GetKindVolumeInterpolation()) {
+    case VOLUME_INTERPOLATOR::LINEAR: {
+      /*--- Initialize a baseline output ---*/
+      output = new CBaselineOutput(config, geometry->GetnDim(), solver_container[FLOW_SOL]);
+      break;
+    }
+    case VOLUME_INTERPOLATOR::CONSERVATIVE: {
+      /*--- Solver-specific output ---*/
+      MAIN_SOLVER kindSolver = config->GetKind_Solver();
+      output = COutputFactory::CreateOutput(kindSolver, config, geometry->GetnDim());
+      break;
+    }
+    default:
+      SU2_MPI::Error("Volume interpolator not supported", CURRENT_FUNCTION);
+  }
+
+  output->PreprocessVolumeOutput(config);
+  output->PreprocessHistoryOutput(config, false);
+
+}
+
+void CVolumeInterpolator::LoadRestarts(CConfig* config, CGeometry** geometry_container, CSolver*** solver_container, int iZone,
+                                       int iInst, int TimeIter, bool UpdateGeo) {
+  for (auto iSol = 0u; iSol < MAX_SOLS; iSol++) {
+    auto solver = solver_container[iInst][iSol];
+    if (solver)
+      solver->LoadRestart(geometry_container, solver_container, config, TimeIter, UpdateGeo);
+  }
 }
 
 void CVolumeInterpolator::InitializeADTs(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst, bool update) {

@@ -32,7 +32,7 @@ CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICom
     : CVolumeInterpolator(MPICommunicator) { }
 
 void CConservativeVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                                  CSolver* solver_src, CSolver* solver_dst) {
+                                                  CSolver** solver_container_src, CSolver** solver_container_dst) {
   if (rank == MASTER_NODE) {
     cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
     cout << "Performing conservative solution interpolation from source mesh to destination mesh..." << endl;
@@ -45,12 +45,12 @@ void CConservativeVolumeInterpolator::Interpolate(const CConfig* config, CGeomet
   InitializeADTs(config, geometry_src, geometry_dst);
 
   /*--- Call the conservative interpolation method ---*/
-  ConservativeInterpolation(geometry_src, geometry_dst, solver_src, solver_dst);
-}
-
-void CConservativeVolumeInterpolator::InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
-                                                       int iInst, int nZone) {
-
+  for (auto iSol = 0u; iSol < MAX_SOLS; iSol++) {
+    auto solver_src = solver_container_src[iSol];
+    auto solver_dst = solver_container_dst[iSol];
+    if (solver_src && solver_dst)
+      ConservativeInterpolation(geometry_src, geometry_dst, solver_src, solver_dst);
+  }
 }
 
 void CConservativeVolumeInterpolator::ConservativeInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst,

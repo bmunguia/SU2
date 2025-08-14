@@ -43,17 +43,17 @@ int main(int argc, char* argv[]) {
 
   /*--- Pointer to different structures that will be used throughout the entire code ---*/
 
-  COutput** output = nullptr;
-  CGeometry*** geometry_src = nullptr;
-  CGeometry*** geometry_dst = nullptr;
-  CSolver*** solver_src = nullptr;
-  CSolver*** solver_dst = nullptr;
-  CSolver*** solver_ref = nullptr;
+  CConfig* driver_config = nullptr;
   CConfig** config_src = nullptr;
   CConfig** config_dst = nullptr;
   CConfig** config_ref = nullptr;
-  CConfig* driver_config = nullptr;
+  CGeometry*** geometry_src = nullptr;
+  CGeometry*** geometry_dst = nullptr;
+  CSolver**** solver_src = nullptr;
+  CSolver**** solver_dst = nullptr;
+  CSolver**** solver_ref = nullptr;
   CVolumeInterpolator** interpolator = nullptr;
+  COutput** output = nullptr;
   unsigned short* nInst = nullptr;
 
   /*--- Load in the number of zones and spatial dimensions in the mesh file (if no config
@@ -72,18 +72,18 @@ int main(int argc, char* argv[]) {
 
   /*--- Definition of the containers per zones ---*/
 
-  solver_src = new CSolver**[nZone]();
-  solver_dst = new CSolver**[nZone]();
-  solver_ref = new CSolver**[nZone]();
+  driver_config = nullptr;
   config_src = new CConfig*[nZone]();
   config_dst = new CConfig*[nZone]();
   config_ref = new CConfig*[nZone]();
   geometry_src = new CGeometry**[nZone]();
   geometry_dst = new CGeometry**[nZone]();
+  solver_src = new CSolver***[nZone]();
+  solver_dst = new CSolver***[nZone]();
+  solver_ref = new CSolver***[nZone]();
   interpolator = new CVolumeInterpolator*[nZone]();
-  nInst = new unsigned short[nZone];
-  driver_config = nullptr;
   output = new COutput*[nZone]();
+  nInst = new unsigned short[nZone];
 
   for (iZone = 0; iZone < nZone; iZone++) {
     nInst[iZone] = 1;
@@ -133,18 +133,11 @@ int main(int argc, char* argv[]) {
 
   /*--- Allocate geometries and solvers ---*/
   for (iZone = 0; iZone < nZone; iZone++) {
-    geometry_src[iZone] = new CGeometry*[nInst[iZone]];
-    geometry_dst[iZone] = new CGeometry*[nInst[iZone]];
-    solver_src[iZone] = new CSolver*[nInst[iZone]];
-    solver_dst[iZone] = new CSolver*[nInst[iZone]];
-    solver_ref[iZone] = new CSolver*[nInst[iZone]];
-    for (iInst = 0; iInst < nInst[iZone]; iInst++) {
-      geometry_src[iZone][iInst] = nullptr;
-      geometry_dst[iZone][iInst] = nullptr;
-      solver_src[iZone][iInst] = nullptr;
-      solver_dst[iZone][iInst] = nullptr;
-      solver_ref[iZone][iInst] = nullptr;
-    }
+    geometry_src[iZone] = new CGeometry*[nInst[iZone]]();
+    geometry_dst[iZone] = new CGeometry*[nInst[iZone]]();
+    solver_src[iZone] = new CSolver**[nInst[iZone]]();
+    solver_dst[iZone] = new CSolver**[nInst[iZone]]();
+    solver_ref[iZone] = new CSolver**[nInst[iZone]]();
   }
 
   /*--- Read the geometry for each zone ---*/
@@ -215,46 +208,42 @@ int main(int argc, char* argv[]) {
           if (!SolutionInstantiated[iZone]) {
             /*--- Initialize the solution classes ---*/
             interpolator[iZone]->InitializeSolver(config_src[iZone], geometry_src[iZone][INST_0], solver_src[iZone][INST_0],
-                                                  iZone, iInst, nZone);
+                                                  iZone, INST_0, nZone);
             interpolator[iZone]->InitializeSolver(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
-                                                  iZone, iInst, nZone);
+                                                  iZone, INST_0, nZone);
             interpolator[iZone]->InitializeSolver(config_ref[iZone], geometry_dst[iZone][INST_0], solver_ref[iZone][INST_0],
-                                                  iZone, iInst, nZone);
+                                                  iZone, INST_0, nZone);
 
             /*--- Initialize and preprocess the output ---*/
-            output[iZone] = new CBaselineOutput(config_dst[iZone], geometry_dst[iZone][INST_0]->GetnDim(),
-                                                solver_dst[iZone][INST_0]);
-            output[iZone]->PreprocessVolumeOutput(config_dst[iZone]);
-            output[iZone]->PreprocessHistoryOutput(config_dst[iZone], false);
+            interpolator[iZone]->InitializeOutput(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
+                                                  output[iZone], iZone, INST_0, nZone);
 
             SolutionInstantiated[iZone] = true;
           }
 
           /*--- Load the solution on the source mesh ---*/
-          solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone],
-                                                 TimeIter, true);
+          interpolator[iZone]->LoadRestarts(config_src[iZone], geometry_src[iZone], solver_src[iZone], iZone, INST_0, TimeIter, true);
 
           /*--- Interpolate the solution ---*/
           interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
                                            solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
 
           /*--- Load the reference solution on the destination mesh ---*/
-          solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
-                                                 TimeIter, true);
+          interpolator[iZone]->LoadRestarts(config_ref[iZone], geometry_dst[iZone], solver_ref[iZone], iZone, INST_0, TimeIter, true);
 
           /*--- Get the correct field index ---*/
           if (rank == MASTER_NODE) {
             cout << endl << "---------------------------- Error Estimation ---------------------------" << endl;
             cout << "Calculating L" << config_ref[iZone] ->GetMetric_Norm() << "-norm error in sensor..." << endl;
           }
-          int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0]);
+          int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0][FLOW_SOL]);
           if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldDst << " in interpolated solution." << endl;
-          int iFieldRef = GetSensorFieldIndex(config_ref[iZone], solver_ref[iZone][INST_0]);
+          int iFieldRef = GetSensorFieldIndex(config_ref[iZone], solver_ref[iZone][INST_0][FLOW_SOL]);
           if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldRef << " in reference solution." << endl;
 
           /*--- Estimate the error ---*/
           su2double sensor_error = EstimateFieldError(config_ref[iZone], geometry_dst[iZone][INST_0],
-                                                      solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                                      solver_dst[iZone][INST_0][FLOW_SOL], solver_ref[iZone][INST_0][FLOW_SOL],
                                                       iFieldDst, iFieldRef);
 
           /*--- Add to the vector to be output ---*/
@@ -272,7 +261,7 @@ int main(int argc, char* argv[]) {
         if (rank == MASTER_NODE) cout << "Writing the volume solution for time step " << TimeIter << "." << endl;
 
         for (iZone = 0; iZone < nZone; iZone++) {
-          interpolator[iZone]->WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0],
+          interpolator[iZone]->WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
                                           output[iZone], TimeIter);
         }
       }
@@ -295,43 +284,40 @@ int main(int argc, char* argv[]) {
 
       /*--- Initialize the solution classes ---*/
       interpolator[iZone]->InitializeSolver(config_src[iZone], geometry_src[iZone][INST_0], solver_src[iZone][INST_0],
-                                            iZone, iInst, nZone);
+                                            iZone, INST_0, nZone);
       interpolator[iZone]->InitializeSolver(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
-                                            iZone, iInst, nZone);
+                                            iZone, INST_0, nZone);
       interpolator[iZone]->InitializeSolver(config_ref[iZone], geometry_dst[iZone][INST_0], solver_ref[iZone][INST_0],
-                                            iZone, iInst, nZone);
+                                            iZone, INST_0, nZone);
 
       /*--- Initialize and preprocess the output ---*/
-      output[iZone] =
-          new CBaselineOutput(config_dst[iZone], geometry_dst[iZone][INST_0]->GetnDim(), solver_dst[iZone][INST_0]);
-      output[iZone]->PreprocessVolumeOutput(config_dst[iZone]);
-      output[iZone]->PreprocessHistoryOutput(config_dst[iZone], false);
+      interpolator[iZone]->InitializeOutput(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
+                                            output[iZone], iZone, INST_0, nZone);
 
       /*--- Load the solution on the source mesh ---*/
-      solver_src[iZone][INST_0]->LoadRestart(geometry_src[iZone], &solver_src[iZone], config_src[iZone],
-                                             0, true);
+      interpolator[iZone]->LoadRestarts(config_src[iZone], geometry_src[iZone], solver_src[iZone], iZone, INST_0, 0, true);
 
       /*--- Interpolate the solution ---*/
       interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
                                        solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
 
       /*--- Load the reference solution on the destination mesh ---*/
-      solver_ref[iZone][INST_0]->LoadRestart(geometry_dst[iZone], &solver_ref[iZone], config_ref[iZone],
-                                             0, true);
+
+      interpolator[iZone]->LoadRestarts(config_ref[iZone], geometry_dst[iZone], solver_ref[iZone], iZone, INST_0, 0, true);
 
       /*--- Get the correct field index ---*/
       if (rank == MASTER_NODE) {
         cout << endl << "---------------------------- Error Estimation ---------------------------" << endl;
         cout << "Calculating L" << config_ref[iZone] ->GetMetric_Norm() << "-norm error in sensor..." << endl;
       }
-      int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0]);
+      int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0][FLOW_SOL]);
       if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldDst << " in interpolated solution." << endl;
-      int iFieldRef = GetSensorFieldIndex(config_ref[iZone], solver_ref[iZone][INST_0]);
+      int iFieldRef = GetSensorFieldIndex(config_ref[iZone], solver_ref[iZone][INST_0][FLOW_SOL]);
       if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldRef << " in reference solution." << endl;
 
       /*--- Estimate the error ---*/
       su2double sensor_error = EstimateFieldError(config_ref[iZone], geometry_dst[iZone][INST_0],
-                                                  solver_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                                  solver_dst[iZone][INST_0][FLOW_SOL], solver_ref[iZone][INST_0][FLOW_SOL],
                                                   iFieldDst, iFieldRef);
 
       /*--- Add to the output data ---*/
@@ -346,7 +332,7 @@ int main(int argc, char* argv[]) {
       }
     }
     for (iZone = 0; iZone < nZone; iZone++) {
-      interpolator[iZone]->WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], &solver_dst[iZone][INST_0],
+      interpolator[iZone]->WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
                                       output[iZone], 0);
     }
   }
@@ -419,6 +405,11 @@ int main(int argc, char* argv[]) {
     for (iZone = 0; iZone < nZone; iZone++) {
       for (iInst = 0; iInst < nInst[iZone]; iInst++) {
         if (solver_src[iZone][iInst] != nullptr) {
+          for (auto iSol = 0u; iSol < MAX_SOLS; iSol++) {
+            if (solver_src[iZone][iInst][iSol] != nullptr) {
+              delete solver_src[iZone][iInst][iSol];
+            }
+          }
           delete solver_src[iZone][iInst];
         }
       }
@@ -430,6 +421,11 @@ int main(int argc, char* argv[]) {
     for (iZone = 0; iZone < nZone; iZone++) {
       for (iInst = 0; iInst < nInst[iZone]; iInst++) {
         if (solver_dst[iZone][iInst] != nullptr) {
+          for (auto iSol = 0u; iSol < MAX_SOLS; iSol++) {
+            if (solver_dst[iZone][iInst][iSol] != nullptr) {
+              delete solver_dst[iZone][iInst][iSol];
+            }
+          }
           delete solver_dst[iZone][iInst];
         }
       }
@@ -441,6 +437,11 @@ int main(int argc, char* argv[]) {
     for (iZone = 0; iZone < nZone; iZone++) {
       for (iInst = 0; iInst < nInst[iZone]; iInst++) {
         if (solver_ref[iZone][iInst] != nullptr) {
+          for (auto iSol = 0u; iSol < MAX_SOLS; iSol++) {
+            if (solver_ref[iZone][iInst][iSol] != nullptr) {
+              delete solver_ref[iZone][iInst][iSol];
+            }
+          }
           delete solver_ref[iZone][iInst];
         }
       }

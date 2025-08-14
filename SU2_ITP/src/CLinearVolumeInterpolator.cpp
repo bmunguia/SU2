@@ -31,13 +31,8 @@
 CLinearVolumeInterpolator::CLinearVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) { }
 
-void CLinearVolumeInterpolator::InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
-                                                 int iInst, int nZone) {
-  solver = new CBaselineSolver(geometry, config);
-}
-
 void CLinearVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                            CSolver* solver_src, CSolver* solver_dst) {
+                                            CSolver** solver_container_src, CSolver** solver_container_dst) {
   if (rank == MASTER_NODE) {
     cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
     cout << "Performing linear solution interpolation from source mesh to destination mesh..." << endl;
@@ -50,7 +45,7 @@ void CLinearVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* ge
   InitializeADTs(config, geometry_src, geometry_dst);
 
   /*--- Call the internal interpolation method ---*/
-  LinearInterpolation(config, geometry_src, geometry_dst, solver_src, solver_dst);
+  LinearInterpolation(config, geometry_src, geometry_dst, solver_container_src[FLOW_SOL], solver_container_dst[FLOW_SOL]);
 }
 
 void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,

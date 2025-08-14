@@ -3038,6 +3038,12 @@ void CConfig::SetConfig_Options() {
   /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
   addPythonOption("METRIC_HGRAD");
 
+  /*!\par KIND_VOLUME_INTERPOLATION \n
+   * DESCRIPTION: Type of interpolation to use for solution transfer between meshes. \n OPTIONS: see \link Volume_Interpolator_Map \endlink
+   * Sets Kind_Volume_Interpolation \ingroup Config
+   */
+  addEnumOption("KIND_VOLUME_INTERPOLATION", Kind_Volume_Interpolation, Volume_Interpolator_Map, VOLUME_INTERPOLATOR::LINEAR);
+
   /*!\brief ADAPT_ITER \n DESCRIPTION: Mesh adaptation iterations */
   addPythonOption("ADAPT_ITER");
   /*!\brief ADAPT_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */

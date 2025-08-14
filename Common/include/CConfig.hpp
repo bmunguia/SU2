@@ -1043,6 +1043,7 @@ private:
   Relaxation;                             /*!< \brief Determines whether a relaxation step is used. */
   unsigned short Pred_Order;              /*!< \brief Order of the predictor for FSI applications. */
   INTERFACE_INTERPOLATOR Kind_Interpolation; /*!< \brief type of interpolation to use for FSI applications. */
+  VOLUME_INTERPOLATOR Kind_Volume_Interpolation; /*!< \brief type of interpolation to use for solution transfer between meshes. */
   bool ConservativeInterpolation;            /*!< \brief Conservative approach for non matching mesh interpolation. */
   unsigned short NumNearestNeighbors;        /*!< \brief Number of neighbors used for Nearest Neighbor interpolation. */
   RADIAL_BASIS Kind_RadialBasisFunction;     /*!< \brief type of radial basis function to use for radial basis FSI. */
@@ -9179,6 +9180,11 @@ public:
    * \brief Get the interpolation method used for matching between zones.
    */
   INTERFACE_INTERPOLATOR GetKindInterpolation(void) const { return Kind_Interpolation; }
+
+  /*!
+   * \brief Get the interpolation method used for solution transfer between meshes.
+   */
+  VOLUME_INTERPOLATOR GetKindVolumeInterpolation(void) const { return Kind_Volume_Interpolation; }
 
   /*!
    * \brief Get option of whether to use conservative interpolation between zones.

@@ -34,7 +34,9 @@
 
 #include "../../SU2_CFD/include/solvers/CBaselineSolver.hpp"
 #include "../../SU2_CFD/include/solvers/CBaselineSolver_FEM.hpp"
+#include "../../SU2_CFD/include/solvers/CSolverFactory.hpp"
 #include "../../SU2_CFD/include/output/CBaselineOutput.hpp"
+#include "../../SU2_CFD/include/output/COutputFactory.hpp"
 #include "../../Common/include/geometry/CPhysicalGeometry.hpp"
 #include "../../Common/include/adt/CADTElemClass.hpp"
 #include "../../Common/include/CConfig.hpp"
@@ -81,8 +83,14 @@ class CVolumeInterpolator {
     void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iInst,
                             int nZone, bool isSource);
 
-    virtual void InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
-                                  int iInst, int nZone) = 0;
+    void InitializeSolver(CConfig* config, CGeometry* geometry, CSolver**& solver_container, int iZone,
+                          int iInst, int nZone);
+
+    void InitializeOutput(CConfig* config, CGeometry* geometry, CSolver** solver_container, COutput*& output,
+                          int iZone, int iInst, int nZone);
+
+    void LoadRestarts(CConfig* config, CGeometry** geometry_container, CSolver*** solver_container, int iZone,
+                      int iInst, int TimeIter, bool UpdateGeo);
 
   protected:
     /*!
@@ -137,11 +145,11 @@ class CVolumeInterpolator {
      * \param[in] config - Configuration object
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] solver_src - Source mesh solver
-     * \param[in] solver_dst - Destination mesh solver
+     * \param[in] solver_container_src - Source mesh solver
+     * \param[in] solver_container_dst - Destination mesh solver
      */
     virtual void Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                             CSolver* solver_src, CSolver* solver_dst) = 0;
+                             CSolver** solver_container_src, CSolver** solver_container_dst) = 0;
 
   protected:
     virtual void LinearInterpolation(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,

@@ -47,19 +47,16 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      */
     ~CConservativeVolumeInterpolator() override = default;
 
-    void InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
-                          int iInst, int nZone);
-
     /*!
      * \brief Main interpolation routine using conservative interpolation.
      * \param[in] config - Configuration object
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] solver_src - Source mesh solver
-     * \param[in] solver_dst - Destination mesh solver
+     * \param[in] solver_container_src - Source mesh solver
+     * \param[in] solver_container_dst - Destination mesh solver
      */
     void Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                     CSolver* solver_src, CSolver* solver_dst) override;
+                     CSolver** solver_container_src, CSolver** solver_container_dst) override;
 
   private:
     /*!
