@@ -74,17 +74,6 @@ class CVolumeInterpolator {
      */
     virtual ~CVolumeInterpolator() = default;
 
-    /*!
-     * \brief Main interpolation routine - pure virtual function.
-     * \param[in] config - Configuration object
-     * \param[in] geometry_src - Source mesh geometry
-     * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] solver_src - Source mesh solver
-     * \param[in] solver_dst - Destination mesh solver
-     */
-    virtual void Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                             CSolver* solver_src, CSolver* solver_dst) = 0;
-
     void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name,
                           char* config_file_name, SU2_COMPONENT val_software, int iZone, int nZone,
                           SU2_MPI::Comm MPICommunicator, bool isSource);
@@ -92,8 +81,8 @@ class CVolumeInterpolator {
     void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iInst,
                             int nZone, bool isSource);
 
-    void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container,
-                    COutput* output, unsigned long TimeIter);
+    virtual void InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
+                                  int iInst, int nZone) = 0;
 
   protected:
     /*!
@@ -142,6 +131,19 @@ class CVolumeInterpolator {
       return *dstSurfaceADT_ptr;
     }
 
+  public:
+    /*!
+     * \brief Main interpolation routine - pure virtual function.
+     * \param[in] config - Configuration object
+     * \param[in] geometry_src - Source mesh geometry
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_src - Source mesh solver
+     * \param[in] solver_dst - Destination mesh solver
+     */
+    virtual void Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
+                             CSolver* solver_src, CSolver* solver_dst) = 0;
+
+  protected:
     virtual void LinearInterpolation(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                      CSolver* solver_src, CSolver* solver_dst) { }
 
@@ -170,4 +172,8 @@ class CVolumeInterpolator {
     void ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                   const unsigned short nDim, const vector<su2double> &coor_dst,
                                   vector<su2double> &coor_corrected);
+
+  public:
+    void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container,
+                    COutput* output, unsigned long TimeIter);
 };

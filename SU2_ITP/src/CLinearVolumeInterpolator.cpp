@@ -31,6 +31,11 @@
 CLinearVolumeInterpolator::CLinearVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) { }
 
+void CLinearVolumeInterpolator::InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
+                                                 int iInst, int nZone) {
+  solver = new CBaselineSolver(geometry, config);
+}
+
 void CLinearVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                             CSolver* solver_src, CSolver* solver_dst) {
   if (rank == MASTER_NODE) {

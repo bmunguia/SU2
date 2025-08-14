@@ -48,6 +48,11 @@ void CConservativeVolumeInterpolator::Interpolate(const CConfig* config, CGeomet
   ConservativeInterpolation(geometry_src, geometry_dst, solver_src, solver_dst);
 }
 
+void CConservativeVolumeInterpolator::InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
+                                                       int iInst, int nZone) {
+
+}
+
 void CConservativeVolumeInterpolator::ConservativeInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst,
                                                                 CSolver* solver_src, CSolver* solver_dst) {
 

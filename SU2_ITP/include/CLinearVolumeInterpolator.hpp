@@ -47,6 +47,9 @@ class CLinearVolumeInterpolator : public CVolumeInterpolator {
      */
     ~CLinearVolumeInterpolator() override = default;
 
+    void InitializeSolver(CConfig* config, CGeometry* geometry, CSolver*& solver, int iZone,
+                          int iInst, int nZone);
+
     /*!
      * \brief Main interpolation routine using linear interpolation.
      * \param[in] config - Configuration object

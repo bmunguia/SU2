@@ -214,9 +214,12 @@ int main(int argc, char* argv[]) {
           /*--- Either instantiate the solution class or load a restart file. ---*/
           if (!SolutionInstantiated[iZone]) {
             /*--- Initialize the solution classes ---*/
-            solver_src[iZone][INST_0] = new CBaselineSolver(geometry_src[iZone][INST_0], config_src[iZone]);
-            solver_dst[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_dst[iZone]);
-            solver_ref[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_ref[iZone]);
+            interpolator[iZone]->InitializeSolver(config_src[iZone], geometry_src[iZone][INST_0], solver_src[iZone][INST_0],
+                                                  iZone, iInst, nZone);
+            interpolator[iZone]->InitializeSolver(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
+                                                  iZone, iInst, nZone);
+            interpolator[iZone]->InitializeSolver(config_ref[iZone], geometry_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                                  iZone, iInst, nZone);
 
             /*--- Initialize and preprocess the output ---*/
             output[iZone] = new CBaselineOutput(config_dst[iZone], geometry_dst[iZone][INST_0]->GetnDim(),
@@ -291,9 +294,12 @@ int main(int argc, char* argv[]) {
       config_ref[iZone]->SetiInst(INST_0);
 
       /*--- Initialize the solution classes ---*/
-      solver_src[iZone][INST_0] = new CBaselineSolver(geometry_src[iZone][INST_0], config_src[iZone]);
-      solver_dst[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_dst[iZone]);
-      solver_ref[iZone][INST_0] = new CBaselineSolver(geometry_dst[iZone][INST_0], config_ref[iZone]);
+      interpolator[iZone]->InitializeSolver(config_src[iZone], geometry_src[iZone][INST_0], solver_src[iZone][INST_0],
+                                            iZone, iInst, nZone);
+      interpolator[iZone]->InitializeSolver(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],
+                                            iZone, iInst, nZone);
+      interpolator[iZone]->InitializeSolver(config_ref[iZone], geometry_dst[iZone][INST_0], solver_ref[iZone][INST_0],
+                                            iZone, iInst, nZone);
 
       /*--- Initialize and preprocess the output ---*/
       output[iZone] =
