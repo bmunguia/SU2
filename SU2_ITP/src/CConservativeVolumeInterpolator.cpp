@@ -58,7 +58,9 @@ void CConservativeVolumeInterpolator::Interpolate(const CConfig* config, CGeomet
 
 void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                                                 CSolver* solver_src, CSolver* solver_dst) {
-  /*--- Step 1: Apply the curvature correction ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 1: Apply the curvature correction to the destination nodes    ---*/
+  /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
   vector<su2double> coorDst;
   vector<su2double> coorDstCorrected;
@@ -69,40 +71,60 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   }
   ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst, coorDstCorrected);
 
-  /*--- Step 2: Point localization ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 2: Localize destination nodes on the source mesh              ---*/
+  /*---         containingElems is a map from destination mesh nodes to    ---*/
+  /*---         containing elements on the source mesh, and pointsFailed   ---*/ 
+  /*---         is all the nodes for which no containing element was found ---*/
+  /*--------------------------------------------------------------------------*/
   vector<unsigned long> containingElems;
   vector<int> containingElemRanks;
   vector<unsigned long> pointsFailed;
-  PointLocalization(geometry_src, solver_src, solver_dst, coorDstCorrected, containingElems, containingElemRanks, pointsFailed);
+  PointLocalization(geometry_src, coorDstCorrected, containingElems, containingElemRanks, pointsFailed);
 
-  /*--- Step 3: Compute solution mass and gradient on source mesh ---*/
-  unsigned short nVar = solver_src->GetnVar();
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 3: Compute solution mass and gradient on source mesh          ---*/
+  /*--------------------------------------------------------------------------*/
   vector<vector<su2double> > srcElemMass(nElem_src, vector<su2double>(nVar, 0.0));
   vector<vector<su2double> > srcElemGrad(nElem_src, vector<su2double>(nVar * nDim, 0.0));
-  ComputeSolutionMass(geometry_src, solver_src, nVar, srcElemMass, srcElemGrad);
+  ComputeSolutionMass(geometry_src, solver_src, srcElemMass, srcElemGrad);
 
-  /*--- Step 4: Compute the intersection of elements K_dst with elements K_src it overlaps ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 4: Compute the intersection of elements K_dst with elements   ---*/
+  /*---         K_src it overlaps                                          ---*/
+  /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
   map<unsigned long, vector<unsigned long>> overlappingElements;
-  ComputeOverlappingElements(geometry_src, geometry_dst, overlappingElements, containingElems);
+  ComputeOverlappingElements(geometry_src, geometry_dst, containingElems, overlappingElements);
 
-  /*--- Step 5: Mesh the intersection polyhedron of each pair (K_dst, K_src_i) ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 5: Mesh the intersection polygon/polyhedron of each pair      ---*/ 
+  /*---         (K_dst, K_src_i)                                           ---*/
+  /*--------------------------------------------------------------------------*/
 
-  /*--- Step 6: Compute destination mesh mass and gradient using Gauss quadrature ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 6: Compute destination mesh mass and gradient using Gauss     ---*/
+  /*---         quadrature                                                 ---*/
+  /*--------------------------------------------------------------------------*/
 
-  /*--- Step 7: Correct the gradient to enforce the maximum principle ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 7: Correct the gradient to enforce the maximum principle      ---*/
+  /*--------------------------------------------------------------------------*/
 
-  /*--- Step 8: Perform averaging to get solution at vertices ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 8: Perform averaging to get solution at vertices.             ---*/
+  /*--------------------------------------------------------------------------*/
 }
 
-void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                                        const vector<su2double>& coor_corrected, vector<unsigned long>& containingElems,
-                                                        vector<int>& containingElemRanks, vector<unsigned long>& pointsFailed) {
+void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src, 
+                                                        const vector<su2double>& coor_corrected, 
+                                                        vector<unsigned long>& containingElems,
+                                                        vector<int>& containingElemRanks, 
+                                                        vector<unsigned long>& pointsFailed) {
   /*--- Search for containing elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
 
   const unsigned long nDOFsDst = coor_corrected.size() / nDim;
-  const unsigned short nVar = solver_src->GetnVar();
 
   /*--- Loop over the DOFs to be interpolated ---*/
   containingElems.clear();
@@ -140,10 +162,12 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeSolutionMass(CGeometry* geometry, CSolver* solver, unsigned short nVar,
+void CConservativeVolumeInterpolator::ComputeSolutionMass(CGeometry* geometry, 
+                                                          CSolver* solver,
                                                           vector<vector<su2double> >& elemMass,
                                                           vector<vector<su2double> >& elemGrad) {
 
+  const unsigned short nVar = solver_src->GetnVar();
   for (unsigned long elemID = 0; elemID < geometry->GetnElem(); ++elemID) {
       auto* elem = geometry->elem[elemID];
       unsigned short nNodes = elem->GetnNodes();
@@ -298,9 +322,10 @@ void CConservativeVolumeInterpolator::ComputeSolutionMass(CGeometry* geometry, C
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geometry_src, CGeometry* geometry_dst,
-                                                                 map<unsigned long, vector<unsigned long>>& overlappingElements,
-                                                                 const vector<unsigned long>& containingElems) {
+void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geometry_src, 
+                                                                 CGeometry* geometry_dst,
+                                                                 const vector<unsigned long>& containingElems,
+                                                                 map<unsigned long, vector<unsigned long>>& overlappingElements) {
   overlappingElements.clear();
 
   /*--- Only handle triangular elements for now ---*/
@@ -378,8 +403,8 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       vector<su2double> intersectionPoints;
       set<unsigned long> newCandidates;
 
-      if (TriangleTriangleIntersection(dstTri, srcTri, intersectionPoints,
-                                       geometry_src, srcElemID, newCandidates)) {
+      if (TriangleTriangleIntersection(geometry_src, srcTri, dstTri, srcElemID,
+                                       intersectionPoints, newCandidates)) {
         overlappingElements[dstElemID].push_back(srcElemID);
         totalOverlaps++;
 
@@ -399,9 +424,11 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
   }
 }
 
-bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(const su2double dstTri[6], const su2double srcTri[6],
+bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* geometry_src, 
+                                                                   const su2double dstTri[6], 
+                                                                   const su2double srcTri[6],
+                                                                   unsigned long srcElemID,
                                                                    vector<su2double>& intersectionPoints,
-                                                                   CGeometry* geometry_src, unsigned long srcElemID,
                                                                    set<unsigned long>& newCandidates) {
   intersectionPoints.clear();
   newCandidates.clear();
@@ -701,11 +728,13 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
       su2double overlapEnd = min(1.0, r_Q1);
 
       if (overlapStart <= overlapEnd + EPS) {
+        /*-------------------------------------------------------------------------------------------*/
         /*--- From Alauzet: "If all powers are zero, then the two edges are aligned. There is     ---*/
         /*--- intersection if and only if the edges overlap each other. There are two sub-cases:  ---*/
-        /*--- * one intersection point that is the common point of the two edges                  ---*/
-        /*--- * two intersection points that are the end-points of the edge included in the other ---*/
-        /*---   one or one end-point of each edge in the other case"                              ---*/
+        /*---   * one intersection point that is the common point of the two edges                ---*/
+        /*---   * two intersection points that are the end-points of the edge included in the     ---*/
+        /*---     other one or one end-point of each edge in the other case"                      ---*/
+        /*-------------------------------------------------------------------------------------------*/
 
         if (abs(overlapStart - overlapEnd) < EPS) {
           /*--- Single point intersection - common endpoint ---*/
@@ -751,8 +780,10 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
   return true;
 }
 
-void CConservativeVolumeInterpolator::AddEdgeNeighborToCandidates(CGeometry* geometry_src, unsigned long srcElemID,
-                                                                  unsigned short edgeIndex, set<unsigned long>& newCandidates) {
+void CConservativeVolumeInterpolator::AddEdgeNeighborToCandidates(CGeometry* geometry_src, 
+                                                                  const unsigned long srcElemID,
+                                                                  const unsigned short edgeIndex, 
+                                                                  set<unsigned long>& newCandidates) {
   /*--- Get the element ---*/
   auto* srcElem = geometry_src->elem[srcElemID];
 
@@ -774,8 +805,10 @@ void CConservativeVolumeInterpolator::AddEdgeNeighborToCandidates(CGeometry* geo
   }
 }
 
-void CConservativeVolumeInterpolator::AddVertexBallToCandidates(CGeometry* geometry_src, unsigned long srcElemID,
-                                                                unsigned short vertexIndex, set<unsigned long>& newCandidates) {
+void CConservativeVolumeInterpolator::AddVertexBallToCandidates(CGeometry* geometry_src, 
+                                                                const unsigned long srcElemID,
+                                                                const unsigned short vertexIndex, 
+                                                                set<unsigned long>& newCandidates) {
   /*--- Get the vertex node ID ---*/
   auto* srcElem = geometry_src->elem[srcElemID];
   unsigned long nodeID = srcElem->GetNode(vertexIndex);

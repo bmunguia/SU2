@@ -70,11 +70,29 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     void ConservativeInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                    CSolver* solver_src, CSolver* solver_dst);
 
-    void PointLocalization(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                           const vector<su2double>& coor_corrected, vector<unsigned long>& containingElems,
-                           vector<int>& containingElemRanks, vector<unsigned long>& pointsFailed);
+    /*!
+     * \brief Containment search.
+     * \param[in] geometry_src - Source mesh geometry
+     * \param[in] coor_corrected - Destination mesh coordinates after curvature correction
+     * \param[out] containingElems - Elements containing destination points
+     * \param[out] containingElemRanks - Ranks of elements containing destination points
+     * \param[out] pointsFailed - Nodes for which no containing element was found
+     */
+    void PointLocalization(CGeometry* geometry_src,
+                           const vector<su2double>& coor_corrected, 
+                           vector<unsigned long>& containingElems,
+                           vector<int>& containingElemRanks, 
+                           vector<unsigned long>& pointsFailed);
 
-    void ComputeSolutionMass(CGeometry* geometry, CSolver* solver, unsigned short nVar,
+    /*!
+     * \brief Compute the mass and gradient of the solution variables.
+     * \param[in] geometry - Mesh geometry
+     * \param[in] solver - Solver definition
+     * \param[out] elemMass - Mass at each element for each solution variable
+     * \param[out] elemGrad - Gradient at each element for each solution variable
+     */
+    void ComputeSolutionMass(CGeometry* geometry, 
+                             CSolver* solver,
                              vector<vector<su2double> >& elemMass,
                              vector<vector<su2double> >& elemGrad);
 
@@ -82,26 +100,29 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \brief Compute overlapping elements between source and destination meshes.
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
-     * \param[out] overlappingElements - Map from dst element ID to vector of overlapping src element IDs
      * \param[in] containingElems - Elements containing destination points (from point localization)
+     * \param[out] overlappingElements - Map from dst element ID to vector of overlapping src element IDs
      */
-    void ComputeOverlappingElements(CGeometry* geometry_src, CGeometry* geometry_dst,
-                                    map<unsigned long, vector<unsigned long>>& overlappingElements,
-                                    const vector<unsigned long>& containingElems);
+    void ComputeOverlappingElements(CGeometry* geometry_src, 
+                                    CGeometry* geometry_dst,
+                                    const vector<unsigned long>& containingElems,
+                                    map<unsigned long, vector<unsigned long>>& overlappingElements);
 
     /*!
-     * \brief Robust triangle-triangle intersection using Alauzet method.
-     * \param[in] dstTri - First triangle vertices (destination triangle)
-     * \param[in] srcTri - Second triangle vertices (source triangle)
-     * \param[out] intersectionPoints - Cloud of intersection points
+     * \brief Triangle-triangle intersection using Alauzet method (signed distance functions).
      * \param[in] geometry_src - Source mesh geometry (for neighbor detection)
+     * \param[in] srcTri - Second triangle vertices (source triangle)
+     * \param[in] dstTri - First triangle vertices (destination triangle)
      * \param[in] srcElemID - Source element ID
+     * \param[out] intersectionPoints - Cloud of intersection points
      * \param[out] newCandidates - New candidate elements detected during intersection
      * \return True if triangles intersect
      */
-    bool TriangleTriangleIntersection(const su2double dstTri[6], const su2double srcTri[6],
+    bool TriangleTriangleIntersection(CGeometry* geometry_src, 
+                                      const su2double dstTri[6], 
+                                      const su2double srcTri[6],
+                                      unsigned long srcElemID,
                                       vector<su2double>& intersectionPoints,
-                                      CGeometry* geometry_src, unsigned long srcElemID,
                                       set<unsigned long>& newCandidates);
 
     /*!
@@ -111,8 +132,10 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] edgeIndex - Local edge index (0, 1, or 2 for triangles)
      * \param[out] newCandidates - Set to add new candidates to
      */
-    void AddEdgeNeighborToCandidates(CGeometry* geometry_src, unsigned long srcElemID,
-                                     unsigned short edgeIndex, set<unsigned long>& newCandidates);
+    void AddEdgeNeighborToCandidates(CGeometry* geometry_src, 
+                                     unsigned long srcElemID,
+                                     unsigned short edgeIndex, 
+                                     set<unsigned long>& newCandidates);
 
     /*!
      * \brief Add vertex ball to candidate list when vertex is inside triangle.
@@ -121,8 +144,10 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] vertexIndex - Local vertex index (0, 1, or 2 for triangles)
      * \param[out] newCandidates - Set to add new candidates to
      */
-    void AddVertexBallToCandidates(CGeometry* geometry_src, unsigned long srcElemID,
-                                   unsigned short vertexIndex, set<unsigned long>& newCandidates);
+    void AddVertexBallToCandidates(CGeometry* geometry_src, 
+                                   unsigned long srcElemID,
+                                   unsigned short vertexIndex, 
+                                   set<unsigned long>& newCandidates);
 
     /*!
      * \brief Compute signed distance (power) of a point to a line.

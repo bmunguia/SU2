@@ -50,7 +50,9 @@ void CLinearVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* ge
 
 void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                                     CSolver* solver_src, CSolver* solver_dst) {
-  /*--- Step 1: Apply the curvature correction ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 1: Apply the curvature correction to the destination nodes    ---*/
+  /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
   vector<su2double> coorDst;
   vector<su2double> coorDstCorrected;
@@ -61,14 +63,19 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
   }
   ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst, coorDstCorrected);
 
-  /*--- Step 2: Volume interpolation ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 2: Volume interpolation, via a containment search             ---*/
+  /*--------------------------------------------------------------------------*/
+  
   if (rank == MASTER_NODE) cout << "Performing volume interpolation." << endl;
   vector<unsigned long> pointsFailed;
   VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDstCorrected, pointsFailed);
 
-  /*--- Step 3: Carry out a surface interpolation, via a minimum distance search, */
-  /*    for the points that could not be interpolated via the regular volume      */
-  /*    interpolation. Print a warning about this.                             ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 3: Carry out a surface interpolation, via a minimum distance  ---*/
+  /*---         search, for the points that could not be interpolated via  ---*/
+  /*---         the regular volume interpolation. Print a warning.         ---*/
+  /*--------------------------------------------------------------------------*/
   if (pointsFailed.size()) {
     if (rank == MASTER_NODE) {
       cout << pointsFailed.size() << " DOFs for which the containment search failed." << endl;
