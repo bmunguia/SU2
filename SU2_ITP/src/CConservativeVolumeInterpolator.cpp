@@ -74,7 +74,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--------------------------------------------------------------------------*/
   /*--- Step 2: Localize destination nodes on the source mesh              ---*/
   /*---         containingElems is a map from destination mesh nodes to    ---*/
-  /*---         containing elements on the source mesh, and pointsFailed   ---*/ 
+  /*---         containing elements on the source mesh, and pointsFailed   ---*/
   /*---         is all the nodes for which no containing element was found ---*/
   /*--------------------------------------------------------------------------*/
   vector<unsigned long> containingElems;
@@ -98,7 +98,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   ComputeOverlappingElements(geometry_src, geometry_dst, containingElems, overlappingElements);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 5: Mesh the intersection polygon/polyhedron of each pair      ---*/ 
+  /*--- Step 5: Mesh the intersection polygon/polyhedron of each pair      ---*/
   /*---         (K_dst, K_src_i)                                           ---*/
   /*--------------------------------------------------------------------------*/
 
@@ -116,10 +116,10 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--------------------------------------------------------------------------*/
 }
 
-void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src, 
-                                                        const vector<su2double>& coor_corrected, 
+void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
+                                                        const vector<su2double>& coor_corrected,
                                                         vector<unsigned long>& containingElems,
-                                                        vector<int>& containingElemRanks, 
+                                                        vector<int>& containingElemRanks,
                                                         vector<unsigned long>& pointsFailed) {
   /*--- Search for containing elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
@@ -162,7 +162,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeSolutionMass(CGeometry* geometry, 
+void CConservativeVolumeInterpolator::ComputeSolutionMass(CGeometry* geometry,
                                                           CSolver* solver,
                                                           vector<vector<su2double> >& elemMass,
                                                           vector<vector<su2double> >& elemGrad) {
@@ -322,7 +322,7 @@ void CConservativeVolumeInterpolator::ComputeSolutionMass(CGeometry* geometry,
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geometry_src, 
+void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geometry_src,
                                                                  CGeometry* geometry_dst,
                                                                  const vector<unsigned long>& containingElems,
                                                                  map<unsigned long, vector<unsigned long>>& overlappingElements) {
@@ -348,7 +348,10 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       continue;
     }
 
-    /*--- Step 1: Build initial list from elements K_src containing vertices of K_dst ---*/
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 1: Build initial list from elements K_src containing vertices ---*/
+    /*---         of K_dst                                                   ---*/
+    /*--------------------------------------------------------------------------*/
     set<unsigned long> candidateList;
 
     for (unsigned short iNode = 0; iNode < 3; ++iNode) {
@@ -370,7 +373,10 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       dstTri[iNode * 2 + 1] = geometry_dst->nodes->GetCoord(nodeID, 1);
     }
 
-    /*--- Step 2: Process candidate list, adding new elements during intersection ---*/
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 2: Process candidate list, adding new elements during         ---*/
+    /*---         intersection                                               ---*/
+    /*--------------------------------------------------------------------------*/
     set<unsigned long> processedElems;
     queue<unsigned long> toProcess;
 
@@ -424,8 +430,8 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
   }
 }
 
-bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* geometry_src, 
-                                                                   const su2double dstTri[6], 
+bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* geometry_src,
+                                                                   const su2double dstTri[6],
                                                                    const su2double srcTri[6],
                                                                    unsigned long srcElemID,
                                                                    vector<su2double>& intersectionPoints,
@@ -445,7 +451,9 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   su2double t1v1[2] = {srcTri[2], srcTri[3]};
   su2double t1v2[2] = {srcTri[4], srcTri[5]};
 
-  /*--- Step 1: Compute vertex powers (signed distances) ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 1: Compute vertex powers (signed distances)                   ---*/
+  /*--------------------------------------------------------------------------*/
   vector<su2double> cloudPoints;
 
   /*--- Powers of destination vertices w.r.t. source edges ---*/
@@ -525,56 +533,59 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   if (abs(power_t1v2_e12) < EPS) { cloudPoints.push_back(t1v2[0]); cloudPoints.push_back(t1v2[1]); }
   if (abs(power_t1v2_e20) < EPS) { cloudPoints.push_back(t1v2[0]); cloudPoints.push_back(t1v2[1]); }
 
-  /*--- Step 2: Check edge-edge intersections and add neighbors when intersected ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 2: Check edge-edge intersections and add neighbors when       ---*/
+  /*---         intersected                                                ---*/
+  /*--------------------------------------------------------------------------*/
   vector<su2double> edgeIntersections;
 
   /*--- Check all destination edges vs source edges ---*/
   if (LineSegmentIntersection(t0v0, t0v1, t1v0, t1v1, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 0, newCandidates); // edge 0-1
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 0, newCandidates); // edge 0-1
   }
   if (LineSegmentIntersection(t0v0, t0v1, t1v1, t1v2, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 1, newCandidates); // edge 1-2
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 1, newCandidates); // edge 1-2
   }
   if (LineSegmentIntersection(t0v0, t0v1, t1v2, t1v0, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 2, newCandidates); // edge 2-0
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 2, newCandidates); // edge 2-0
   }
 
   if (LineSegmentIntersection(t0v1, t0v2, t1v0, t1v1, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 0, newCandidates); // edge 0-1
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 0, newCandidates); // edge 0-1
   }
   if (LineSegmentIntersection(t0v1, t0v2, t1v1, t1v2, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 1, newCandidates); // edge 1-2
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 1, newCandidates); // edge 1-2
   }
   if (LineSegmentIntersection(t0v1, t0v2, t1v2, t1v0, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 2, newCandidates); // edge 2-0
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 2, newCandidates); // edge 2-0
   }
 
   if (LineSegmentIntersection(t0v2, t0v0, t1v0, t1v1, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 0, newCandidates); // edge 0-1
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 0, newCandidates); // edge 0-1
   }
   if (LineSegmentIntersection(t0v2, t0v0, t1v1, t1v2, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 1, newCandidates); // edge 1-2
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 1, newCandidates); // edge 1-2
   }
   if (LineSegmentIntersection(t0v2, t0v0, t1v2, t1v0, edgeIntersections)) {
     for (size_t i = 0; i < edgeIntersections.size(); ++i)
       cloudPoints.push_back(edgeIntersections[i]);
-    AddEdgeNeighborToCandidates(geometry_src, srcElemID, 2, newCandidates); // edge 2-0
+    AddFaceNeighborToCandidates(geometry_src, srcElemID, 2, newCandidates); // edge 2-0
   }
 
   /*--- Remove duplicate points ---*/
@@ -597,7 +608,9 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
     return numIntersection > 0;
   }
 
-  /*--- Step 3: Compute convex hull ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 3: Compute convex hull from intersection points               ---*/
+  /*--------------------------------------------------------------------------*/
   ComputeConvexHull(cloudPoints);
   intersectionPoints = cloudPoints;
 
@@ -623,7 +636,7 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
   const su2double EPS = 1e-12;
   intersections.clear();
 
-  /*--- Following Alauzet method: Let e_P = [P0 P1] and e_Q = [Q0 Q1] be two edges ---*/
+  /*--- Following Alauzet: Let e_P = [P0 P1] and e_Q = [Q0 Q1] be two edges ---*/
 
   /*--- Compute signed distances ---*/
   su2double distP0_eQ = ComputeSignedDistance(P0, Q0, Q1);
@@ -642,7 +655,9 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
   /*--- Handle degenerate cases ---*/
   if (zeroCount > 0) {
     if (zeroCount == 1) {
-      /*--- Only one power is zero ---*/
+      /*--------------------------------------------------------------------------*/
+      /*--- Case 1: Only one power is zero                                     ---*/
+      /*--------------------------------------------------------------------------*/
       if (zeroP0 && (distQ0_eP * distQ1_eP < 0)) {
         intersections.push_back(P0[0]);
         intersections.push_back(P0[1]);
@@ -663,7 +678,10 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
       return false;
     }
     else if (zeroCount == 2) {
-      /*--- Two powers are zero, one for each edge ---*/
+      /*--------------------------------------------------------------------------*/
+      /*--- Case 2: Two powers are zero - no intersection if they're on the    ---*/
+      /*---         same edge                                                  ---*/
+      /*--------------------------------------------------------------------------*/
       if (zeroP0 && zeroQ0) {
         intersections.push_back(P0[0]); // P0 = Q0
         intersections.push_back(P0[1]);
@@ -681,13 +699,14 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
         intersections.push_back(P1[1]);
         return true;
       }
-      /*--- Two powers zero on same edge - no intersection ---*/
       return false;
     }
     else if (zeroCount == 4) {
-      /*--- All powers are zero - edges are aligned ---*/
-      /*--- Use parametric coordinates like in CADTElemClass::Dist2ToLine ---*/
-      /*--- X = X0 + (r+1)*(X1-X0)/2, -1 <= r <= 1 ---*/
+      /*--------------------------------------------------------------------------*/
+      /*--- Case 3: All powers are zero - edges are aligned                    ---*/
+      /*---         Use parametric coordinates  X = X0 + (r+1)*(X1-X0)/2,      ---*/
+      /*---         -1 <= r <= 1                                               ---*/
+      /*--------------------------------------------------------------------------*/
 
       /*--- Convert edge P to parametric form: P(r) = P0 + (r+1)*(P1-P0)/2 ---*/
       /*--- Convert edge Q to parametric form: Q(s) = Q0 + (s+1)*(Q1-Q0)/2 ---*/
@@ -763,8 +782,10 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
     }
   }
 
-  /*--- Standard case: no degenerate cases ---*/
-  /*--- Check intersection condition: opposite signs ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Case 4: standard, not degenerate - intersection if powers have     ---*/
+  /*---         opposite signs                                             ---*/
+  /*--------------------------------------------------------------------------*/
   if (distP0_eQ * distP1_eQ >= 0 || distQ0_eP * distQ1_eP >= 0) {
     return false;
   }
@@ -780,34 +801,22 @@ bool CConservativeVolumeInterpolator::LineSegmentIntersection(const su2double P0
   return true;
 }
 
-void CConservativeVolumeInterpolator::AddEdgeNeighborToCandidates(CGeometry* geometry_src, 
-                                                                  const unsigned long srcElemID,
-                                                                  const unsigned short edgeIndex, 
+void CConservativeVolumeInterpolator::AddFaceNeighborToCandidates(CGeometry* geometry,
+                                                                  const unsigned long elemID,
+                                                                  const unsigned short faceIndex,
                                                                   set<unsigned long>& newCandidates) {
-  /*--- Get the element ---*/
-  auto* srcElem = geometry_src->elem[srcElemID];
-
-  /*--- Get the two nodes of the edge ---*/
-  unsigned long node0 = srcElem->GetNode(edgeIndex);
-  unsigned long node1 = srcElem->GetNode((edgeIndex + 1) % 3); // Circular indexing for triangle
-
-  /*--- Find elements that share this edge (contain both nodes) ---*/
-  for (unsigned long jElem = 0u; jElem < geometry_src->nodes->GetnElem(node0); ++jElem) {
-    unsigned long elem0 =  geometry_src->nodes->GetElem(node0, jElem);
-    if (elem0 == srcElemID) continue; // Skip self
-    for (auto kElem = 0u; kElem < geometry_src->nodes->GetnElem(node1); ++kElem) {
-      unsigned long elem1 =  geometry_src->nodes->GetElem(node1, kElem);
-      if (elem0 == elem1) {
-        newCandidates.insert(elem0);
-        break;
-      }
-    }
+  /*--- Get the neighbor element across this face ---*/
+  long neighElemID = geometry->elem[elemID]->GetNeighbor_Elements(faceIndex);
+  
+  /*--- Only add if a valid neighbor exists (not boundary) ---*/
+  if (neighElemID >= 0) {
+    newCandidates.insert(static_cast<unsigned long>(neighElemID));
   }
 }
 
-void CConservativeVolumeInterpolator::AddVertexBallToCandidates(CGeometry* geometry_src, 
+void CConservativeVolumeInterpolator::AddVertexBallToCandidates(CGeometry* geometry_src,
                                                                 const unsigned long srcElemID,
-                                                                const unsigned short vertexIndex, 
+                                                                const unsigned short vertexIndex,
                                                                 set<unsigned long>& newCandidates) {
   /*--- Get the vertex node ID ---*/
   auto* srcElem = geometry_src->elem[srcElemID];

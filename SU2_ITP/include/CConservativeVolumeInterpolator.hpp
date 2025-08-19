@@ -79,9 +79,9 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[out] pointsFailed - Nodes for which no containing element was found
      */
     void PointLocalization(CGeometry* geometry_src,
-                           const vector<su2double>& coor_corrected, 
+                           const vector<su2double>& coor_corrected,
                            vector<unsigned long>& containingElems,
-                           vector<int>& containingElemRanks, 
+                           vector<int>& containingElemRanks,
                            vector<unsigned long>& pointsFailed);
 
     /*!
@@ -91,7 +91,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[out] elemMass - Mass at each element for each solution variable
      * \param[out] elemGrad - Gradient at each element for each solution variable
      */
-    void ComputeSolutionMass(CGeometry* geometry, 
+    void ComputeSolutionMass(CGeometry* geometry,
                              CSolver* solver,
                              vector<vector<su2double> >& elemMass,
                              vector<vector<su2double> >& elemGrad);
@@ -103,7 +103,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] containingElems - Elements containing destination points (from point localization)
      * \param[out] overlappingElements - Map from dst element ID to vector of overlapping src element IDs
      */
-    void ComputeOverlappingElements(CGeometry* geometry_src, 
+    void ComputeOverlappingElements(CGeometry* geometry_src,
                                     CGeometry* geometry_dst,
                                     const vector<unsigned long>& containingElems,
                                     map<unsigned long, vector<unsigned long>>& overlappingElements);
@@ -118,23 +118,23 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[out] newCandidates - New candidate elements detected during intersection
      * \return True if triangles intersect
      */
-    bool TriangleTriangleIntersection(CGeometry* geometry_src, 
-                                      const su2double dstTri[6], 
+    bool TriangleTriangleIntersection(CGeometry* geometry_src,
+                                      const su2double dstTri[6],
                                       const su2double srcTri[6],
                                       unsigned long srcElemID,
                                       vector<su2double>& intersectionPoints,
                                       set<unsigned long>& newCandidates);
 
     /*!
-     * \brief Add edge neighbor to candidate list when edge is intersected.
-     * \param[in] geometry_src - Source mesh geometry
-     * \param[in] srcElemID - Source element ID
-     * \param[in] edgeIndex - Local edge index (0, 1, or 2 for triangles)
+     * \brief Add face (edge in 2D) neighbor to candidate list when face is intersected.
+     * \param[in] geometry - Mesh geometry
+     * \param[in] elemID - Element ID
+     * \param[in] faceIndex - Local face index (0, 1, or 2 for triangles)
      * \param[out] newCandidates - Set to add new candidates to
      */
-    void AddEdgeNeighborToCandidates(CGeometry* geometry_src, 
+    void AddFaceNeighborToCandidates(CGeometry* geometry_src,
                                      unsigned long srcElemID,
-                                     unsigned short edgeIndex, 
+                                     unsigned short edgeIndex,
                                      set<unsigned long>& newCandidates);
 
     /*!
@@ -144,9 +144,9 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] vertexIndex - Local vertex index (0, 1, or 2 for triangles)
      * \param[out] newCandidates - Set to add new candidates to
      */
-    void AddVertexBallToCandidates(CGeometry* geometry_src, 
+    void AddVertexBallToCandidates(CGeometry* geometry_src,
                                    unsigned long srcElemID,
-                                   unsigned short vertexIndex, 
+                                   unsigned short vertexIndex,
                                    set<unsigned long>& newCandidates);
 
     /*!
