@@ -50,7 +50,7 @@ void CLinearVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* ge
 
 void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                                     CSolver* solver_src, CSolver* solver_dst) {
-  /*--- Apply the curvature correction ---*/
+  /*--- Step 1: Apply the curvature correction ---*/
   if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
   vector<su2double> coorDst;
   vector<su2double> coorDstCorrected;
@@ -61,14 +61,14 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
   }
   ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst, coorDstCorrected);
 
-  /*--- Volume interpolation ---*/
+  /*--- Step 2: Volume interpolation ---*/
   if (rank == MASTER_NODE) cout << "Performing volume interpolation." << endl;
   vector<unsigned long> pointsFailed;
   VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDstCorrected, pointsFailed);
 
-  /*--- Carry out a surface interpolation, via a minimum distance search,       */
-  /*    for the points that could not be interpolated via the regular volume    */
-  /*    interpolation. Print a warning about this.                           ---*/
+  /*--- Step 3: Carry out a surface interpolation, via a minimum distance search, */
+  /*    for the points that could not be interpolated via the regular volume      */
+  /*    interpolation. Print a warning about this.                             ---*/
   if (pointsFailed.size()) {
     if (rank == MASTER_NODE) {
       cout << pointsFailed.size() << " DOFs for which the containment search failed." << endl;
@@ -81,9 +81,9 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
 
 void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
                                                     const vector<su2double>& coor_corrected, vector<unsigned long>& pointsFailed) {
+  /*--- Search for donor elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
 
-  /*--- Step 1: Search for donor elements for the given coordinates ---*/
   const unsigned long nDOFsDst = coor_corrected.size() / nDim;
   const unsigned short nVar = solver_src->GetnVar();
 
@@ -134,23 +134,15 @@ void CLinearVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CS
                                                      const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed) {
   if (pointsFailed.empty()) return;
 
-  /*--- Step 1: Build the surface ADT for minimum distance search ---*/
-  if (rank == MASTER_NODE) {
-    cout << "Building surface ADT for minimum distance search." << flush;
-  }
-
   const unsigned short nVar = solver_src->GetnVar();
 
-  /*--- Build surface ADT using existing function ---*/
-  std::unique_ptr<CADTElemClass> surfaceADT_ptr = BuildSurfaceADT(nullptr, geometry_src);
-  CADTElemClass& surfaceADT = *surfaceADT_ptr;
-
   /*--- Check if surface ADT was built successfully ---*/
+  CADTElemClass& surfaceADT = GetSourceSurfaceADT();
   if (!surfaceADT.IsEmpty()) {
 
     if (rank == MASTER_NODE) cout << " Done." << endl;
 
-    /*--- Step 2: Search for donor elements for failed points ---*/
+    /*--- Search for donor elements for failed points ---*/
     if (rank == MASTER_NODE) {
       cout << "Performing minimum distance search for " << pointsFailed.size()
            << " failed points." << endl << flush;
