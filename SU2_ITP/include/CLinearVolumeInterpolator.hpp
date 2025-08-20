@@ -55,7 +55,7 @@ class CLinearVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] solver_container_src - Source mesh solver
      * \param[in] solver_container_dst - Destination mesh solver
      */
-    void Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
+    void Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                      CSolver** solver_container_src, CSolver** solver_container_dst) override;
 
   private:

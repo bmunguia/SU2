@@ -124,6 +124,10 @@ void CVolumeInterpolator::InitializeGeometry(CConfig* config, CGeometry*& geomet
   geometry->SetEdges();
   geometry->SetVertex(config);
 
+  /*--- Compute element volumes ---*/
+  if (rank == MASTER_NODE) cout << "Setting element volumes." << endl;
+  geometry->SetElemVolume();
+
   /*--- Create the control volume structures ---*/
   if (rank == MASTER_NODE) cout << "Setting the control volume structure." << endl;
   SU2_OMP_PARALLEL {

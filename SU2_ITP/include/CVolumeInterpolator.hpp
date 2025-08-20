@@ -148,7 +148,7 @@ class CVolumeInterpolator {
      * \param[in] solver_container_src - Source mesh solver
      * \param[in] solver_container_dst - Destination mesh solver
      */
-    virtual void Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
+    virtual void Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                              CSolver** solver_container_src, CSolver** solver_container_dst) = 0;
 
   protected:

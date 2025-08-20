@@ -31,7 +31,7 @@
 CLinearVolumeInterpolator::CLinearVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) { }
 
-void CLinearVolumeInterpolator::Interpolate(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
+void CLinearVolumeInterpolator::Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                             CSolver** solver_container_src, CSolver** solver_container_dst) {
   if (rank == MASTER_NODE) {
     cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
@@ -66,7 +66,7 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
   /*--------------------------------------------------------------------------*/
   /*--- Step 2: Volume interpolation, via a containment search             ---*/
   /*--------------------------------------------------------------------------*/
-  
+
   if (rank == MASTER_NODE) cout << "Performing volume interpolation." << endl;
   vector<unsigned long> pointsFailed;
   VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDstCorrected, pointsFailed);

@@ -99,7 +99,12 @@ int main(int argc, char* argv[]) {
   /*--- Initialize the interpolator ---*/
   for (iZone = 0; iZone < nZone; iZone++) {
     /*--- TODO: some config setting for specifying the interpolator ---*/
-    interpolator[iZone] = new CLinearVolumeInterpolator(MPICommunicator);
+    if (driver_config->GetKindVolumeInterpolation() == VOLUME_INTERPOLATOR::CONSERVATIVE) {
+      interpolator[iZone] = new CConservativeVolumeInterpolator(MPICommunicator);
+    }
+    else {
+      interpolator[iZone] = new CLinearVolumeInterpolator(MPICommunicator);
+    }
   }
 
   /*--- Loop over all zones to initialize the various classes. In most
