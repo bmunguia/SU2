@@ -30,7 +30,8 @@
 #include <optional>
 #include "CVolumeInterpolator.hpp"
 
-using IntersectionMesh = map<unsigned long, vector<pair<unsigned long, vector<su2double>>>>;
+using IntersectionMesh = vector<pair<unsigned long, vector<su2double>>>;
+using IntersectionMeshMap = map<unsigned long, IntersectionMesh>;
 
 /*!
  * \class CConservativeVolumeInterpolator
@@ -113,7 +114,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     void ComputeDestinationMassAndGradient(CGeometry* geometry_src,
                                            CGeometry* geometry_dst,
                                            CSolver* solver_src,
-                                           const IntersectionMesh& overlappingElements,
+                                           const IntersectionMeshMap& overlappingElements,
                                            const vector<vector<su2double>>& srcElemMass,
                                            const vector<vector<su2double>>& srcElemGrad,
                                            vector<vector<su2double>>& dstElemMass,
@@ -131,7 +132,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                     CGeometry* geometry_dst,
                                     const vector<su2double> &coor_dst,
                                     const vector<optional<unsigned long>>& containingElems,
-                                    IntersectionMesh& overlappingElements);
+                                    IntersectionMeshMap& overlappingElements);
 
     /*!
      * \brief Triangle-triangle intersection using Alauzet method (signed distance functions).
@@ -228,7 +229,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                          CGeometry* geometry_dst,
                                          CSolver* solver_src,
                                          const vector<su2double>& coor_dst,
-                                         const IntersectionMesh& overlappingElements,
+                                         const IntersectionMeshMap& overlappingElements,
                                          const vector<vector<su2double>>& srcElemMass,
                                          const vector<vector<su2double>>& srcElemGrad,
                                          vector<vector<su2double>>& dstElemMass,

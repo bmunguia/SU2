@@ -42,12 +42,19 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
     cout << "Conservative solution interpolation from source mesh to destination mesh." << endl;
     cout << "Source mesh: " << geometry_src->GetGlobal_nPointDomain() << " points, ";
     cout << geometry_src->GetGlobal_nElemDomain() << " elements." << endl;
-    cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points,";
+    cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points, ";
     cout << geometry_dst->GetGlobal_nElemDomain() << " elements." << endl;
   }
 
   /*--- Build the ADTs ---*/
   InitializeADTs(config, geometry_src, geometry_dst);
+
+  /*--- Initialize the FEM standard element ---*/
+  if (!stdElement_ptr) {
+    if (rank == MASTER_NODE) cout << "Creating FEM standard element." << flush;
+    stdElement_ptr = InitializeFEMStandardElement();
+    if (rank == MASTER_NODE) cout << " Done." << endl;
+  }
 
   /*--- Call the conservative interpolation method ---*/
   for (auto iSol = 0u; iSol < MAX_SOLS; ++iSol) {
@@ -111,7 +118,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*---         K_src it overlaps.                                         ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
-  IntersectionMesh overlappingElements;
+  IntersectionMeshMap overlappingElements;
   ComputeOverlappingElements(geometry_src, geometry_dst, coorDst, containingElems, overlappingElements);
 
   /*--------------------------------------------------------------------------*/
@@ -240,6 +247,8 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
   elemMass.resize(nElem_src, vector<su2double>(nVar, 0.0));
   elemGrad.resize(nElem_src, vector<su2double>(nVar * nDim, 0.0));
 
+  su2double vertexCoords[6];
+
   for (auto elemID = 0u; elemID < geometry->GetnElem(); ++elemID) {
     auto* elem = geometry->elem[elemID];
     const unsigned short nNodes = elem->GetnNodes();
@@ -260,7 +269,6 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
     if (VTK_Type != TRIANGLE) continue;
 
     /*--- Get triangle vertex coordinates ---*/
-    su2double vertexCoords[6];
     for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = elem->GetNode(iNode);
       vertexCoords[iNode * 2 + 0] = geometry->nodes->GetCoord(nodeID, 0);
@@ -277,11 +285,16 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
                                                                  CGeometry* geometry_dst,
                                                                  const vector<su2double> &coor_dst,
                                                                  const vector<optional<unsigned long>>& containingElems,
-                                                                 IntersectionMesh& overlappingElements) {
+                                                                 IntersectionMeshMap& overlappingElements) {
   overlappingElements.clear();
 
   /*--- Storage for triangle vertex coordinates ---*/
   su2double srcTri[6], dstTri[6];
+
+  /*--- Storage for result of intersection test ---*/
+  vector<su2double> intersectionPoints;
+  vector<su2double> meshedIntersection;
+  set<unsigned long> newCandidates;
 
   /*--- Only handle triangular elements for now ---*/
   if (nDim != 2) {
@@ -336,16 +349,13 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     /*--- Initialize queue with initial candidate list ---*/
     for (auto srcElemID : candidateList) {
       toProcess.push(srcElemID);
+      processedElems.insert(srcElemID);
     }
 
     /*--- Process elements, potentially adding new ones during intersection ---*/
     while (!toProcess.empty()) {
       unsigned long srcElemID = toProcess.front();
       toProcess.pop();
-
-      /*--- Skip if already processed ---*/
-      if (processedElems.count(srcElemID) > 0) continue;
-      processedElems.insert(srcElemID);
 
       auto* srcElem = geometry_src->elem[srcElemID];
       if (srcElem->GetVTK_Type() != TRIANGLE) continue;
@@ -358,15 +368,10 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       }
 
       /*--- Check for intersection and detect new candidates ---*/
-      vector<su2double> intersectionPoints;
-      vector<su2double> meshedIntersection;
-      set<unsigned long> newCandidates;
-
-      if (TriangleTriangleIntersection(geometry_src, srcTri, dstTri, srcElemID, intersectionPoints,
+      if (TriangleTriangleIntersection(geometry_src, dstTri, srcTri, srcElemID, intersectionPoints,
                                        meshedIntersection, newCandidates)) {
-        totalOverlaps++;
-
         overlappingElements[dstElemID].push_back(make_pair(srcElemID, meshedIntersection));
+        totalOverlaps++;
       } else {
         /*--- Triangle intersection failed ---*/
         failedIntersections++;
@@ -376,6 +381,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       for (auto newElemID : newCandidates) {
         if (processedElems.count(newElemID) == 0) {
           toProcess.push(newElemID);
+          processedElems.insert(newElemID);
         }
       }
     }
@@ -399,17 +405,15 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   meshedIntersection.clear();
   newCandidates.clear();
 
-  const su2double EPS = 1e-12;
+  const su2double EPS = 1e-16;
 
-  /*--- Triangle KP (destination) vertices ---*/
+  /*--- Triangle vertices: P is destination and Q is source ---*/
   su2double P[3][2] = {{dstTri[0], dstTri[1]}, {dstTri[2], dstTri[3]}, {dstTri[4], dstTri[5]}};
-
-  /*--- Triangle KQ (source) vertices ---*/
   su2double Q[3][2] = {{srcTri[0], srcTri[1]}, {srcTri[2], srcTri[3]}, {srcTri[4], srcTri[5]}};
 
   /*--- Edge definitions: edge j connects vertex j to vertex (j+1)%3 ---*/
-  /*--- Edge 0: Q1-Q2, Edge 1: Q2-Q0, Edge 2: Q0-Q1 for triangle Q   ---*/
-  /*--- Edge 0: P1-P2, Edge 1: P2-P0, Edge 2: P0-P1 for triangle P   ---*/
+  /*--- Edge 0: Q0-Q1, Edge 1: Q1-Q2, Edge 2: Q2-Q0 for triangle Q   ---*/
+  /*--- Edge 0: P0-P1, Edge 1: P1-P2, Edge 2: P2-P0 for triangle P   ---*/
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 1: Compute all 18 vertex-edge powers handle degenerate        ---*/
@@ -445,8 +449,9 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
 
   /*--- Add vertex ball of all degenerate vertices of Q ---*/
   for (auto i = 0u; i < 3; ++i) {
-    if (isDegenerateVertexQ[i])
+    if (isDegenerateVertexQ[i]) {
       AddVertexBallToCandidates(geometry_src, srcElemID, i, newCandidates);
+    }
   }
 
   /*--- Check if KP vertices are strictly inside KQ ---*/
@@ -474,39 +479,44 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   /*--- Step 3: Process edge-edge intersections, ignoring any degenerate   ---*/
   /*---         cases since they were handled in Step 1.                   ---*/
   /*--------------------------------------------------------------------------*/
-  for (auto iP = 0u; iP < 3; ++iP) {
-    for (auto jQ = 0u; jQ < 3; ++jQ) {
+  for (auto jQ = 0u; jQ < 3; ++jQ) {
+    bool wasIntersected = false;
+    for (auto iP = 0u; iP < 3; ++iP) {
       /*--- Skip degenerate edge pairs (already handled in Step 1) ---*/
       if (isDegenerateEdgePair[iP][jQ]) {
-        AddFaceNeighborToCandidates(geometry_src, srcElemID, jQ, newCandidates);
+        wasIntersected = true;
         continue;
       }
 
-      su2double* edgeP0 = P_edges[iP][0];
-      su2double* edgeP1 = P_edges[iP][1];
-      su2double* edgeQ0 = Q_edges[jQ][0];
-      su2double* edgeQ1 = Q_edges[jQ][1];
+      su2double* P0 = P_edges[iP][0];
+      su2double* P1 = P_edges[iP][1];
+      su2double* Q0 = Q_edges[jQ][0];
+      su2double* Q1 = Q_edges[jQ][1];
 
       /*--- Compute signed distances for this edge pair ---*/
-      su2double distP0_eQ = ComputeSignedDistance(edgeP0, edgeQ0, edgeQ1);
-      su2double distP1_eQ = ComputeSignedDistance(edgeP1, edgeQ0, edgeQ1);
-      su2double distQ0_eP = ComputeSignedDistance(edgeQ0, edgeP0, edgeP1);
-      su2double distQ1_eP = ComputeSignedDistance(edgeQ1, edgeP0, edgeP1);
+      su2double powerP0_eQ = ComputeSignedDistance(P0, Q0, Q1);
+      su2double powerP1_eQ = ComputeSignedDistance(P1, Q0, Q1);
+      su2double powerQ0_eP = ComputeSignedDistance(Q0, P0, P1);
+      su2double powerQ1_eP = ComputeSignedDistance(Q1, P0, P1);
 
       /*--- Check for edge-edge intersection ---*/
-      if ((distP0_eQ * distP1_eQ < 0) && (distQ0_eP * distQ1_eP < 0)) {
+      if ((powerP0_eQ * powerP1_eQ < 0) && (powerQ0_eP * powerQ1_eP < 0)) {
         /*--- Compute intersection point ---*/
-        su2double t = distP0_eQ / (distP0_eQ - distP1_eQ);
+        su2double t = powerP0_eQ / (powerP0_eQ - powerP1_eQ);
 
-        su2double intersectionX = edgeP0[0] + t * (edgeP1[0] - edgeP0[0]);
-        su2double intersectionY = edgeP0[1] + t * (edgeP1[1] - edgeP0[1]);
+        su2double intersectionX = P0[0] + t * (P1[0] - P0[0]);
+        su2double intersectionY = P0[1] + t * (P1[1] - P0[1]);
 
         cloudPoints.push_back(intersectionX);
         cloudPoints.push_back(intersectionY);
 
-        /*--- Add face neighbor to candidates ---*/
-        AddFaceNeighborToCandidates(geometry_src, srcElemID, jQ, newCandidates);
+        wasIntersected = true;
       }
+    }
+
+    if (wasIntersected) {
+      /*--- Add face neighbor to candidates ---*/
+      AddFaceNeighborToCandidates(geometry_src, srcElemID, jQ, newCandidates);
     }
   }
 
@@ -535,35 +545,39 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
       if (isDegenerateVertexQ[Qj]) alreadyAdded = true;
       isDegenerateVertexQ[Qj] = true;
     }
-    if (alreadyAdded) return;
-    intersectionPoints.push_back(x);
-    intersectionPoints.push_back(y);
+    if (!alreadyAdded) {
+      intersectionPoints.push_back(x);
+      intersectionPoints.push_back(y);
+    }
   };
 
   /*--- Process all 9 edge-edge combinations for degenerate cases ---*/
   for (auto iP = 0u; iP < 3; ++iP) {
     for (auto jQ = 0u; jQ < 3; ++jQ) {
+      /*--- Indices of nodes belonging to current edges ---*/
       int iP0 = iP, iP1 = (iP + 1) % 3;
       int jQ0 = jQ, jQ1 = (jQ + 1) % 3;
-      su2double* edgeP0 = P_edges[iP][0];  // P vertex iP
-      su2double* edgeP1 = P_edges[iP][1];  // P vertex (iP+1)%3
-      su2double* edgeQ0 = Q_edges[jQ][0];  // Q vertex jQ
-      su2double* edgeQ1 = Q_edges[jQ][1];  // Q vertex (jQ+1)%3
+
+      /*--- Coordinates of edge nodes ---*/
+      su2double* P0 = P_edges[iP][0];  // P vertex iP
+      su2double* P1 = P_edges[iP][1];  // P vertex (iP+1)%3
+      su2double* Q0 = Q_edges[jQ][0];  // Q vertex jQ
+      su2double* Q1 = Q_edges[jQ][1];  // Q vertex (jQ+1)%3
 
       /*--- Use precomputed powers instead of recalculating ---*/
       /*--- Edge iP of triangle P goes from vertex iP to vertex (iP+1)%3 ---*/
       /*--- Edge jQ of triangle Q goes from vertex jQ to vertex (jQ+1)%3 ---*/
-      su2double distP0_eQ = power_P[iP0][jQ];  // Power of P vertex iP w.r.t. Q edge jQ
-      su2double distP1_eQ = power_P[iP1][jQ];  // Power of P vertex (iP+1)%3 w.r.t. Q edge jQ
-      su2double distQ0_eP = power_Q[jQ0][iP];  // Power of Q vertex jQ w.r.t. P edge iP
-      su2double distQ1_eP = power_Q[jQ1][iP];  // Power of Q vertex (jQ+1)%3 w.r.t. P edge iP
+      su2double powerP0_eQ = power_P[iP0][jQ];  // Power of P vertex iP w.r.t. Q edge jQ
+      su2double powerP1_eQ = power_P[iP1][jQ];  // Power of P vertex (iP+1)%3 w.r.t. Q edge jQ
+      su2double powerQ0_eP = power_Q[jQ0][iP];  // Power of Q vertex jQ w.r.t. P edge iP
+      su2double powerQ1_eP = power_Q[jQ1][iP];  // Power of Q vertex (jQ+1)%3 w.r.t. P edge iP
 
       /*--- Count how many powers are zero ---*/
       int zeroCount = 0;
-      bool P0_zero = (abs(distP0_eQ) < EPS);
-      bool P1_zero = (abs(distP1_eQ) < EPS);
-      bool Q0_zero = (abs(distQ0_eP) < EPS);
-      bool Q1_zero = (abs(distQ1_eP) < EPS);
+      bool P0_zero = (abs(powerP0_eQ) < EPS);
+      bool P1_zero = (abs(powerP1_eQ) < EPS);
+      bool Q0_zero = (abs(powerQ0_eP) < EPS);
+      bool Q1_zero = (abs(powerQ1_eP) < EPS);
 
       if (P0_zero) zeroCount++;
       if (P1_zero) zeroCount++;
@@ -579,26 +593,26 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
       if (zeroCount == 1) {
         if (P0_zero) {
           /*--- P0 lies on edge Q, intersection if Q0 and Q1 on opposite sides of edge P ---*/
-          if (distQ0_eP * distQ1_eP < 0) {
-            addPoint(edgeP0[0], edgeP0[1], iP0, -1);
+          if (powerQ0_eP * powerQ1_eP < 0) {
+            addPoint(P0[0], P0[1], iP0, -1);
           }
         } else if (P1_zero) {
           /*--- P1 lies on edge Q, intersection if Q0 and Q1 on opposite sides of edge P ---*/
-          if (distQ0_eP * distQ1_eP < 0) {
-            addPoint(edgeP1[0], edgeP1[1], iP1, -1);
+          if (powerQ0_eP * powerQ1_eP < 0) {
+            addPoint(P1[0], P1[1], iP1, -1);
           }
         } else if (Q0_zero) {
           /*--- Q0 lies on edge P, intersection if P0 and P1 on opposite sides of edge Q ---*/
-          if (distP0_eQ * distP1_eQ < 0) {
-            addPoint(edgeQ0[0], edgeQ0[1], -1, jQ0);
+          if (powerP0_eQ * powerP1_eQ < 0) {
+            addPoint(Q0[0], Q0[1], -1, jQ0);
           }
         } else if (Q1_zero) {
           /*--- Q1 lies on edge P, intersection if P0 and P1 on opposite sides of edge Q ---*/
-          if (distP0_eQ * distP1_eQ < 0) {
-            addPoint(edgeQ1[0], edgeQ1[1], -1, jQ1);
+          if (powerP0_eQ * powerP1_eQ < 0) {
+            addPoint(Q1[0], Q1[1], -1, jQ1);
           }
         }
-      }
+      } // if zeroCount == 1
 
       /*--------------------------------------------------------------------------*/
       /*--- Case 2: Two powers are zero, one for each edge                     ---*/
@@ -606,18 +620,18 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
       else if (zeroCount == 2) {
         if (P0_zero && Q0_zero) {
           /*--- P0 = Q0, common vertex ---*/
-          addPoint(edgeP0[0], edgeP0[1], iP0, jQ0);
+          addPoint(P0[0], P0[1], iP0, jQ0);
         } else if (P0_zero && Q1_zero) {
           /*--- P0 = Q1, common vertex ---*/
-          addPoint(edgeP0[0], edgeP0[1], iP0, jQ1);
+          addPoint(P0[0], P0[1], iP0, jQ1);
         } else if (P1_zero && Q0_zero) {
           /*--- P1 = Q0, common vertex ---*/
-          addPoint(edgeP1[0], edgeP1[1], iP1, jQ0);
+          addPoint(P1[0], P1[1], iP1, jQ0);
         } else if (P1_zero && Q1_zero) {
           /*--- P1 = Q1, common vertex ---*/
-          addPoint(edgeP1[0], edgeP1[1], iP1, jQ1);
+          addPoint(P1[0], P1[1], iP1, jQ1);
         }
-      }
+      } // if zeroCount == 2
 
       /*--------------------------------------------------------------------------*/
       /*--- Case 3: All four powers are zero (edges are collinear)             ---*/
@@ -626,77 +640,77 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
         /*--- Edges are collinear, check for overlap using parametrization ---*/
         /*--- Parametrize both edges and find overlap in parameter space ---*/
 
-        /*--- Edge P: P_start + t * (P_end - P_start), t ∈ [0,1] ---*/
-        /*--- Edge Q: Q_start + s * (Q_end - Q_start), s ∈ [0,1] ---*/
+        /*--- Edge P: P0 + t * (P1 - P0), t in [0,1] ---*/
+        /*--- Edge Q: Q0 + s * (Q1 - Q0), s in [0,1] ---*/
 
         /*--- Direction vector of edge P ---*/
-        su2double dx_P = edgeP1[0] - edgeP0[0];
-        su2double dy_P = edgeP1[1] - edgeP0[1];
+        su2double dx_P = P1[0] - P0[0];
+        su2double dy_P = P1[1] - P0[1];
         su2double lengthP_sq = dx_P*dx_P + dy_P*dy_P;
 
         if (lengthP_sq > EPS*EPS) {
           /*--- Find parameter values where Q vertices lie on P edge ---*/
-          /*--- Q_start = P_start + t_Q0 * (P_end - P_start) ---*/
-          /*--- Q_end   = P_start + t_Q1 * (P_end - P_start) ---*/
+          /*--- Q0 = P0 + s_Q0 * (P1 - P0) ---*/
+          /*--- Q1 = P0 + s_Q1 * (P1 - P0) ---*/
 
-          su2double t_Q0 = ((edgeQ0[0] - edgeP0[0]) * dx_P +
-                            (edgeQ0[1] - edgeP0[1]) * dy_P) / lengthP_sq;
-          su2double t_Q1 = ((edgeQ1[0] - edgeP0[0]) * dx_P +
-                            (edgeQ1[1] - edgeP0[1]) * dy_P) / lengthP_sq;
+          su2double s_Q0 = ((Q0[0] - P0[0]) * dx_P +
+                            (Q0[1] - P0[1]) * dy_P) / lengthP_sq;
+          su2double s_Q1 = ((Q1[0] - P0[0]) * dx_P +
+                            (Q1[1] - P0[1]) * dy_P) / lengthP_sq;
 
           /*--- Edge P spans parameter interval [0, 1] ---*/
-          /*--- Edge Q spans parameter interval [min(t_Q0, t_Q1), max(t_Q0, t_Q1)] ---*/
-          su2double t_min = min(t_Q0, t_Q1);
-          su2double t_max = max(t_Q0, t_Q1);
+          /*--- Edge Q spans parameter interval [min(s_Q0, s_Q1), max(s_Q0, s_Q1)] ---*/
+          su2double s_min = min(s_Q0, s_Q1);
+          su2double s_max = max(s_Q0, s_Q1);
 
-          /*--- Find overlap of intervals [0, 1] and [t_min, t_max] ---*/
-          su2double overlap_start = max(0.0, t_min);
-          su2double overlap_end = min(1.0, t_max);
+          /*--- Find overlap of intervals [0, 1] and [s_min, s_max] ---*/
+          su2double overlap_start = max(0.0, s_min);
+          su2double overlap_end = min(1.0, s_max);
 
           if (overlap_start < overlap_end) {
             /*--- There is overlap, add intersection points ---*/
             /*--- Add start point of overlap ---*/
-            su2double startX = edgeP0[0] + overlap_start * dx_P;
-            su2double startY = edgeP0[1] + overlap_start * dy_P;
+            su2double X_start = P0[0] + overlap_start * dx_P;
+            su2double Y_start = P0[1] + overlap_start * dy_P;
 
             /*--- Check if start point corresponds to a known vertex ---*/
-            int startPi = -1, startQj = -1;
+            int Pi_start = -1, Qj_start = -1;
             if (abs(overlap_start - 0.0) < EPS) {
-              startPi = iP0;  // Start point is P0
+              Pi_start = iP0;  // Start point is P0
             } else if (abs(overlap_start - 1.0) < EPS) {
-              startPi = iP1;  // Start point is P1
+              Pi_start = iP1;  // Start point is P1
             }
-            if (abs(t_Q0 - overlap_start) < EPS) {
-              startQj = jQ0;  // Start point is Q0
-            } else if (abs(t_Q1 - overlap_start) < EPS) {
-              startQj = jQ1;  // Start point is Q1
+            if (abs(s_Q0 - overlap_start) < EPS) {
+              Qj_start = jQ0;  // Start point is Q0
+            } else if (abs(s_Q1 - overlap_start) < EPS) {
+              Qj_start = jQ1;  // Start point is Q1
             }
-            addPoint(startX, startY, startPi, startQj);
+            addPoint(X_start, Y_start, Pi_start, Qj_start);
 
             /*--- Add end point of overlap if different from start ---*/
             if (abs(overlap_end - overlap_start) > EPS) {
-              su2double endX = edgeP0[0] + overlap_end * dx_P;
-              su2double endY = edgeP0[1] + overlap_end * dy_P;
+              su2double X_end = P0[0] + overlap_end * dx_P;
+              su2double Y_end = P0[1] + overlap_end * dy_P;
 
               /*--- Check if end point corresponds to a known vertex ---*/
-              int endPi = -1, endQj = -1;
+              int Pi_end = -1, Qj_end = -1;
               if (abs(overlap_end - 0.0) < EPS) {
-                endPi = iP0;  // End point is P0
+                Pi_end = iP0;  // End point is P0
               } else if (abs(overlap_end - 1.0) < EPS) {
-                endPi = iP1;  // End point is P1
+                Pi_end = iP1;  // End point is P1
               }
-              if (abs(t_Q0 - overlap_end) < EPS) {
-                endQj = jQ0;  // End point is Q0
-              } else if (abs(t_Q1 - overlap_end) < EPS) {
-                endQj = jQ1;  // End point is Q1
+              if (abs(s_Q0 - overlap_end) < EPS) {
+                Qj_end = jQ0;  // End point is Q0
+              } else if (abs(s_Q1 - overlap_end) < EPS) {
+                Qj_end = jQ1;  // End point is Q1
               }
-              addPoint(endX, endY, endPi, endQj);
-            }
-          }
-        }
-      }
-    }
-  }
+              addPoint(X_end, Y_end, Pi_end, Qj_end);
+            } // if multiple overlap
+          } // if overlap
+        } // if lengthP_sq
+      } // if zeroCount == 4
+    } // for jQ
+  } // for iP
 }
 
 su2double CConservativeVolumeInterpolator::ComputeSignedDistance(const su2double point[2],
@@ -814,7 +828,7 @@ void CConservativeVolumeInterpolator::MeshConvexPolygon(const vector<su2double>&
     su2double P[2] = {polygonPoints[i * 2 + 0], polygonPoints[i * 2 + 1]};
 
     /*--- Find the unique boundary edge that "views" this point (negative signed distance) ---*/
-    int edgeToConnect = -1;
+    int jj = -1;
     for (auto j = 0u; j < boundaryEdges.size(); ++j) {
       int idx1 = boundaryEdges[j].first;
       int idx2 = boundaryEdges[j].second;
@@ -823,15 +837,16 @@ void CConservativeVolumeInterpolator::MeshConvexPolygon(const vector<su2double>&
       su2double testP2[2] = {polygonPoints[idx2 * 2 + 0], polygonPoints[idx2 * 2 + 1]};
 
       if (ComputeSignedDistance(P, testP1, testP2) < 0) {
-        edgeToConnect = j;
+        jj = j;
         break;
       }
     }
 
     /*--- Should always find exactly one boundary edge for a convex polygon ---*/
-    if (edgeToConnect >= 0) {
-      int idx1 = boundaryEdges[edgeToConnect].first;
-      int idx2 = boundaryEdges[edgeToConnect].second;
+    if (jj >= 0) {
+      /*--- Swap the indices since the signed distance was negative ---*/
+      int idx2 = boundaryEdges[jj].first;
+      int idx1 = boundaryEdges[jj].second;
 
       su2double testP1[2] = {polygonPoints[idx1 * 2 + 0], polygonPoints[idx1 * 2 + 1]};
       su2double testP2[2] = {polygonPoints[idx2 * 2 + 0], polygonPoints[idx2 * 2 + 1]};
@@ -841,17 +856,12 @@ void CConservativeVolumeInterpolator::MeshConvexPolygon(const vector<su2double>&
 
       /*--- Update boundary: remove the used edge and add two new boundary edges ---*/
       /*--- Maintain consistent orientation based on the triangle orientation ---*/
-      boundaryEdges.erase(boundaryEdges.begin() + edgeToConnect);
+      boundaryEdges.erase(boundaryEdges.begin() + jj);
 
-      if (isCounterClockwise) {
-        /*--- Triangle P->edgeStart->edgeEnd is counter-clockwise ---*/
-        boundaryEdges.push_back({i, idx1});  // Edge from new point to start of used edge
-        boundaryEdges.push_back({idx2, i});  // Edge from end of used edge to new point
-      } else {
-        /*--- Triangle P->edgeEnd->edgeStart was stored (reversed) ---*/
-        boundaryEdges.push_back({i, idx2});  // Edge from new point to end of used edge
-        boundaryEdges.push_back({idx1, i});  // Edge from start of used edge to new point
-      }
+      /*--- Triangle P->edgeStart->edgeEnd is counter-clockwise ---*/
+      /*--- Order should be correct by construction ---*/
+      boundaryEdges.push_back({i, idx1});  // Edge from new point to start of used edge
+      boundaryEdges.push_back({idx2, i});  // Edge from end of used edge to new point
     }
   }
 }
@@ -859,7 +869,7 @@ void CConservativeVolumeInterpolator::MeshConvexPolygon(const vector<su2double>&
 void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometry* geometry_src,
                                                                         CGeometry* geometry_dst,
                                                                         CSolver* solver_src,
-                                                                        const IntersectionMesh& overlappingElements,
+                                                                        const IntersectionMeshMap& overlappingElements,
                                                                         const vector<vector<su2double>>& srcElemMass,
                                                                         const vector<vector<su2double>>& srcElemGrad,
                                                                         vector<vector<su2double>>& dstElemMass,
@@ -873,9 +883,9 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
   vector<unsigned long> countRelDiff(5, 0);
 
-  for (const auto& elemPair : overlappingElements) {
-    unsigned long dstElemID = elemPair.first;
-    const auto& srcElemMeshPairs = elemPair.second;
+  for (const auto& intersection : overlappingElements) {
+    unsigned long dstElemID = intersection.first;
+    const IntersectionMesh& srcElemMeshes = intersection.second;
 
     /*--- Initialize destination element mass and gradient ---*/
     const auto* dstElem = geometry_dst->elem[dstElemID];
@@ -888,16 +898,16 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
     su2double totalTriangleArea = 0.0;
 
     /*--- Process each intersection region T_j = intersection(K_dst, K_src_j) ---*/
-    for (const auto& srcMeshPair : srcElemMeshPairs) {
-      unsigned long srcElemID = srcMeshPair.first;
-      const vector<su2double>& intersectionMesh = srcMeshPair.second;
+    for (const auto& srcElemMesh : srcElemMeshes) {
+      unsigned long srcElemID = srcElemMesh.first;
+      const vector<su2double>& srcElemTris = srcElemMesh.second;
 
       /*--- Gauss quadrature over all triangles in the intersection mesh ---*/
-      unsigned int numTriangles = intersectionMesh.size() / 6;  // 6 coordinates per triangle
+      unsigned int numTri = srcElemTris.size() / 6;  // 6 coordinates per triangle
 
-      for (auto iTri = 0u; iTri < numTriangles; ++iTri) {
+      for (auto iTri = 0u; iTri < numTri; ++iTri) {
         /*--- Get triangle vertices ---*/
-        const su2double* coor_tri = intersectionMesh.data() + iTri * 6;
+        const su2double* coor_tri = srcElemTris.data() + iTri * 6;
         const su2double x0 = coor_tri[0], y0 = coor_tri[1];
         const su2double x1 = coor_tri[2], y1 = coor_tri[3];
         const su2double x2 = coor_tri[4], y2 = coor_tri[5];
@@ -1018,21 +1028,21 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
                                                                       CGeometry* geometry_dst,
                                                                       CSolver* solver_src,
                                                                       const vector<su2double>& coor_dst,
-                                                                      const IntersectionMesh& overlappingElements,
+                                                                      const IntersectionMeshMap& overlappingElements,
                                                                       const vector<vector<su2double>>& srcElemMass,
                                                                       const vector<vector<su2double>>& srcElemGrad,
                                                                       vector<vector<su2double>>& dstElemMass,
                                                                       vector<vector<su2double>>& dstElemGrad) {
-  const su2double EPS = 1e-12;
+  const su2double EPS = 1e-16;
 
   /*--- Loop over all destination elements that have overlaps ---*/
   su2double u_tilde[3];
   vector<su2double> correctedMass(1, 0.0);
   vector<su2double> correctedGrad(1 * nDim, 0.0);
   vector<vector<su2double>> vertexSol(3, vector<su2double>(1));
-  for (const auto& elemPair : overlappingElements) {
-    unsigned long dstElemID = elemPair.first;
-    const vector<pair<unsigned long, vector<su2double>>>& srcElemMeshPairs = elemPair.second;
+  for (const auto& intersection : overlappingElements) {
+    unsigned long dstElemID = intersection.first;
+    const IntersectionMesh& srcElemMeshes = intersection.second;
 
     auto* dstElem = geometry_dst->elem[dstElemID];
     if (dstElem->GetVTK_Type() != TRIANGLE) continue;
@@ -1057,8 +1067,8 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       su2double u_max = -1e20;
 
       /*--- Find all vertices Q from source elements K_src that K overlaps ---*/
-      for (const auto& srcMeshPair : srcElemMeshPairs) {
-        unsigned long srcElemID = srcMeshPair.first;
+      for (const auto& srcElemMesh : srcElemMeshes) {
+        unsigned long srcElemID = srcElemMesh.first;
         auto* srcElem = geometry_src->elem[srcElemID];
         if (srcElem->GetVTK_Type() != TRIANGLE) continue;
 
@@ -1117,13 +1127,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       for (auto iNode = 0u; iNode < 3; ++iNode) {
         sortedValues.push_back(make_pair(u_K_P[iNode], iNode));
       }
-      cout << "Unsorted: " << sortedValues[0].first << "," << sortedValues[0].second;
-      cout << ", " << sortedValues[1].first << "," << sortedValues[1].second;
-      cout << ", " << sortedValues[2].first << "," << sortedValues[2].second << endl;
       sort(sortedValues.begin(), sortedValues.end());
-       cout << "Sorted: " << sortedValues[0].first << "," << sortedValues[0].second;
-      cout << ", " << sortedValues[1].first << "," << sortedValues[1].second;
-      cout << ", " << sortedValues[2].first << "," << sortedValues[2].second << endl;
 
       const su2double u_P0 = sortedValues[0].first;  // Smallest value
       const su2double u_P1 = sortedValues[1].first;  // Middle value
@@ -1269,15 +1273,8 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
   fill(mass.begin(), mass.end(), 0.0);
   fill(grad.begin(), grad.end(), 0.0);
 
-  /*--- Create standard triangular element ---*/
-  unsigned short VTK_Type = TRIANGLE;
-  unsigned short nPoly = 1;
-  bool constJac = false;
-  unsigned short orderExact = 2 * nPoly;
-
-  CFEMStandardElement stdElement(VTK_Type, nPoly, constJac, nullptr, orderExact);
-
-  /*--- Get integration points and basis functions ---*/
+  /*--- Get integration points and basis functions from FEM standard element ---*/
+  CFEMStandardElement& stdElement = GetFEMStandardElement();
   const unsigned short nInt = stdElement.GetNIntegration();
   const su2double* weights = stdElement.GetWeightsIntegration();
   const su2double* lagBasis = stdElement.GetBasisFunctionsIntegration();

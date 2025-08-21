@@ -561,15 +561,6 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
       /*--- Determine the curvature correction, which is the vector from the  ---*/
       /*--- wall coordinate of the output grid to the wall coordinates on the ---*/
       /*--- input grid                                                        ---*/
-      su2double mag = 0.0;
-      for (auto k = 0u; k < nDim; ++k) mag += pow(surfCoorSrc[k] - surfCoorDst[k], 2.0);
-      if (sqrt(mag) > 1e-5) {
-        for (auto k = 0u; k < nDim; ++k) {
-          cout << "Correction[" << k << "]: " << surfCoorSrc[k] - surfCoorDst[k];
-          if (k < nDim - 1) cout << "; ";
-        }
-        cout << endl;
-      }
       for (auto k = 0u; k < nDim; ++k) coor[k] += surfCoorSrc[k] - surfCoorDst[k];
     }
   }

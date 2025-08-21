@@ -58,6 +58,8 @@ class CVolumeInterpolator {
     unsigned long nElem_src = 0;   /*!< \brief Number of elements on the source mesh. */
     unsigned long nElem_dst = 0;   /*!< \brief Number of elements on the destination mesh. */
 
+    std::unique_ptr<CFEMStandardElement> stdElement_ptr; /*!< \brief Standard element object used for Gauss quadrature. */
+
     /*--- Volume ADT data structure for volume interpolation ---*/
     std::unique_ptr<CADTElemClass> srcVolumeADT_ptr; /*!< \brief ADT for source surface mesh. */
 
@@ -107,6 +109,19 @@ class CVolumeInterpolator {
 
     std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry* geometry);
 
+    std::unique_ptr<CFEMStandardElement> InitializeFEMStandardElement() {
+      unsigned short nPoly = 1;
+      bool constJac = false;
+      unsigned short orderExact = 2 * nPoly + 1;
+      unsigned short VTK_Type = TRIANGLE;
+      if (nDim == 3) {
+        VTK_Type = TETRAHEDRON;
+      }
+
+      return std::unique_ptr<CFEMStandardElement>(
+          new CFEMStandardElement(VTK_Type, nPoly, constJac, nullptr, orderExact));
+    }
+
     /*!
      * \brief Get reference to source volume ADT.
      * \return Reference to source volume ADT
@@ -138,6 +153,17 @@ class CVolumeInterpolator {
         SU2_MPI::Error("Destination surface ADT not initialized. Call InitializeADT first.", CURRENT_FUNCTION);
       }
       return *dstSurfaceADT_ptr;
+    }
+
+    /*!
+     * \brief Get reference to destination surface ADT.
+     * \return Reference to destination surface ADT
+     */
+    CFEMStandardElement& GetFEMStandardElement() {
+      if (!stdElement_ptr) {
+        SU2_MPI::Error("FEM standard element not initialized. Call InitializeFEMStandardElement first.", CURRENT_FUNCTION);
+      }
+      return *stdElement_ptr;
     }
 
     void InitializeCoords(CGeometry* geometry, vector<su2double>& coords) {

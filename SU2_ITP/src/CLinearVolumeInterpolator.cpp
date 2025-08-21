@@ -38,7 +38,7 @@ void CLinearVolumeInterpolator::Interpolate(CConfig* config, CGeometry* geometry
     cout << "Linear solution interpolation from source mesh to destination mesh." << endl;
     cout << "Source mesh: " << geometry_src->GetGlobal_nPointDomain() << " points, ";
     cout << geometry_src->GetGlobal_nElemDomain() << " elements." << endl;
-    cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points,";
+    cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points, ";
     cout << geometry_dst->GetGlobal_nElemDomain() << " elements." << endl;
   }
 
