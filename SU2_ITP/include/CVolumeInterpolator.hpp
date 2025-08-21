@@ -52,6 +52,7 @@ class CVolumeInterpolator {
     int size;  /*!< \brief MPI Size. */
 
     unsigned short nDim = 0;       /*!< \brief Problem dimension. */
+    unsigned short nVar = 0;       /*!< \brief Number of solution variables. */
     unsigned long nPoint_src = 0;  /*!< \brief Number of points on the source mesh. */
     unsigned long nPoint_dst = 0;  /*!< \brief Number of points on the destination mesh. */
     unsigned long nElem_src = 0;   /*!< \brief Number of elements on the source mesh. */
@@ -188,8 +189,7 @@ class CVolumeInterpolator {
                                     su2double* surfCoor, su2double& dist2Quad, const unsigned short nDim);
 
     void ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                  const unsigned short nDim, vector<su2double> &coor_dst,
-                                  vector<su2double> &coor_corrected);
+                                  const unsigned short nDim, vector<su2double> &coor_dst);
 
   public:
     void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container,

@@ -76,13 +76,13 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     /*!
      * \brief Containment search.
      * \param[in] geometry_src - Source mesh geometry
-     * \param[in] coor_corrected - Destination mesh coordinates after curvature correction
+     * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
      * \param[out] containingElems - Elements containing destination points
      * \param[out] containingElemRanks - Ranks of elements containing destination points
      * \param[out] pointsFailed - Nodes for which no containing element was found
      */
     void PointLocalization(CGeometry* geometry_src,
-                           const vector<su2double>& coor_corrected,
+                           const vector<su2double>& coor_dst,
                            vector<optional<unsigned long>>& containingElems,
                            vector<int>& containingElemRanks,
                            vector<unsigned long>& pointsFailed);
@@ -123,13 +123,13 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \brief Compute overlapping elements between source and destination meshes.
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] coor_corrected - Destination mesh coordinates after curvature correction
+     * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
      * \param[in] containingElems - Elements containing destination points (from point localization)
      * \param[out] overlappingElements - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
      */
     void ComputeOverlappingElements(CGeometry* geometry_src,
                                     CGeometry* geometry_dst,
-                                    const vector<su2double> &coor_corrected,
+                                    const vector<su2double> &coor_dst,
                                     const vector<optional<unsigned long>>& containingElems,
                                     IntersectionMesh& overlappingElements);
 
@@ -213,7 +213,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_src - Source mesh solver
-     * \param[in] coor_corrected - Destination mesh coordinates after curvature correction
+     * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
      * \param[in] overlappingElements - Map from dst element ID to overlapping src element IDs
      * \param[in] srcElemMass - Source element masses
      * \param[in] srcElemGrad - Source element gradients
@@ -223,7 +223,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     void ApplyMaximumPrincipleCorrection(CGeometry* geometry_src,
                                          CGeometry* geometry_dst,
                                          CSolver* solver_src,
-                                         const vector<su2double>& coor_corrected,
+                                         const vector<su2double>& coor_dst,
                                          const IntersectionMesh& overlappingElements,
                                          const vector<vector<su2double>>& srcElemMass,
                                          const vector<vector<su2double>>& srcElemGrad,
@@ -234,13 +234,13 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \brief Calculate the solution at destination nodes from the mass and gradient.
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_dst - Destination mesh solver
-     * \param[in] coor_corrected - Destination mesh coordinates after curvature correction
+     * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
      * \param[in] dstElemMass - Destination element masses
      * \param[in] dstElemGrad - Destination element gradients
      */
     void DistributeSolutionToNodes(CGeometry* geometry_dst,
                                    CSolver* solver_dst,
-                                   const vector<su2double>& coor_corrected,
+                                   const vector<su2double>& coor_dst,
                                    const vector<vector<su2double>>& dstElemMass,
                                    const vector<vector<su2double>>& dstElemGrad);
 

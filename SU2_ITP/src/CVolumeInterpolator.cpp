@@ -523,11 +523,7 @@ bool CVolumeInterpolator::NearestPointOnQuadrilateral(CGeometry* geometry, const
 }
 
 void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                                   const unsigned short nDim, vector<su2double>& coor_dst,
-                                                   vector<su2double>& coor_corrected) {
-  /*--- Initialize corrected coordinates to original coordinates ---*/
-  coor_corrected = coor_dst;
-
+                                                   const unsigned short nDim, vector<su2double>& coor_dst) {
   /*--- Get references to the ADTs for both source and destination grids ---*/
   CADTElemClass& srcSurfaceADT = GetSourceSurfaceADT();
   CADTElemClass& dstSurfaceADT = GetDestinationSurfaceADT();
@@ -543,7 +539,7 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
       su2double srcDist, dstDist;
       su2double surfCoorSrc[3], surfCoorDst[3];
 
-      su2double* coor = coor_corrected.data() + l * nDim;
+      su2double* coor = coor_dst.data() + l * nDim;
 
       /*--- Find the closest point on the source surface mesh ---*/
       srcSurfaceADT.DetermineNearestElement(coor, srcDist, srcMarkerID, srcElemID, srcRankID);

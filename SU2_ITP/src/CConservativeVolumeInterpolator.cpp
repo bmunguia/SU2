@@ -72,14 +72,17 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                                                                 CSolver* solver_src,
                                                                 CSolver* solver_dst) {
   /*--------------------------------------------------------------------------*/
+  /*--- Step 0: Initialize destination coordinate vector                   ---*/
+  /*--------------------------------------------------------------------------*/
+  nVar = solver_src->GetnVar();
+  vector<su2double> coorDst;
+  InitializeCoords(geometry_dst, coorDst);
+
+  /*--------------------------------------------------------------------------*/
   /*--- Step 1: Apply the curvature correction to the destination nodes    ---*/
   /*--------------------------------------------------------------------------*/
-  if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
-  vector<su2double> coorDst;
-  vector<su2double> coorDstCorrected;
-  InitializeCoords(geometry_dst, coorDst);
-  coorDstCorrected = coorDst;
-  // ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst, coorDstCorrected);
+  // if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
+  // ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 2: Localize destination nodes on the source mesh              ---*/
@@ -91,7 +94,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   vector<optional<unsigned long>> containingElems;
   vector<int> containingElemRanks;
   vector<unsigned long> pointsFailed;
-  PointLocalization(geometry_src, coorDstCorrected, containingElems, containingElemRanks,
+  PointLocalization(geometry_src, coorDst, containingElems, containingElemRanks,
                     pointsFailed);
 
   /*--------------------------------------------------------------------------*/
@@ -107,7 +110,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
   IntersectionMesh overlappingElements;
-  ComputeOverlappingElements(geometry_src, geometry_dst, coorDstCorrected, containingElems, overlappingElements);
+  ComputeOverlappingElements(geometry_src, geometry_dst, coorDst, containingElems, overlappingElements);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 5: Compute destination mesh mass and gradient using Gauss     ---*/
@@ -123,18 +126,18 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--- Step 6: Correct the gradient to enforce the maximum principle      ---*/
   /*--------------------------------------------------------------------------*/
   // if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
-  // ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDstCorrected, overlappingElements,
+  // ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDst, overlappingElements,
   //                                 srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 7: Perform averaging to get solution at vertices.             ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Distributing solution to destination nodes." << endl;
-  DistributeSolutionToNodes(geometry_dst, solver_dst, coorDstCorrected, dstElemMass, dstElemGrad);
+  DistributeSolutionToNodes(geometry_dst, solver_dst, coorDst, dstElemMass, dstElemGrad);
 }
 
 void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
-                                                        const vector<su2double>& coor_corrected,
+                                                        const vector<su2double>& coor_dst,
                                                         vector<optional<unsigned long>>& containingElems,
                                                         vector<int>& containingElemRanks,
                                                         vector<unsigned long>& pointsFailed) {
@@ -142,7 +145,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   CADTElemClass& volumeADT = GetSourceVolumeADT();
   CADTElemClass& surfaceADT = GetSourceSurfaceADT();
 
-  const unsigned long nDOFsDst = coor_corrected.size() / nDim;
+  const unsigned long nDOFsDst = coor_dst.size() / nDim;
 
   /*--- Loop over the DOFs to be interpolated ---*/
   containingElems.clear();
@@ -155,7 +158,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
 
   for (auto l = 0u; l < nDOFsDst; ++l) {
     /*--- Set a pointer to the coordinates to be searched ---*/
-    const su2double* coor = coor_corrected.data() + l * nDim;
+    const su2double* coor = coor_dst.data() + l * nDim;
 
     /*--- Carry out the containment search and check if it was successful ---*/
     unsigned short subElemID;
@@ -232,7 +235,6 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
 void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geometry, CSolver* solver,
                                                                 vector<vector<su2double>>& elemMass,
                                                                 vector<vector<su2double>>& elemGrad) {
-  const unsigned short nVar = solver->GetnVar();
   elemMass.resize(nElem_src, vector<su2double>(nVar, 0.0));
   elemGrad.resize(nElem_src, vector<su2double>(nVar * nDim, 0.0));
 
@@ -270,7 +272,7 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
 
 void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geometry_src,
                                                                  CGeometry* geometry_dst,
-                                                                 const vector<su2double> &coor_corrected,
+                                                                 const vector<su2double> &coor_dst,
                                                                  const vector<optional<unsigned long>>& containingElems,
                                                                  IntersectionMesh& overlappingElements) {
   overlappingElements.clear();
@@ -316,8 +318,8 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     /*--- Get destination triangle vertices ---*/
     for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
-      dstTri[iNode * 2 + 0] = coor_corrected[nodeID * nDim + 0];
-      dstTri[iNode * 2 + 1] = coor_corrected[nodeID * nDim + 1];
+      dstTri[iNode * 2 + 0] = coor_dst[nodeID * nDim + 0];
+      dstTri[iNode * 2 + 1] = coor_dst[nodeID * nDim + 1];
     }
 
     /*--------------------------------------------------------------------------*/
@@ -847,7 +849,6 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
                                                                         const vector<vector<su2double>>& srcElemGrad,
                                                                         vector<vector<su2double>>& dstElemMass,
                                                                         vector<vector<su2double>>& dstElemGrad) {
-  const unsigned short nVar = solver_src->GetnVar();
   dstElemMass.resize(nElem_dst, vector<su2double>(nVar, 0.0));
   dstElemGrad.resize(nElem_dst, vector<su2double>(nVar * nDim, 0.0));
 
@@ -1001,13 +1002,12 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
 void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry* geometry_src,
                                                                       CGeometry* geometry_dst,
                                                                       CSolver* solver_src,
-                                                                      const vector<su2double>& coor_corrected,
+                                                                      const vector<su2double>& coor_dst,
                                                                       const IntersectionMesh& overlappingElements,
                                                                       const vector<vector<su2double>>& srcElemMass,
                                                                       const vector<vector<su2double>>& srcElemGrad,
                                                                       vector<vector<su2double>>& dstElemMass,
                                                                       vector<vector<su2double>>& dstElemGrad) {
-  const unsigned short nVar = solver_src->GetnVar();
   const su2double EPS = 1e-12;
 
   /*--- Loop over all destination elements that have overlaps ---*/
@@ -1026,8 +1026,8 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
     su2double dstVertices[6];
     for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
-      dstVertices[iNode * 2 + 0] = coor_corrected[nodeID * nDim + 0];
-      dstVertices[iNode * 2 + 1] = coor_corrected[nodeID * nDim + 1];
+      dstVertices[iNode * 2 + 0] = coor_dst[nodeID * nDim + 0];
+      dstVertices[iNode * 2 + 1] = coor_dst[nodeID * nDim + 1];
     }
 
     /*--- Element centroid (barycenter G_K) ---*/
@@ -1150,70 +1150,56 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
 
 void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geometry_dst,
                                                                 CSolver* solver_dst,
-                                                                const vector<su2double> &coor_corrected,
+                                                                const vector<su2double> &coor_dst,
                                                                 const vector<vector<su2double>>& dstElemMass,
                                                                 const vector<vector<su2double>>& dstElemGrad) {
-  const unsigned short nVar = solver_dst->GetnVar();
-  const su2double EPS = 1e-16;
+  /*--- Loop over all nodes and accumulate contributions from each element ---*/
+  vector<su2double> totalValue(nVar, 0.0);
+  for (auto l = 0u; l < nPoint_dst; ++l) {
+    /*--- Initialize accumulation variables for this node ---*/
+    su2double totalWeight = 0.0;
+    fill(totalValue.begin(), totalValue.end(), 0.0);
 
-  /*--- Initialize vertex solution arrays ---*/
-  vector<vector<su2double>> vertexSolution(geometry_dst->GetnPoint(), vector<su2double>(nVar, 0.0));
-  vector<su2double> vertexWeight(geometry_dst->GetnPoint(), 0.0);
+    /*--- Get node coordinates ---*/
+    const su2double* coor = coor_dst.data() + l * nDim;
 
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 1: Accumulate contributions from each element                 ---*/
-  /*--------------------------------------------------------------------------*/
-  for (auto dstElemID = 0u; dstElemID < geometry_dst->GetnElem(); ++dstElemID) {
-    auto* dstElem = geometry_dst->elem[dstElemID];
-    if (dstElem->GetVTK_Type() != TRIANGLE) continue;
+    /*--- Loop over all elements that contain this node ---*/
+    const unsigned short nElem_node = geometry_dst->nodes->GetnElem(l);
+    for (auto j = 0u; j < nElem_node; ++j) {
+      unsigned long elemID = geometry_dst->nodes->GetElem(l, j);
+      auto* elem = geometry_dst->elem[elemID];
 
-    /*--- Get element vertices and centroid ---*/
-    su2double dstVertices[6];
-    for (auto iNode = 0u; iNode < 3; ++iNode) {
-      unsigned long nodeID = dstElem->GetNode(iNode);
-      dstVertices[iNode * 2 + 0] = coor_corrected[nodeID * nDim + 0];
-      dstVertices[iNode * 2 + 1] = coor_corrected[nodeID * nDim + 1];
-    }
+      /*--- Skip non-triangular elements ---*/
+      if (elem->GetVTK_Type() != TRIANGLE) continue;
 
-    su2double elemVolume = dstElem->GetVolume();
-    const su2double* G_K = dstElem->GetCG();
+      /*--- Get element volume and centroid ---*/
+      const su2double elemVolume = elem->GetVolume();
+      const su2double* G_K = elem->GetCG();
 
-    /*--- Loop over variables ---*/
-    for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      /*--- Get element-centered solution ---*/
-      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
-      const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
+      /*--- Vector from centroid to node ---*/
+      const su2double vec[2] = {coor[0] - G_K[0], coor[1] - G_K[1]};
 
-      /*--- Interpolate to each vertex ---*/
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
-        unsigned long nodeID = dstElem->GetNode(iNode);
-
-        /*--- Vector from centroid to vertex ---*/
-        su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
-        su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
+      /*--- Loop over variables ---*/
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
+        /*--- Get element-centered solution ---*/
+        const su2double u_G = dstElemMass[elemID][iVar] / elemVolume;
+        const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
 
         /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) · (P_i - G_K) ---*/
-        su2double vertexValue = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
+        const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
 
         /*--- Accumulate weighted contribution ---*/
-        vertexSolution[nodeID][iVar] += vertexValue * elemVolume;
+        totalValue[iVar] += vertexValue * elemVolume;
       }
+
+      /*--- Accumulate weight ---*/
+      totalWeight += elemVolume;
     }
 
-    /*--- Accumulate weights for all vertices of this element ---*/
-    for (auto iNode = 0u; iNode < 3; ++iNode) {
-      unsigned long nodeID = dstElem->GetNode(iNode);
-      vertexWeight[nodeID] += elemVolume;
-    }
-  }
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 2: Compute weighted averages and set solution                 ---*/
-  /*--------------------------------------------------------------------------*/
-  for (auto nodeID = 0u; nodeID < geometry_dst->GetnPoint(); ++nodeID) {
+    /*--- Compute weighted average and set solution for this node ---*/
     for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      su2double avgValue = vertexSolution[nodeID][iVar] / vertexWeight[nodeID];
-      solver_dst->GetNodes()->SetSolution(nodeID, iVar, avgValue);
+      const su2double avgValue = totalValue[iVar] / totalWeight;
+      solver_dst->GetNodes()->SetSolution(l, iVar, avgValue);
     }
   }
 }
@@ -1263,8 +1249,8 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
                                                                         vector<su2double>& mass,
                                                                         vector<su2double>& grad) {
   /*--- Initialize output ---*/
-  mass.assign(nVar, 0.0);
-  grad.assign(nVar * nDim, 0.0);
+  fill(mass.begin(), mass.end(), 0.0);
+  fill(grad.begin(), grad.end(), 0.0);
 
   /*--- Create standard triangular element ---*/
   unsigned short VTK_Type = TRIANGLE;
