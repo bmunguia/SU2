@@ -421,8 +421,8 @@ void CVolumeInterpolator::NearestPointOnLine(CGeometry* geometry, const unsigned
   }
 
   /*--- Use the same parametrization as CADTElemClass::Dist2ToLine ---*/
-  /*--- X = X0 + (r+1)*(X1-X0)/2, -1 <= r <= 1 ---*/
-  /*--- V0 = coor - (X1+X0)/2, V1 = (X1-X0)/2 ---*/
+  /*--- X = X0 + (r+1)*(X1-X0)/2, -1 <= r <= 1                     ---*/
+  /*--- V0 = coor - (X1+X0)/2, V1 = (X1-X0)/2                      ---*/
   su2double V0[3], V1[3];
   for (unsigned short k = 0; k < nDim; ++k) {
     V0[k] = coor[k] - 0.5 * (x1[k] + x0[k]);
@@ -459,9 +459,9 @@ bool CVolumeInterpolator::NearestPointOnTriangle(CGeometry* geometry, const unsi
     x2[k] = geometry->nodes->GetCoord(i2, k);
   }
 
-  /*--- Use the same parametrization as CADTElemClass::Dist2ToTriangle ---*/
+  /*--- Use the same parametrization as CADTElemClass::Dist2ToTriangle   ---*/
   /*--- X = X0 + (r+1)*(X1-X0)/2 + (s+1)*(X2-X0)/2, r, s >= -1, r+s <= 0 ---*/
-  /*--- V0 = coor - (X1+X2)/2, V1 = (X1-X0)/2, V2 = (X2-X0)/2 ---*/
+  /*--- V0 = coor - (X1+X2)/2, V1 = (X1-X0)/2, V2 = (X2-X0)/2            ---*/
   su2double V0[3], V1[3], V2[3];
   for (unsigned short k = 0; k < nDim; ++k) {
     V0[k] = coor[k] - 0.5 * (x1[k] + x2[k]);
@@ -502,8 +502,8 @@ bool CVolumeInterpolator::NearestPointOnTriangle(CGeometry* geometry, const unsi
     return true;
   }
 
-  /*--- The projection of the coordinate is outside the triangle.
-        Return false. ---*/
+  /*--- The projection of the coordinate is outside the triangle. ---*/
+  /*--- Return false. ---*/
   return false;
 }
 
@@ -523,7 +523,7 @@ bool CVolumeInterpolator::NearestPointOnQuadrilateral(CGeometry* geometry, const
 }
 
 void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                                   const unsigned short nDim, const vector<su2double>& coor_dst,
+                                                   const unsigned short nDim, vector<su2double>& coor_dst,
                                                    vector<su2double>& coor_corrected) {
   /*--- Initialize corrected coordinates to original coordinates ---*/
   coor_corrected = coor_dst;
@@ -552,13 +552,22 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
 
       /*--- Find the closest point on the destination surface mesh to the source wall point ---*/
       dstSurfaceADT.DetermineNearestElement(surfCoorSrc, dstDist, dstMarkerID, dstElemID, dstRankID);
-      NearestPointOnElement(geometry_dst, dstMarkerID, dstElemID, surfCoorSrc, surfCoorDst,
+      NearestPointOnElement(geometry_dst, dstMarkerID, dstElemID, coor, surfCoorDst,
                             dstDist, nDim);
 
-      /*--- Determine the curvature correction, which is the vector from the     */
-      /*    wall coordinate of the output grid to the wall coordinates on the    */
-      /*    input grid                                                        ---*/
-      for (unsigned short k = 0; k < nDim; ++k) coor[k] += surfCoorSrc[k] - surfCoorDst[k];
+      /*--- Determine the curvature correction, which is the vector from the  ---*/
+      /*--- wall coordinate of the output grid to the wall coordinates on the ---*/
+      /*--- input grid                                                        ---*/
+      su2double mag = 0.0;
+      for (auto k = 0u; k < nDim; ++k) mag += pow(surfCoorSrc[k] - surfCoorDst[k], 2.0);
+      if (sqrt(mag) > 1e-5) {
+        for (auto k = 0u; k < nDim; ++k) {
+          cout << "Correction[" << k << "]: " << surfCoorSrc[k] - surfCoorDst[k];
+          if (k < nDim - 1) cout << "; ";
+        }
+        cout << endl;
+      }
+      for (auto k = 0u; k < nDim; ++k) coor[k] += surfCoorSrc[k] - surfCoorDst[k];
     }
   }
 }

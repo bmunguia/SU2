@@ -139,6 +139,16 @@ class CVolumeInterpolator {
       return *dstSurfaceADT_ptr;
     }
 
+    void InitializeCoords(CGeometry* geometry, vector<su2double>& coords) {
+      const unsigned long nPoint = geometry->GetnPoint();
+      coords.resize(nPoint * nDim, 0.0);
+      for (unsigned long l = 0; l < nPoint; ++l) {
+        for (unsigned short k = 0; k < nDim; ++k) {
+          coords[l * nDim + k] = geometry->nodes->GetCoord(l, k);
+        }
+      }
+    }
+
   public:
     /*!
      * \brief Main interpolation routine - pure virtual function.
@@ -178,7 +188,7 @@ class CVolumeInterpolator {
                                     su2double* surfCoor, su2double& dist2Quad, const unsigned short nDim);
 
     void ApplyCurvatureCorrection(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                  const unsigned short nDim, const vector<su2double> &coor_dst,
+                                  const unsigned short nDim, vector<su2double> &coor_dst,
                                   vector<su2double> &coor_corrected);
 
   public:

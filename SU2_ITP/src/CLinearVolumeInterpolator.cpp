@@ -35,10 +35,11 @@ void CLinearVolumeInterpolator::Interpolate(CConfig* config, CGeometry* geometry
                                             CSolver** solver_container_src, CSolver** solver_container_dst) {
   if (rank == MASTER_NODE) {
     cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
-    cout << "Performing linear solution interpolation from source mesh to destination mesh..." << endl;
+    cout << "Linear solution interpolation from source mesh to destination mesh." << endl;
     cout << "Source mesh: " << geometry_src->GetGlobal_nPointDomain() << " points, ";
-    cout << geometry_src->GetGlobal_nElemDomain() << " elements" << endl;
-    cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points" << endl;
+    cout << geometry_src->GetGlobal_nElemDomain() << " elements." << endl;
+    cout << "Destination mesh: " << geometry_dst->GetGlobal_nPointDomain() << " points,";
+    cout << geometry_dst->GetGlobal_nElemDomain() << " elements." << endl;
   }
 
   /*--- Build the ADTs ---*/
@@ -56,11 +57,7 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
   if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
   vector<su2double> coorDst;
   vector<su2double> coorDstCorrected;
-  for (unsigned long iPoint = 0; iPoint < nPoint_dst; iPoint++) {
-    for (unsigned short k = 0; k < nDim; ++k) {
-      coorDst.push_back(geometry_dst->nodes->GetCoord(iPoint, k));
-    }
-  }
+  InitializeCoords(geometry_dst, coorDst);
   ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst, coorDstCorrected);
 
   /*--------------------------------------------------------------------------*/
@@ -106,9 +103,8 @@ void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSo
     int rankID;
     su2double parCoor[3], weightsInterpol[8];
 
-    bool foundElement = volumeADT.DetermineContainingElement(coor, subElemID, elemID, rankID, parCoor, weightsInterpol);
-
-    if (foundElement) {
+    if (volumeADT.DetermineContainingElement(coor, subElemID, elemID, rankID, parCoor,
+                                             weightsInterpol)) {
       /*--- Get element information ---*/
       unsigned short nNodes = geometry_src->elem[elemID]->GetnNodes();
 
@@ -175,9 +171,8 @@ void CLinearVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CS
       NearestPointOnElement(geometry_src, markerID, elemID, coor, surfCoor,
                             dist, nDim);
 
-
-        /*--- Get surface element information ---*/
-        unsigned short nNodes = geometry_src->bound[markerID][elemID]->GetnNodes();
+      /*--- Get surface element information ---*/
+      unsigned short nNodes = geometry_src->bound[markerID][elemID]->GetnNodes();
 
       /*--- Use nearest surface element nodes for interpolation ---*/
       su2double weightsInterpol[4];
