@@ -63,6 +63,13 @@ void CVolumeInterpolator::InitializeConfig(CConfig* driver_config, CConfig** con
 
 void CVolumeInterpolator::InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iInst,
                                              int nZone, bool isSource) {
+  if (rank == MASTER_NODE) {
+    if (isSource) {
+      cout << endl << "----------------- Source Geometry Information ( Zone "  << iZone << " ) ----------------" << endl;
+    } else {
+      cout << endl << "-------------- Destination Geometry Information ( Zone "  << iZone << " ) --------------" << endl;
+    }
+  }
   /*--- Mesh initialization ---*/
   config->SetiInst(iInst);
   CGeometry* geometry_aux = nullptr;

@@ -184,12 +184,16 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] power_Q - Powers of Q vertices w.r.t. P edges [3][3]
      * \param[in] EPS - Tolerance for zero detection
      * \param[out] intersectionPoints - Cloud of intersection points
+     * \param[out] isDegenerateVertexP - boolean array indicating which vertices of P are degenerate
+     * \param[out] isDegenerateVertexQ - boolean array indicating which vertices of Q are degenerate
      * \param[out] isDegenerateEdgePair - 3x3 boolean array indicating which edge pairs are degenerate [iP][jQ]
      */
     void ProcessDegenerateEdgeIntersections(su2double* P_edges[3][2], su2double* Q_edges[3][2],
                                             const su2double power_P[3][3], const su2double power_Q[3][3],
                                             const su2double EPS,
                                             vector<su2double>& intersectionPoints,
+                                            bool isDegenerateVertexP[3],
+                                            bool isDegenerateVertexQ[3],
                                             bool isDegenerateEdgePair[3][3]);
 
     /*!

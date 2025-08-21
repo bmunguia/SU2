@@ -52,19 +52,22 @@ void CLinearVolumeInterpolator::Interpolate(CConfig* config, CGeometry* geometry
 void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
                                                     CSolver* solver_src, CSolver* solver_dst) {
   /*--------------------------------------------------------------------------*/
-  /*--- Step 0: Initialize destination coordinate vector                   ---*/
+  /*--- Step 0: Initialize destination coordinate vector. If applying a    ---*/
+  /*---         curvature correction, this vector will be modified.        ---*/
+  /*---         Otherwise, it will just contain the original coordinates.  ---*/
   /*--------------------------------------------------------------------------*/
   nVar = solver_src->GetnVar();
   vector<su2double> coorDst;
   InitializeCoords(geometry_dst, coorDst);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 1: Apply the curvature correction to the destination nodes    ---*/
+  /*--- Step 1: Apply the curvature correction to the destination nodes.   ---*/
   /*--------------------------------------------------------------------------*/
+  // if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
   // ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 2: Volume interpolation, via a containment search             ---*/
+  /*--- Step 2: Volume interpolation, via a containment search.            ---*/
   /*--------------------------------------------------------------------------*/
 
   if (rank == MASTER_NODE) cout << "Performing volume interpolation." << endl;

@@ -72,20 +72,22 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                                                                 CSolver* solver_src,
                                                                 CSolver* solver_dst) {
   /*--------------------------------------------------------------------------*/
-  /*--- Step 0: Initialize destination coordinate vector                   ---*/
+  /*--- Step 0: Initialize destination coordinate vector. If applying a    ---*/
+  /*---         curvature correction, this vector will be modified.        ---*/
+  /*---         Otherwise, it will just contain the original coordinates.  ---*/
   /*--------------------------------------------------------------------------*/
   nVar = solver_src->GetnVar();
   vector<su2double> coorDst;
   InitializeCoords(geometry_dst, coorDst);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 1: Apply the curvature correction to the destination nodes    ---*/
+  /*--- Step 1: Apply the curvature correction to the destination nodes.   ---*/
   /*--------------------------------------------------------------------------*/
   // if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
   // ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 2: Localize destination nodes on the source mesh              ---*/
+  /*--- Step 2: Localize destination nodes on the source mesh.             ---*/
   /*---         containingElems is a map from destination mesh nodes to    ---*/
   /*---         containing elements on the source mesh, and pointsFailed   ---*/
   /*---         is all the nodes for which no containing element was found ---*/
@@ -98,7 +100,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                     pointsFailed);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 3: Compute solution mass and gradient on source mesh          ---*/
+  /*--- Step 3: Compute solution mass and gradient on source mesh.         ---*/
   /*--------------------------------------------------------------------------*/
   vector<vector<su2double>> srcElemMass;
   vector<vector<su2double>> srcElemGrad;
@@ -106,7 +108,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 4: Compute the intersection of elements K_dst with elements   ---*/
-  /*---         K_src it overlaps                                          ---*/
+  /*---         K_src it overlaps.                                         ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
   IntersectionMesh overlappingElements;
@@ -114,7 +116,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 5: Compute destination mesh mass and gradient using Gauss     ---*/
-  /*---         quadrature over intersection regions                       ---*/
+  /*---         quadrature over intersection regions.                      ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing destination mesh mass and gradients." << endl;
   vector<vector<su2double>> dstElemMass;
@@ -123,7 +125,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                                     srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 6: Correct the gradient to enforce the maximum principle      ---*/
+  /*--- Step 6: Correct the gradient to enforce the maximum principle.     ---*/
   /*--------------------------------------------------------------------------*/
   // if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
   // ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDst, overlappingElements,
@@ -243,6 +245,7 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
     const unsigned short nNodes = elem->GetnNodes();
     const unsigned short VTK_Type = elem->GetVTK_Type();
     const su2double elemVolume = elem->GetVolume();
+    if (elemVolume < 0) cout << "Negative source volume!!!" << endl;
 
     /*--- Get solution at nodes ---*/
     vector<vector<su2double>> vertexSol(nNodes, vector<su2double>(nVar, 0.0));
@@ -410,7 +413,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 1: Compute all 18 vertex-edge powers handle degenerate        ---*/
-  /*---         intersection cases (1, 2, or 4 signed distances being 0)   ---*/
+  /*---         intersection cases (1, 2, or 4 signed distances being 0).  ---*/
   /*--------------------------------------------------------------------------*/
   vector<su2double> cloudPoints;
 
@@ -431,10 +434,20 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   su2double* P_edges[3][2] = {{P[0], P[1]}, {P[1], P[2]}, {P[2], P[0]}};
   su2double* Q_edges[3][2] = {{Q[0], Q[1]}, {Q[1], Q[2]}, {Q[2], Q[0]}};
 
-  /*--- Step 1: Handle degenerate edge-edge intersection cases ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 2: Handle degenerate edge-edge intersection cases.            ---*/
+  /*--------------------------------------------------------------------------*/
+  bool isDegenerateVertexP[3] = {};
+  bool isDegenerateVertexQ[3] = {};
   bool isDegenerateEdgePair[3][3] = {};
   ProcessDegenerateEdgeIntersections(P_edges, Q_edges, power_P, power_Q, EPS, cloudPoints,
-                                     isDegenerateEdgePair);
+                                     isDegenerateVertexP, isDegenerateVertexQ, isDegenerateEdgePair);
+
+  /*--- Add vertex ball of all degenerate vertices of Q ---*/
+  for (auto i = 0u; i < 3; ++i) {
+    if (isDegenerateVertexQ[i])
+      AddVertexBallToCandidates(geometry_src, srcElemID, i, newCandidates);
+  }
 
   /*--- Check if KP vertices are strictly inside KQ ---*/
   for (auto i = 0u; i < 3; ++i) {
@@ -458,13 +471,16 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   }
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 2: Process edge-edge intersections, ignoring any degenerate   ---*/
-  /*---         cases since they were handled in Step 1                    ---*/
+  /*--- Step 3: Process edge-edge intersections, ignoring any degenerate   ---*/
+  /*---         cases since they were handled in Step 1.                   ---*/
   /*--------------------------------------------------------------------------*/
   for (auto iP = 0u; iP < 3; ++iP) {
     for (auto jQ = 0u; jQ < 3; ++jQ) {
       /*--- Skip degenerate edge pairs (already handled in Step 1) ---*/
-      if (isDegenerateEdgePair[iP][jQ]) continue;
+      if (isDegenerateEdgePair[iP][jQ]) {
+        AddFaceNeighborToCandidates(geometry_src, srcElemID, jQ, newCandidates);
+        continue;
+      }
 
       su2double* edgeP0 = P_edges[iP][0];
       su2double* edgeP1 = P_edges[iP][1];
@@ -481,6 +497,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
       if ((distP0_eQ * distP1_eQ < 0) && (distQ0_eP * distQ1_eP < 0)) {
         /*--- Compute intersection point ---*/
         su2double t = distP0_eQ / (distP0_eQ - distP1_eQ);
+
         su2double intersectionX = edgeP0[0] + t * (edgeP1[0] - edgeP0[0]);
         su2double intersectionY = edgeP0[1] + t * (edgeP1[1] - edgeP0[1]);
 
@@ -494,7 +511,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   }
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 3: Mesh the intersection polygon                              ---*/
+  /*--- Step 4: Mesh the intersection polygon.                             ---*/
   /*--------------------------------------------------------------------------*/
   MeshConvexPolygon(cloudPoints, meshedIntersection);
 
@@ -505,20 +522,18 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
                                                                          const su2double power_P[3][3], const su2double power_Q[3][3],
                                                                          const su2double EPS,
                                                                          vector<su2double>& intersectionPoints,
+                                                                         bool isDegenerateVertexP[3],
+                                                                         bool isDegenerateVertexQ[3],
                                                                          bool isDegenerateEdgePair[3][3]) {
-  /*--- Initialize all vertices as non-degenerate ---*/
-  bool isDegeneratePi[3] = {};
-  bool isDegenerateQj[3] = {};
-
   auto addPoint = [&](su2double x, su2double y, int Pi, int Qj) {
     bool alreadyAdded = false;
     if (Pi >= 0) {
-      if (isDegeneratePi[Pi]) alreadyAdded = true;
-      isDegeneratePi[Pi] = true;
+      if (isDegenerateVertexP[Pi]) alreadyAdded = true;
+      isDegenerateVertexP[Pi] = true;
     }
     if (Qj >= 0) {
-      if (isDegenerateQj[Qj]) alreadyAdded = true;
-      isDegenerateQj[Qj] = true;
+      if (isDegenerateVertexQ[Qj]) alreadyAdded = true;
+      isDegenerateVertexQ[Qj] = true;
     }
     if (alreadyAdded) return;
     intersectionPoints.push_back(x);
@@ -1036,7 +1051,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
     /*--- For each variable, apply Alauzet's maximum principle correction ---*/
     for (auto iVar = 0u; iVar < nVar; ++iVar) {
       /*--------------------------------------------------------------------------*/
-      /*--- Step 1: Compute local bounds from overlapping source elements      ---*/
+      /*--- Step 1: Compute local bounds from overlapping source elements.     ---*/
       /*--------------------------------------------------------------------------*/
       su2double u_min = 1e20;
       su2double u_max = -1e20;
@@ -1060,14 +1075,15 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       if (u_min > 1e19 || u_max < -1e19) continue;
 
       /*--------------------------------------------------------------------------*/
-      /*--- Step 2: Get current solution at destination element                ---*/
+      /*--- Step 2: Get current solution at destination element.               ---*/
       /*--------------------------------------------------------------------------*/
       const su2double elemVolume = dstElem->GetVolume();
+      if (elemVolume < 0) cout << "Negative dest volume!!!" << endl;
       const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
       const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
 
       /*--------------------------------------------------------------------------*/
-      /*--- Step 3: Compute u_K(P_i) at each vertex using Taylor expansion     ---*/
+      /*--- Step 3: Compute u_K(P_i) at each vertex using Taylor expansion.    ---*/
       /*--------------------------------------------------------------------------*/
       su2double u_K_P[3];  // Values at vertices P_0, P_1, P_2
       for (auto iNode = 0u; iNode < 3; ++iNode) {
@@ -1080,7 +1096,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       }
 
       /*--------------------------------------------------------------------------*/
-      /*--- Step 4: Check if maximum principle is violated                     ---*/
+      /*--- Step 4: Check if maximum principle is violated.                    ---*/
       /*--------------------------------------------------------------------------*/
       bool violatesMaxPrinciple = false;
       for (auto iNode = 0u; iNode < 3; ++iNode) {
@@ -1094,7 +1110,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       if (!violatesMaxPrinciple) continue;
 
       /*--------------------------------------------------------------------------*/
-      /*--- Step 5: Apply Alauzet's correction algorithm                       ---*/
+      /*--- Step 5: Apply Alauzet's correction algorithm.                      ---*/
       /*--------------------------------------------------------------------------*/
       /*--- Sort vertices by solution value: u_K(P_0) ≤ u_K(P_1) ≤ u_K(P_2) ---*/
       vector<pair<su2double, unsigned short>> sortedValues;
@@ -1124,7 +1140,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       const su2double u_tilde_P2 = 3.0 * u_G - u_tilde_P0 - u_tilde_P1;
 
       /*--------------------------------------------------------------------------*/
-      /*--- Step 6: Compute corrected mass and gradient from new nodal values  ---*/
+      /*--- Step 6: Compute corrected mass and gradient from new nodal values. ---*/
       /*--------------------------------------------------------------------------*/
       /*--- Put corrected values back in original vertex order ---*/
       u_tilde[sortedValues[0].second] = u_tilde_P0;
@@ -1200,6 +1216,7 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
     for (auto iVar = 0u; iVar < nVar; ++iVar) {
       const su2double avgValue = totalValue[iVar] / totalWeight;
       solver_dst->GetNodes()->SetSolution(l, iVar, avgValue);
+      solver_dst->GetNodes()->SetSolution_Old(l, iVar, avgValue);
     }
   }
 }
