@@ -161,8 +161,8 @@ void CVolumeInterpolator::InitializeGeometry(CConfig* config, CGeometry*& geomet
           so that repeated nodes on adjacent periodic faces are properly
           accounted for in multiple places. ---*/
 
-    for (unsigned short iPeriodic = 1; iPeriodic <= config->GetnMarker_Periodic()/2; iPeriodic++) {
-      geometry->MatchPeriodic(config, iPeriodic);
+    for (auto iPer = 1u; iPer <= config->GetnMarker_Periodic()/2; ++iPer) {
+      geometry->MatchPeriodic(config, iPer);
     }
 
     /*--- For Streamwise Periodic flow, find a unique reference node on the dedicated inlet marker. ---*/
@@ -231,7 +231,7 @@ void CVolumeInterpolator::InitializeOutput(CConfig* config, CGeometry* geometry,
 
 void CVolumeInterpolator::LoadRestarts(CConfig* config, CGeometry** geometry_container, CSolver*** solver_container, int iZone,
                                        int iInst, int TimeIter, bool UpdateGeo) {
-  for (auto iSol = 0u; iSol < MAX_SOLS; iSol++) {
+  for (auto iSol = 0u; iSol < MAX_SOLS; ++iSol) {
     auto solver = solver_container[iInst][iSol];
     if (solver)
       solver->LoadRestart(geometry_container, solver_container, config, TimeIter, UpdateGeo);
@@ -267,21 +267,21 @@ std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildVolumeADT(CGeometry* ge
   vector<unsigned long> parElemID;
 
   /*--- Copy coordinates ---*/
-  for (unsigned long i = 0; i <  geometry->GetnPoint(); ++i) {
-    for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto i = 0u; i <  geometry->GetnPoint(); ++i) {
+    for (auto k = 0u; k < nDim; ++k) {
       volCoor.push_back(geometry->nodes->GetCoord(i, k));
     }
   }
 
   /*--- Copy element connectivity and metadata ---*/
-  for (unsigned long iElem = 0; iElem < geometry->GetnElem(); iElem++) {
+  for (auto iElem = 0u; iElem < geometry->GetnElem(); ++iElem) {
     const unsigned short VTK_Type = geometry->elem[iElem]->GetVTK_Type();
     const unsigned short nDOFsPerElem = geometry->elem[iElem]->GetnNodes();
 
     vtkType.push_back(VTK_Type);
     subElemID.push_back(0);  // TODO: FEM subelements
     parElemID.push_back(iElem);
-    for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
+    for (auto iNode = 0u; iNode < nDOFsPerElem; ++iNode) {
       elemConn.push_back(geometry->elem[iElem]->GetNode(iNode));
     }
   }
@@ -302,14 +302,14 @@ std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildSurfaceADT(const CConfi
   vector<unsigned short> markerIDs;
 
   /*--- Loop over boundary markers ---*/
-  for (unsigned short iMarker = 0; iMarker < geometry->GetnMarker(); iMarker++) {
+  for (auto iMarker = 0u; iMarker < geometry->GetnMarker(); ++iMarker) {
     /*--- Loop over surface elements of this marker ---*/
-    for (unsigned long iElem = 0; iElem < geometry->GetnElem_Bound(iMarker); iElem++) {
+    for (auto iElem = 0u; iElem < geometry->GetnElem_Bound(iMarker); ++iElem) {
       const unsigned short VTK_Type = geometry->bound[iMarker][iElem]->GetVTK_Type();
       const unsigned short nDOFsPerElem = geometry->bound[iMarker][iElem]->GetnNodes();
 
       /*--- Set flag for mesh points on this surface ---*/
-      for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
+      for (auto iNode = 0u; iNode < nDOFsPerElem; ++iNode) {
         unsigned long iPoint = geometry->bound[iMarker][iElem]->GetNode(iNode);
         meshToSurface[iPoint] = 1;
       }
@@ -318,7 +318,7 @@ std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildSurfaceADT(const CConfi
       markerIDs.push_back(iMarker);
       VTK_TypeElem.push_back(VTK_Type);
       elemIDs.push_back(iElem);
-      for (unsigned short iNode = 0; iNode < nDOFsPerElem; iNode++) {
+      for (auto iNode = 0u; iNode < nDOFsPerElem; ++iNode) {
         surfaceConn.push_back(geometry->bound[iMarker][iElem]->GetNode(iNode));
       }
     }
@@ -328,17 +328,17 @@ std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildSurfaceADT(const CConfi
   vector<su2double> surfaceCoor;
   unsigned long nVertex_Surface = 0;
 
-  for (unsigned long i = 0; i < geometry->GetnPoint(); ++i) {
+  for (auto i = 0u; i < geometry->GetnPoint(); ++i) {
     if (meshToSurface[i]) {
       meshToSurface[i] = nVertex_Surface++;
-      for (unsigned short k = 0; k < nDim; ++k) {
+      for (auto k = 0u; k < nDim; ++k) {
         surfaceCoor.push_back(geometry->nodes->GetCoord(i, k));
       }
     }
   }
 
   /*--- Change surface connectivity to correspond to surfaceCoor indices ---*/
-  for (unsigned long i = 0; i < surfaceConn.size(); i++) {
+  for (auto i = 0u; i < surfaceConn.size(); ++i) {
     surfaceConn[i] = meshToSurface[surfaceConn[i]];
   }
 
@@ -356,7 +356,7 @@ void CVolumeInterpolator::NearestPointOnElement(CGeometry* geometry, unsigned sh
   auto updateNearest = [&](su2double dist2Line, su2double* surfCoorLine) {
     if (dist2Line < dist2Elem) {
       dist2Elem = dist2Line;
-      for (unsigned short k = 0; k < nDim; ++k) surfCoor[k] = surfCoorLine[k];
+      for (auto k = 0u; k < nDim; ++k) surfCoor[k] = surfCoorLine[k];
     }
   };
 
@@ -415,7 +415,7 @@ void CVolumeInterpolator::NearestPointOnLine(CGeometry* geometry, const unsigned
                                              const su2double* coor, su2double* surfCoor, su2double& dist2Line,
                                              const unsigned short nDim) {
   su2double x0[3], x1[3];
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     x0[k] = geometry->nodes->GetCoord(i0, k);
     x1[k] = geometry->nodes->GetCoord(i1, k);
   }
@@ -424,14 +424,14 @@ void CVolumeInterpolator::NearestPointOnLine(CGeometry* geometry, const unsigned
   /*--- X = X0 + (r+1)*(X1-X0)/2, -1 <= r <= 1                     ---*/
   /*--- V0 = coor - (X1+X0)/2, V1 = (X1-X0)/2                      ---*/
   su2double V0[3], V1[3];
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     V0[k] = coor[k] - 0.5 * (x1[k] + x0[k]);
     V1[k] = 0.5 * (x1[k] - x0[k]);
   }
 
   /*--- Determine the value of r for minimum distance ---*/
   su2double dotV0V1 = 0.0, dotV1V1 = 0.0;
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     dotV0V1 += V0[k] * V1[k];
     dotV1V1 += V1[k] * V1[k];
   }
@@ -440,7 +440,7 @@ void CVolumeInterpolator::NearestPointOnLine(CGeometry* geometry, const unsigned
 
   /*--- Compute the nearest point using the parametric equation ---*/
   dist2Line = 0.0;
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     surfCoor[k] = x0[k] + 0.5 * (r + 1.0) * (x1[k] - x0[k]);
 
     /*--- Also compute minimum distance squared ---*/
@@ -453,7 +453,7 @@ bool CVolumeInterpolator::NearestPointOnTriangle(CGeometry* geometry, const unsi
                                                  const unsigned long i2, const su2double* coor, su2double* surfCoor,
                                                  su2double& dist2Tria, const unsigned short nDim) {
   su2double x0[3], x1[3], x2[3];
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     x0[k] = geometry->nodes->GetCoord(i0, k);
     x1[k] = geometry->nodes->GetCoord(i1, k);
     x2[k] = geometry->nodes->GetCoord(i2, k);
@@ -463,7 +463,7 @@ bool CVolumeInterpolator::NearestPointOnTriangle(CGeometry* geometry, const unsi
   /*--- X = X0 + (r+1)*(X1-X0)/2 + (s+1)*(X2-X0)/2, r, s >= -1, r+s <= 0 ---*/
   /*--- V0 = coor - (X1+X2)/2, V1 = (X1-X0)/2, V2 = (X2-X0)/2            ---*/
   su2double V0[3], V1[3], V2[3];
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     V0[k] = coor[k] - 0.5 * (x1[k] + x2[k]);
     V1[k] = 0.5 * (x1[k] - x0[k]);
     V2[k] = 0.5 * (x2[k] - x0[k]);
@@ -471,7 +471,7 @@ bool CVolumeInterpolator::NearestPointOnTriangle(CGeometry* geometry, const unsi
 
   /*--- Compute dot products ---*/
   su2double dotV0V1 = 0.0, dotV0V2 = 0.0, dotV1V1 = 0.0, dotV1V2 = 0.0, dotV2V2 = 0.0;
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     dotV0V1 += V0[k] * V1[k];
     dotV0V2 += V0[k] * V2[k];
     dotV1V1 += V1[k] * V1[k];
@@ -491,7 +491,7 @@ bool CVolumeInterpolator::NearestPointOnTriangle(CGeometry* geometry, const unsi
   if ((r >= paramLowerBound) && (s >= paramLowerBound) && ((r + s) <= tolInsideElem)) {
     /*--- Projection is inside triangle, compute nearest point ---*/
     dist2Tria = 0.0;
-    for (unsigned short k = 0; k < nDim; ++k) {
+    for (auto k = 0u; k < nDim; ++k) {
       surfCoor[k] = x0[k] + 0.5 * (r + 1.0) * (x1[k] - x0[k]) + 0.5 * (s + 1.0) * (x2[k] - x0[k]);
 
       /*--- Also compute minimum distance squared ---*/
@@ -511,7 +511,7 @@ bool CVolumeInterpolator::NearestPointOnQuadrilateral(CGeometry* geometry, const
                                                       const unsigned long i2, const unsigned long i3, const su2double* coor,
                                                       su2double* surfCoor, su2double& dist2Quad, const unsigned short nDim) {
   su2double x0[3], x1[3], x2[3], x3[3];
-  for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto k = 0u; k < nDim; ++k) {
     x0[k] = geometry->nodes->GetCoord(i0, k);
     x1[k] = geometry->nodes->GetCoord(i1, k);
     x2[k] = geometry->nodes->GetCoord(i2, k);
@@ -535,7 +535,7 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
   /*--- Apply curvature correction if both surfaces exist ---*/
   if (!srcSurfaceADT.IsEmpty() && !dstSurfaceADT.IsEmpty()) {
     const unsigned long nDOFs = coor_dst.size() / nDim;
-    for (unsigned long l = 0; l < nDOFs; ++l) {
+    for (auto l = 0u; l < nDOFs; ++l) {
       /*--- Find nearest wall points ---*/
       unsigned short srcMarkerID, dstMarkerID;
       unsigned long srcElemID, dstElemID;
@@ -591,7 +591,7 @@ void CVolumeInterpolator::WriteFiles(CConfig* config, CGeometry* geometry, CSolv
   output->SetSurfaceFilename(config->GetSurfCoeff_FileName());
 
   auto FileFormat = config->GetVolumeOutputFiles();
-  for (unsigned short iFile = 0; iFile < config->GetnVolumeOutputFiles(); iFile++) {
+  for (auto iFile = 0u; iFile < config->GetnVolumeOutputFiles(); ++iFile) {
     // if (FileFormat[iFile] != OUTPUT_TYPE::RESTART_ASCII && FileFormat[iFile] != OUTPUT_TYPE::RESTART_BINARY &&
     //     FileFormat[iFile] != OUTPUT_TYPE::CSV)
     output->WriteToFile(config, geometry, FileFormat[iFile]);

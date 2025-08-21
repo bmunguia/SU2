@@ -93,7 +93,7 @@ void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSo
 
   /*--- Loop over the DOFs to be interpolated ---*/
   pointsFailed.clear();
-  for (unsigned long l = 0; l < nDOFsDst; ++l) {
+  for (auto l = 0u; l < nDOFsDst; ++l) {
     /*--- Set a pointer to the coordinates to be searched ---*/
     const su2double* coor = coor_corrected.data() + l * nDim;
 
@@ -109,15 +109,15 @@ void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSo
       unsigned short nNodes = geometry_src->elem[elemID]->GetnNodes();
 
       /*--- Initialize interpolated solution to zero ---*/
-      for (unsigned short iVar = 0; iVar < nVar; iVar++) {
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
         solver_dst->GetNodes()->SetSolution(l, iVar, 0.0);
       }
 
       /*--- Interpolate using shape function weights ---*/
-      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+      for (auto iNode = 0u; iNode < nNodes; ++iNode) {
         unsigned long nodeID = geometry_src->elem[elemID]->GetNode(iNode);
 
-        for (unsigned short iVar = 0; iVar < nVar; iVar++) {
+        for (auto iVar = 0u; iVar < nVar; ++iVar) {
           su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
           solver_dst->GetNodes()->Add_DeltaSolution(l, iVar, weightsInterpol[iNode] * val);
         }
@@ -151,10 +151,9 @@ void CLinearVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CS
            << " failed points." << endl << flush;
     }
 
-    unsigned long nExtrapolated = 0;
-
     /*--- Loop over failed points for minimum distance search ---*/
-    for (unsigned long l = 0; l < pointsFailed.size(); ++l) {
+    unsigned long nExtrapolated = 0;
+    for (auto l = 0u; l < pointsFailed.size(); ++l) {
       /*--- Get coordinates of failed point ---*/
       const unsigned long pointID = pointsFailed[l];
       const su2double* coor = coor_dst.data() + pointID * nDim;
@@ -184,12 +183,12 @@ void CLinearVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CS
         /*--- For 2D case (LINE elements), use inverse distance weighting ---*/
         su2double totalWeight = 0.0;
 
-        for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+        for (auto iNode = 0u; iNode < nNodes; ++iNode) {
           unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
 
           /*--- Compute distance from interpolation point to node ---*/
           su2double dist2 = 0.0;
-          for (unsigned short k = 0; k < nDim; ++k) {
+          for (auto k = 0u; k < nDim; ++k) {
             su2double diff = coor[k] - geometry_src->nodes->GetCoord(nodeID, k);
             dist2 += diff * diff;
           }
@@ -200,21 +199,21 @@ void CLinearVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CS
         }
 
         /*--- Normalize weights ---*/
-        for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+        for (auto iNode = 0u; iNode < nNodes; ++iNode) {
           weightsInterpol[iNode] /= totalWeight;
         }
       }
 
       /*--- Initialize interpolated solution to zero ---*/
-      for (unsigned short iVar = 0; iVar < nVar; iVar++) {
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
         solver_dst->GetNodes()->SetSolution(pointID, iVar, 0.0);
       }
 
       /*--- Interpolate using shape function weights ---*/
-      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+      for (auto iNode = 0u; iNode < nNodes; ++iNode) {
         unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
 
-        for (unsigned short iVar = 0; iVar < nVar; iVar++) {
+        for (auto iVar = 0u; iVar < nVar; ++iVar) {
           su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
           solver_dst->GetNodes()->Add_DeltaSolution(pointID, iVar, weightsInterpol[iNode] * val);
         }

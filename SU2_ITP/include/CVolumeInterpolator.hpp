@@ -142,8 +142,8 @@ class CVolumeInterpolator {
     void InitializeCoords(CGeometry* geometry, vector<su2double>& coords) {
       const unsigned long nPoint = geometry->GetnPoint();
       coords.resize(nPoint * nDim, 0.0);
-      for (unsigned long l = 0; l < nPoint; ++l) {
-        for (unsigned short k = 0; k < nDim; ++k) {
+      for (auto l = 0u; l < nPoint; ++l) {
+        for (auto k = 0u; k < nDim; ++k) {
           coords[l * nDim + k] = geometry->nodes->GetCoord(l, k);
         }
       }

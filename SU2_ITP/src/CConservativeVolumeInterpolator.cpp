@@ -50,7 +50,7 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
   InitializeADTs(config, geometry_src, geometry_dst);
 
   /*--- Call the conservative interpolation method ---*/
-  for (auto iSol = 0u; iSol < MAX_SOLS; iSol++) {
+  for (auto iSol = 0u; iSol < MAX_SOLS; ++iSol) {
     auto solver_src = solver_container_src[iSol];
     auto solver_dst = solver_container_dst[iSol];
     if (solver_src && solver_dst)
@@ -153,7 +153,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   containingElems.resize(nDOFsDst, nullopt);
   containingElemRanks.resize(nDOFsDst, -1);
 
-  for (unsigned long l = 0; l < nDOFsDst; ++l) {
+  for (auto l = 0u; l < nDOFsDst; ++l) {
     /*--- Set a pointer to the coordinates to be searched ---*/
     const su2double* coor = coor_corrected.data() + l * nDim;
 
@@ -184,13 +184,13 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
       set<unsigned long> candidateVolElems;
       bool firstNode = true;
 
-      for (unsigned short iNode = 0; iNode < nNodes; iNode++) {
+      for (auto iNode = 0u; iNode < nNodes; ++iNode) {
         unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
         unsigned short nElem_node = geometry_src->nodes->GetnElem(nodeID);
 
         if (firstNode) {
           /*--- For first node, add all connected volume elements ---*/
-          for (unsigned short iElem = 0; iElem < nElem_node; iElem++) {
+          for (auto iElem = 0u; iElem < nElem_node; ++iElem) {
             unsigned long volElemID = geometry_src->nodes->GetElem(nodeID, iElem);
             candidateVolElems.insert(volElemID);
           }
@@ -198,7 +198,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
         } else {
           /*--- For subsequent nodes, keep only elements that contain this node ---*/
           set<unsigned long> nodeElems;
-          for (unsigned short iElem = 0; iElem < nElem_node; iElem++) {
+          for (auto iElem = 0u; iElem < nElem_node; ++iElem) {
             unsigned long volElemID = geometry_src->nodes->GetElem(nodeID, iElem);
             nodeElems.insert(volElemID);
           }
@@ -236,7 +236,7 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
   elemMass.resize(nElem_src, vector<su2double>(nVar, 0.0));
   elemGrad.resize(nElem_src, vector<su2double>(nVar * nDim, 0.0));
 
-  for (unsigned long elemID = 0; elemID < geometry->GetnElem(); ++elemID) {
+  for (auto elemID = 0u; elemID < geometry->GetnElem(); ++elemID) {
     auto* elem = geometry->elem[elemID];
     const unsigned short nNodes = elem->GetnNodes();
     const unsigned short VTK_Type = elem->GetVTK_Type();
@@ -245,9 +245,9 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
     /*--- Get solution at nodes ---*/
     vector<vector<su2double>> vertexSol(nNodes, vector<su2double>(nVar, 0.0));
 
-    for (unsigned short iNode = 0; iNode < nNodes; ++iNode) {
+    for (auto iNode = 0u; iNode < nNodes; ++iNode) {
       unsigned long nodeID = elem->GetNode(iNode);
-      for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
         vertexSol[iNode][iVar] = solver->GetNodes()->GetSolution(nodeID, iVar);
       }
     }
@@ -256,7 +256,7 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
 
     /*--- Get triangle vertex coordinates ---*/
     su2double vertexCoords[6];
-    for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = elem->GetNode(iNode);
       vertexCoords[iNode * 2 + 0] = geometry->nodes->GetCoord(nodeID, 0);
       vertexCoords[iNode * 2 + 1] = geometry->nodes->GetCoord(nodeID, 1);
@@ -290,7 +290,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
   /*--- Loop over all destination elements ---*/
   unsigned long totalOverlaps = 0;
   unsigned long failedIntersections = 0;
-  for (unsigned long dstElemID = 0; dstElemID < geometry_dst->GetnElem(); ++dstElemID) {
+  for (auto dstElemID = 0u; dstElemID < geometry_dst->GetnElem(); ++dstElemID) {
     auto* dstElem = geometry_dst->elem[dstElemID];
 
     /*--- Skip non-triangular elements ---*/
@@ -302,7 +302,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     /*--------------------------------------------------------------------------*/
     set<unsigned long> candidateList;
 
-    for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
       /*--- Find corresponding point index in corrected coordinates ---*/
       if (containingElems[nodeID].has_value()) {
@@ -314,7 +314,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     if (candidateList.empty()) continue;
 
     /*--- Get destination triangle vertices ---*/
-    for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
       dstTri[iNode * 2 + 0] = coor_corrected[nodeID * nDim + 0];
       dstTri[iNode * 2 + 1] = coor_corrected[nodeID * nDim + 1];
@@ -329,7 +329,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     queue<unsigned long> toProcess;
 
     /*--- Initialize queue with initial candidate list ---*/
-    for (unsigned long srcElemID : candidateList) {
+    for (auto srcElemID : candidateList) {
       toProcess.push(srcElemID);
     }
 
@@ -346,7 +346,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       if (srcElem->GetVTK_Type() != TRIANGLE) continue;
 
       /*--- Get source triangle vertices ---*/
-      for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
         unsigned long nodeID = srcElem->GetNode(iNode);
         srcTri[iNode * 2 + 0] = geometry_src->nodes->GetCoord(nodeID, 0);
         srcTri[iNode * 2 + 1] = geometry_src->nodes->GetCoord(nodeID, 1);
@@ -435,7 +435,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
                                      isDegenerateEdgePair);
 
   /*--- Check if KP vertices are strictly inside KQ ---*/
-  for (int i = 0; i < 3; ++i) {
+  for (auto i = 0u; i < 3; ++i) {
     if ((power_P[i][0] > EPS) &&
         (power_P[i][1] > EPS) &&
         (power_P[i][2] > EPS)) {
@@ -445,7 +445,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   }
 
   /*--- Check if KQ vertices are strictly inside KP ---*/
-  for (int i = 0; i < 3; ++i) {
+  for (auto i = 0u; i < 3; ++i) {
     if ((power_Q[i][0] > EPS) &&
         (power_Q[i][1] > EPS) &&
         (power_Q[i][2] > EPS)) {
@@ -459,8 +459,8 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   /*--- Step 2: Process edge-edge intersections, ignoring any degenerate   ---*/
   /*---         cases since they were handled in Step 1                    ---*/
   /*--------------------------------------------------------------------------*/
-  for (int iP = 0; iP < 3; ++iP) {
-    for (int jQ = 0; jQ < 3; ++jQ) {
+  for (auto iP = 0u; iP < 3; ++iP) {
+    for (auto jQ = 0u; jQ < 3; ++jQ) {
       /*--- Skip degenerate edge pairs (already handled in Step 1) ---*/
       if (isDegenerateEdgePair[iP][jQ]) continue;
 
@@ -524,22 +524,22 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
   };
 
   /*--- Process all 9 edge-edge combinations for degenerate cases ---*/
-  for (int iP = 0; iP < 3; ++iP) {
-    for (int jQ = 0; jQ < 3; ++jQ) {
-      int P0 = iP, P1 = (iP + 1) % 3;
-      int Q0 = jQ, Q1 = (jQ + 1) % 3;
-      su2double* edgeP_start = P_edges[iP][0];  // P vertex iP
-      su2double* edgeP_end = P_edges[iP][1];    // P vertex (iP+1)%3
-      su2double* edgeQ_start = Q_edges[jQ][0];  // Q vertex jQ
-      su2double* edgeQ_end = Q_edges[jQ][1];    // Q vertex (jQ+1)%3
+  for (auto iP = 0u; iP < 3; ++iP) {
+    for (auto jQ = 0u; jQ < 3; ++jQ) {
+      int iP0 = iP, iP1 = (iP + 1) % 3;
+      int jQ0 = jQ, jQ1 = (jQ + 1) % 3;
+      su2double* edgeP0 = P_edges[iP][0];  // P vertex iP
+      su2double* edgeP1 = P_edges[iP][1];  // P vertex (iP+1)%3
+      su2double* edgeQ0 = Q_edges[jQ][0];  // Q vertex jQ
+      su2double* edgeQ1 = Q_edges[jQ][1];  // Q vertex (jQ+1)%3
 
       /*--- Use precomputed powers instead of recalculating ---*/
       /*--- Edge iP of triangle P goes from vertex iP to vertex (iP+1)%3 ---*/
       /*--- Edge jQ of triangle Q goes from vertex jQ to vertex (jQ+1)%3 ---*/
-      su2double distP0_eQ = power_P[P0][jQ];  // Power of P vertex iP w.r.t. Q edge jQ
-      su2double distP1_eQ = power_P[P1][jQ];  // Power of P vertex (iP+1)%3 w.r.t. Q edge jQ
-      su2double distQ0_eP = power_Q[Q0][iP];  // Power of Q vertex jQ w.r.t. P edge iP
-      su2double distQ1_eP = power_Q[Q1][iP];  // Power of Q vertex (jQ+1)%3 w.r.t. P edge iP
+      su2double distP0_eQ = power_P[iP0][jQ];  // Power of P vertex iP w.r.t. Q edge jQ
+      su2double distP1_eQ = power_P[iP1][jQ];  // Power of P vertex (iP+1)%3 w.r.t. Q edge jQ
+      su2double distQ0_eP = power_Q[jQ0][iP];  // Power of Q vertex jQ w.r.t. P edge iP
+      su2double distQ1_eP = power_Q[jQ1][iP];  // Power of Q vertex (jQ+1)%3 w.r.t. P edge iP
 
       /*--- Count how many powers are zero ---*/
       int zeroCount = 0;
@@ -563,22 +563,22 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
         if (P0_zero) {
           /*--- P0 lies on edge Q, intersection if Q0 and Q1 on opposite sides of edge P ---*/
           if (distQ0_eP * distQ1_eP < 0) {
-            addPoint(edgeP_start[0], edgeP_start[1], P0, -1);
+            addPoint(edgeP0[0], edgeP0[1], iP0, -1);
           }
         } else if (P1_zero) {
           /*--- P1 lies on edge Q, intersection if Q0 and Q1 on opposite sides of edge P ---*/
           if (distQ0_eP * distQ1_eP < 0) {
-            addPoint(edgeP_end[0], edgeP_end[1], P1, -1);
+            addPoint(edgeP1[0], edgeP1[1], iP1, -1);
           }
         } else if (Q0_zero) {
           /*--- Q0 lies on edge P, intersection if P0 and P1 on opposite sides of edge Q ---*/
           if (distP0_eQ * distP1_eQ < 0) {
-            addPoint(edgeQ_start[0], edgeQ_start[1], -1, Q0);
+            addPoint(edgeQ0[0], edgeQ0[1], -1, jQ0);
           }
         } else if (Q1_zero) {
           /*--- Q1 lies on edge P, intersection if P0 and P1 on opposite sides of edge Q ---*/
           if (distP0_eQ * distP1_eQ < 0) {
-            addPoint(edgeQ_end[0], edgeQ_end[1], -1, Q1);
+            addPoint(edgeQ1[0], edgeQ1[1], -1, jQ1);
           }
         }
       }
@@ -589,16 +589,16 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
       else if (zeroCount == 2) {
         if (P0_zero && Q0_zero) {
           /*--- P0 = Q0, common vertex ---*/
-          addPoint(edgeP_start[0], edgeP_start[1], P0, Q0);
+          addPoint(edgeP0[0], edgeP0[1], iP0, jQ0);
         } else if (P0_zero && Q1_zero) {
           /*--- P0 = Q1, common vertex ---*/
-          addPoint(edgeP_start[0], edgeP_start[1], P0, Q1);
+          addPoint(edgeP0[0], edgeP0[1], iP0, jQ1);
         } else if (P1_zero && Q0_zero) {
           /*--- P1 = Q0, common vertex ---*/
-          addPoint(edgeP_end[0], edgeP_end[1], P1, Q0);
+          addPoint(edgeP1[0], edgeP1[1], iP1, jQ0);
         } else if (P1_zero && Q1_zero) {
           /*--- P1 = Q1, common vertex ---*/
-          addPoint(edgeP_end[0], edgeP_end[1], P1, Q1);
+          addPoint(edgeP1[0], edgeP1[1], iP1, jQ1);
         }
       }
 
@@ -613,8 +613,8 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
         /*--- Edge Q: Q_start + s * (Q_end - Q_start), s ∈ [0,1] ---*/
 
         /*--- Direction vector of edge P ---*/
-        su2double dx_P = edgeP_end[0] - edgeP_start[0];
-        su2double dy_P = edgeP_end[1] - edgeP_start[1];
+        su2double dx_P = edgeP1[0] - edgeP0[0];
+        su2double dy_P = edgeP1[1] - edgeP0[1];
         su2double lengthP_sq = dx_P*dx_P + dy_P*dy_P;
 
         if (lengthP_sq > EPS*EPS) {
@@ -622,10 +622,10 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
           /*--- Q_start = P_start + t_Q0 * (P_end - P_start) ---*/
           /*--- Q_end   = P_start + t_Q1 * (P_end - P_start) ---*/
 
-          su2double t_Q0 = ((edgeQ_start[0] - edgeP_start[0]) * dx_P +
-                             (edgeQ_start[1] - edgeP_start[1]) * dy_P) / lengthP_sq;
-          su2double t_Q1 = ((edgeQ_end[0] - edgeP_start[0]) * dx_P +
-                             (edgeQ_end[1] - edgeP_start[1]) * dy_P) / lengthP_sq;
+          su2double t_Q0 = ((edgeQ0[0] - edgeP0[0]) * dx_P +
+                            (edgeQ0[1] - edgeP0[1]) * dy_P) / lengthP_sq;
+          su2double t_Q1 = ((edgeQ1[0] - edgeP0[0]) * dx_P +
+                            (edgeQ1[1] - edgeP0[1]) * dy_P) / lengthP_sq;
 
           /*--- Edge P spans parameter interval [0, 1] ---*/
           /*--- Edge Q spans parameter interval [min(t_Q0, t_Q1), max(t_Q0, t_Q1)] ---*/
@@ -639,39 +639,39 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
           if (overlap_start < overlap_end) {
             /*--- There is overlap, add intersection points ---*/
             /*--- Add start point of overlap ---*/
-            su2double startX = edgeP_start[0] + overlap_start * dx_P;
-            su2double startY = edgeP_start[1] + overlap_start * dy_P;
+            su2double startX = edgeP0[0] + overlap_start * dx_P;
+            su2double startY = edgeP0[1] + overlap_start * dy_P;
 
             /*--- Check if start point corresponds to a known vertex ---*/
             int startPi = -1, startQj = -1;
             if (abs(overlap_start - 0.0) < EPS) {
-              startPi = P0;  // Start point is P0
+              startPi = iP0;  // Start point is P0
             } else if (abs(overlap_start - 1.0) < EPS) {
-              startPi = P1;  // Start point is P1
+              startPi = iP1;  // Start point is P1
             }
             if (abs(t_Q0 - overlap_start) < EPS) {
-              startQj = Q0;  // Start point is Q0
+              startQj = jQ0;  // Start point is Q0
             } else if (abs(t_Q1 - overlap_start) < EPS) {
-              startQj = Q1;  // Start point is Q1
+              startQj = jQ1;  // Start point is Q1
             }
             addPoint(startX, startY, startPi, startQj);
 
             /*--- Add end point of overlap if different from start ---*/
             if (abs(overlap_end - overlap_start) > EPS) {
-              su2double endX = edgeP_start[0] + overlap_end * dx_P;
-              su2double endY = edgeP_start[1] + overlap_end * dy_P;
+              su2double endX = edgeP0[0] + overlap_end * dx_P;
+              su2double endY = edgeP0[1] + overlap_end * dy_P;
 
               /*--- Check if end point corresponds to a known vertex ---*/
               int endPi = -1, endQj = -1;
               if (abs(overlap_end - 0.0) < EPS) {
-                endPi = P0;  // End point is P0
+                endPi = iP0;  // End point is P0
               } else if (abs(overlap_end - 1.0) < EPS) {
-                endPi = P1;  // End point is P1
+                endPi = iP1;  // End point is P1
               }
               if (abs(t_Q0 - overlap_end) < EPS) {
-                endQj = Q0;  // End point is Q0
+                endQj = jQ0;  // End point is Q0
               } else if (abs(t_Q1 - overlap_end) < EPS) {
-                endQj = Q1;  // End point is Q1
+                endQj = jQ1;  // End point is Q1
               }
               addPoint(endX, endY, endPi, endQj);
             }
@@ -854,7 +854,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   /*--- Loop over all destination elements that have intersections ---*/
   su2double absDiffTol[5] = {1e-10, 1e-8, 1e-6, 1e-4, 1e-2};
   vector<unsigned long> countAbsDiff(5, 0);
-  su2double relDiffTol[5] = {1e-1, 2e-1, 5e-1, 7e-1, 1.0}; // Percentage of dstVolume
+  su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
   vector<unsigned long> countRelDiff(5, 0);
 
   for (const auto& elemPair : overlappingElements) {
@@ -879,7 +879,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
       /*--- Gauss quadrature over all triangles in the intersection mesh ---*/
       unsigned int numTriangles = intersectionMesh.size() / 6;  // 6 coordinates per triangle
 
-      for (unsigned int iTri = 0; iTri < numTriangles; ++iTri) {
+      for (auto iTri = 0u; iTri < numTriangles; ++iTri) {
         /*--- Get triangle vertices ---*/
         const su2double* coor_tri = intersectionMesh.data() + iTri * 6;
         const su2double x0 = coor_tri[0], y0 = coor_tri[1];
@@ -907,7 +907,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
         const su2double yi = (y0 + y1 + y2) / 3.0;
 
         /*--- Integrate mass and gradient using 1-point quadrature ---*/
-        for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+        for (auto iVar = 0u; iVar < nVar; ++iVar) {
           const su2double u_src = srcMass[iVar] / srcVolume;
           const su2double* grad_u = srcGrad.data() + iVar * nDim;
 
@@ -931,7 +931,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
         // const su2double w[3] = {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0};  // Equal weights
 
         // /*--- Integrate mass and gradient using Gauss quadrature ---*/
-        // for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+        // for (auto iVar = 0u; iVar < nVar; ++iVar) {
         //   const su2double u_src = srcMass[iVar] / srcVolume;
         //   const su2double* grad_u = srcGrad.data() + iVar * nDim;
 
@@ -939,7 +939,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
         //   su2double grad_integral[2] = {0.0, 0.0};
 
         //   /*--- Loop over quadrature points ---*/
-        //   for (unsigned short iGauss = 0; iGauss < 3; ++iGauss) {
+        //   for (auto iGauss = 0u; iGauss < 3; ++iGauss) {
         //     /*--- Map reference coordinates to physical coordinates ---*/
         //     const su2double xi = (1.0 - r[iGauss] - s[iGauss]) * x0 + r[iGauss] * x1 + s[iGauss] * x2;
         //     const su2double yi = (1.0 - r[iGauss] - s[iGauss]) * y0 + r[iGauss] * y1 + s[iGauss] * y2;
@@ -967,28 +967,30 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
 
     /*--- Volume average integral: gra(u_dst) = int_K_dst (gra(u) dA) / |K_dst| ---*/
     const su2double dstVolume = dstElem->GetVolume();
-    for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
-      for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
         dstGrad[iVar * nDim + iDim] /= dstVolume;
       }
     }
 
     /*--- Compare total triangle area with destination element volume ---*/
     const su2double absDiff = abs(dstVolume - totalTriangleArea);
-    for (auto i = 0; i < 5; ++i) {
+    const su2double relDiff = absDiff / dstVolume;
+    for (auto i = 0u; i < 5; ++i) {
       if (absDiff > absDiffTol[i]) countAbsDiff[i]++;
+      if (relDiff > relDiffTol[i]) countRelDiff[i]++;
     }
   }
 
   if (rank == MASTER_NODE) {
     cout << "Area conservation check (absolute difference):" << endl;
-    for (auto i = 0; i < 5; ++i) {
+    for (auto i = 0u; i < 5; ++i) {
       cout << "  Number exceeding " << scientific << setprecision(1);
       cout << absDiffTol[i] << ": ";
       cout << countAbsDiff[i] << endl;
     }
     cout << "Area conservation check (relative difference):" << endl;
-    for (auto i = 0; i < 5; ++i) {
+    for (auto i = 0u; i < 5; ++i) {
       cout << "  Number exceeding " << fixed << setprecision(0) << setw(3);
       cout << relDiffTol[i] * 100 << "%: ";
       cout << countRelDiff[i] << endl;
@@ -1022,7 +1024,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
 
     /*--- Get destination element vertices ---*/
     su2double dstVertices[6];
-    for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
       dstVertices[iNode * 2 + 0] = coor_corrected[nodeID * nDim + 0];
       dstVertices[iNode * 2 + 1] = coor_corrected[nodeID * nDim + 1];
@@ -1032,7 +1034,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
     const su2double* G_K = dstElem->GetCG();
 
     /*--- For each variable, apply Alauzet's maximum principle correction ---*/
-    for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
       /*--------------------------------------------------------------------------*/
       /*--- Step 1: Compute local bounds from overlapping source elements      ---*/
       /*--------------------------------------------------------------------------*/
@@ -1046,7 +1048,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
         if (srcElem->GetVTK_Type() != TRIANGLE) continue;
 
         /*--- Get solution values at vertices of source element ---*/
-        for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+        for (auto iNode = 0u; iNode < 3; ++iNode) {
           unsigned long nodeID = srcElem->GetNode(iNode);
           su2double u_vertex = solver_src->GetNodes()->GetSolution(nodeID, iVar);
           u_min = min(u_min, u_vertex);
@@ -1060,29 +1062,28 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       /*--- Step 2: Get current solution at destination element                ---*/
       /*--------------------------------------------------------------------------*/
-      su2double elemVolume = dstElem->GetVolume();
-      su2double u_K_G = dstElemMass[dstElemID][iVar] / elemVolume;
-      su2double grad_x = dstElemGrad[dstElemID][iVar * nDim + 0];
-      su2double grad_y = dstElemGrad[dstElemID][iVar * nDim + 1];
+      const su2double elemVolume = dstElem->GetVolume();
+      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
+      const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
 
       /*--------------------------------------------------------------------------*/
       /*--- Step 3: Compute u_K(P_i) at each vertex using Taylor expansion     ---*/
       /*--------------------------------------------------------------------------*/
       su2double u_K_P[3];  // Values at vertices P_0, P_1, P_2
-      for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
         /*--- Vector G_K P_i ---*/
         const su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
         const su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
 
         /*--- u_K(P_i) = u_K(G_K) + gra(u_K) · G_K P_i ---*/
-        u_K_P[iNode] = u_K_G + grad_x * dx + grad_y * dy;
+        u_K_P[iNode] = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
       }
 
       /*--------------------------------------------------------------------------*/
       /*--- Step 4: Check if maximum principle is violated                     ---*/
       /*--------------------------------------------------------------------------*/
       bool violatesMaxPrinciple = false;
-      for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
         if (u_K_P[iNode] < u_min - EPS || u_K_P[iNode] > u_max + EPS) {
           violatesMaxPrinciple = true;
           break;
@@ -1097,7 +1098,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       /*--- Sort vertices by solution value: u_K(P_0) ≤ u_K(P_1) ≤ u_K(P_2) ---*/
       vector<pair<su2double, unsigned short>> sortedValues;
-      for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
         sortedValues.push_back(make_pair(u_K_P[iNode], iNode));
       }
       cout << "Unsorted: " << sortedValues[0].first << "," << sortedValues[0].second;
@@ -1108,19 +1109,19 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       cout << ", " << sortedValues[1].first << "," << sortedValues[1].second;
       cout << ", " << sortedValues[2].first << "," << sortedValues[2].second << endl;
 
-      su2double u_P0 = sortedValues[0].first;  // Smallest value
-      su2double u_P1 = sortedValues[1].first;  // Middle value
-      su2double u_P2 = sortedValues[2].first;  // Largest value
+      const su2double u_P0 = sortedValues[0].first;  // Smallest value
+      const su2double u_P1 = sortedValues[1].first;  // Middle value
+      const su2double u_P2 = sortedValues[2].first;  // Largest value
 
       /*--- Apply first correction pass ---*/
-      su2double u_M_P2 = min(u_P2, u_max);
-      su2double u_M_P1 = min(u_P1 + 0.5 * max(0.0, u_P2 - u_max), u_max);
-      su2double u_M_P0 = 3.0 * u_K_G - u_M_P1 - u_M_P2;
+      const su2double u_M_P2 = min(u_P2, u_max);
+      const su2double u_M_P1 = min(u_P1 + 0.5 * max(0.0, u_P2 - u_max), u_max);
+      const su2double u_M_P0 = 3.0 * u_G - u_M_P1 - u_M_P2;
 
       /*--- Apply second correction pass ---*/
-      su2double u_tilde_P0 = max(u_M_P0, u_min);
-      su2double u_tilde_P1 = max(u_M_P1 - 0.5 * max(0.0, u_min - u_M_P0), u_min);
-      su2double u_tilde_P2 = 3.0 * u_K_G - u_tilde_P0 - u_tilde_P1;
+      const su2double u_tilde_P0 = max(u_M_P0, u_min);
+      const su2double u_tilde_P1 = max(u_M_P1 - 0.5 * max(0.0, u_min - u_M_P0), u_min);
+      const su2double u_tilde_P2 = 3.0 * u_G - u_tilde_P0 - u_tilde_P1;
 
       /*--------------------------------------------------------------------------*/
       /*--- Step 6: Compute corrected mass and gradient from new nodal values  ---*/
@@ -1131,7 +1132,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       u_tilde[sortedValues[2].second] = u_tilde_P2;
 
       /*--- Prepare vertex solutions for single variable ---*/
-      for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
         vertexSol[iNode][0] = u_tilde[iNode];
       }
 
@@ -1162,13 +1163,13 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
   /*--------------------------------------------------------------------------*/
   /*--- Step 1: Accumulate contributions from each element                 ---*/
   /*--------------------------------------------------------------------------*/
-  for (unsigned long dstElemID = 0; dstElemID < geometry_dst->GetnElem(); ++dstElemID) {
+  for (auto dstElemID = 0u; dstElemID < geometry_dst->GetnElem(); ++dstElemID) {
     auto* dstElem = geometry_dst->elem[dstElemID];
     if (dstElem->GetVTK_Type() != TRIANGLE) continue;
 
     /*--- Get element vertices and centroid ---*/
     su2double dstVertices[6];
-    for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
       dstVertices[iNode * 2 + 0] = coor_corrected[nodeID * nDim + 0];
       dstVertices[iNode * 2 + 1] = coor_corrected[nodeID * nDim + 1];
@@ -1178,14 +1179,13 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
     const su2double* G_K = dstElem->GetCG();
 
     /*--- Loop over variables ---*/
-    for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
       /*--- Get element-centered solution ---*/
-      su2double u_K_G = dstElemMass[dstElemID][iVar] / elemVolume;
-      su2double grad_x = dstElemGrad[dstElemID][iVar * nDim + 0];
-      su2double grad_y = dstElemGrad[dstElemID][iVar * nDim + 1];
+      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
+      const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
 
       /*--- Interpolate to each vertex ---*/
-      for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
         unsigned long nodeID = dstElem->GetNode(iNode);
 
         /*--- Vector from centroid to vertex ---*/
@@ -1193,7 +1193,7 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
         su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
 
         /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) · (P_i - G_K) ---*/
-        su2double vertexValue = u_K_G + grad_x * dx + grad_y * dy;
+        su2double vertexValue = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
 
         /*--- Accumulate weighted contribution ---*/
         vertexSolution[nodeID][iVar] += vertexValue * elemVolume;
@@ -1201,7 +1201,7 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
     }
 
     /*--- Accumulate weights for all vertices of this element ---*/
-    for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
       vertexWeight[nodeID] += elemVolume;
     }
@@ -1210,8 +1210,8 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
   /*--------------------------------------------------------------------------*/
   /*--- Step 2: Compute weighted averages and set solution                 ---*/
   /*--------------------------------------------------------------------------*/
-  for (unsigned long nodeID = 0; nodeID < geometry_dst->GetnPoint(); ++nodeID) {
-    for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+  for (auto nodeID = 0u; nodeID < geometry_dst->GetnPoint(); ++nodeID) {
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
       su2double avgValue = vertexSolution[nodeID][iVar] / vertexWeight[nodeID];
       solver_dst->GetNodes()->SetSolution(nodeID, iVar, avgValue);
     }
@@ -1238,7 +1238,7 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2do
   const su2double area = 0.5 * abs(det);
 
   /*--- Loop over variables ---*/
-  for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+  for (auto iVar = 0u; iVar < nVar; ++iVar) {
     /*--- Get solution values at vertices ---*/
     const su2double u0 = vertexSol[0][iVar];
     const su2double u1 = vertexSol[1][iVar];
@@ -1282,12 +1282,12 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
   const su2double* dsLagBasis = stdElement.GetDsBasisFunctionsIntegration();
 
   /*--- Loop over integration points ---*/
-  for (unsigned short iInt = 0; iInt < nInt; ++iInt) {
+  for (auto iInt = 0u; iInt < nInt; ++iInt) {
     /*--- Compute Jacobian of transformation ---*/
     su2double dxdr = 0.0, dydr = 0.0;
     su2double dxds = 0.0, dyds = 0.0;
 
-    for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned short ind = iInt * 3 + iNode;
 
       dxdr += vertexCoords[iNode * 2 + 0] * drLagBasis[ind];
@@ -1310,12 +1310,12 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
     su2double intWeight = weights[iInt] * jacobian;
 
     /*--- Loop over variables ---*/
-    for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
       /*--- Interpolate solution and its gradient at integration point ---*/
       su2double solVal = 0.0;
       su2double dudr = 0.0, duds = 0.0;
 
-      for (unsigned short iNode = 0; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
         unsigned short ind = iInt * 3 + iNode;
         su2double nodeVal = vertexSol[iNode][iVar];
 
@@ -1337,8 +1337,8 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
   }
 
   /*--- Normalize gradients by volume ---*/
-  for (unsigned short iVar = 0; iVar < nVar; ++iVar) {
-    for (unsigned short k = 0; k < nDim; ++k) {
+  for (auto iVar = 0u; iVar < nVar; ++iVar) {
+    for (auto k = 0u; k < nDim; ++k) {
       grad[iVar * nDim + k] /= elemVolume;
     }
   }
