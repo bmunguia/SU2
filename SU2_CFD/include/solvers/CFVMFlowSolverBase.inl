@@ -1051,7 +1051,7 @@ void CFVMFlowSolverBase<V, R>::SetInitialCondition(CGeometry **geometry, CSolver
 
   /*--- The value of the solution for the first iteration of the dual time ---*/
 
-  if (dual_time && TimeIter == config->GetRestart_Iter() && (VerificationSolution || config->GetRestart_Iter() > 0)) {// BCM: hack for unsteady adaptation restart
+  if (dual_time && ((TimeIter == config->GetRestart_Iter() && config->GetRestart_Iter() > 0) || (TimeIter == 1))) { // BCM: hack for unsteady adaptation restart
     PushSolutionBackInTime(TimeIter, restart, rans, solver_container, geometry, config);
   }
 
@@ -1086,7 +1086,7 @@ void CFVMFlowSolverBase<V, R>::PushSolutionBackInTime(unsigned long TimeIter, bo
     }
   }
 
-  if (restart && (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND)) {
+  if (restart && (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) && (config->GetRestart_Iter() > 0)) { // BCM: hack for unsteady adaptation restart
 
     /*--- Load an additional restart file for a 2nd-order restart. ---*/
 
