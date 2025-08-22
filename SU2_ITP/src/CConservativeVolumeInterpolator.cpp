@@ -52,7 +52,7 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
   /*--- Initialize the FEM standard element ---*/
   if (!stdElement_ptr) {
     if (rank == MASTER_NODE) cout << "Creating FEM standard element." << flush;
-    stdElement_ptr = InitializeFEMStandardElement();
+    stdElement_ptr = InitializeFEMStandardElement(config);
     if (rank == MASTER_NODE) cout << " Done." << endl;
   }
 
@@ -134,15 +134,25 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--------------------------------------------------------------------------*/
   /*--- Step 6: Correct the gradient to enforce the maximum principle.     ---*/
   /*--------------------------------------------------------------------------*/
-  // if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
-  // ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDst, overlappingElements,
-  //                                 srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
+  if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
+  ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDst, overlappingElements,
+                                  srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 7: Perform averaging to get solution at vertices.             ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Distributing solution to destination nodes." << endl;
   DistributeSolutionToNodes(geometry_dst, solver_dst, coorDst, dstElemMass, dstElemGrad);
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 8: Carry out a surface interpolation, via a minimum distance  ---*/
+  /*---         search, for the points that could not be interpolated via  ---*/
+  /*---         the regular volume interpolation.                          ---*/
+  /*--------------------------------------------------------------------------*/
+  if (pointsFailed.size()) {
+    if (rank == MASTER_NODE) cout << "Performing fallback surface interpolation. " << endl;
+    SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, pointsFailed);
+  }
 }
 
 void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
@@ -181,58 +191,18 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
       containingElems[l] = elemID;
       containingElemRanks[l] = rankID;
     } else {
-      /*--- Find nearest surface element ---*/
-      unsigned short markerID;
+      /*--- No source volume element contains this node - fallback         ---*/
+      /*--- The nearest volume element will be used to find intersections, ---*/
+      /*--- but also add to the list of failed points, which will be       ---*/
+      /*--- processed later via surface interpolation.                     ---*/
+
+      pointsFailed.push_back(l);
+
+      /*--- Find nearest volume element ---*/
       su2double dist;
-      su2double surfCoor[3];
-
-      /*--- Find the closest point on the source surface mesh ---*/
-      surfaceADT.DetermineNearestElement(coor, dist, markerID, elemID, rankID);
-
-      /*--- Get surface element information ---*/
-      unsigned short nNodes = geometry_src->bound[markerID][elemID]->GetnNodes();
-
-      /*--- Get the corresponding volume element which contains the surface element ---*/
-      set<unsigned long> candidateVolElems;
-      bool firstNode = true;
-
-      for (auto iNode = 0u; iNode < nNodes; ++iNode) {
-        unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
-        unsigned short nElem_node = geometry_src->nodes->GetnElem(nodeID);
-
-        if (firstNode) {
-          /*--- For first node, add all connected volume elements ---*/
-          for (auto iElem = 0u; iElem < nElem_node; ++iElem) {
-            unsigned long volElemID = geometry_src->nodes->GetElem(nodeID, iElem);
-            candidateVolElems.insert(volElemID);
-          }
-          firstNode = false;
-        } else {
-          /*--- For subsequent nodes, keep only elements that contain this node ---*/
-          set<unsigned long> nodeElems;
-          for (auto iElem = 0u; iElem < nElem_node; ++iElem) {
-            unsigned long volElemID = geometry_src->nodes->GetElem(nodeID, iElem);
-            nodeElems.insert(volElemID);
-          }
-
-          /*--- Intersect with previous candidates ---*/
-          set<unsigned long> intersection;
-          set_intersection(candidateVolElems.begin(), candidateVolElems.end(),
-                          nodeElems.begin(), nodeElems.end(),
-                          inserter(intersection, intersection.begin()));
-          candidateVolElems = intersection;
-        }
-      }
-
-      /*--- Use the first candidate volume element (should be unique) ---*/
-      if (!candidateVolElems.empty()) {
-        elemID = *candidateVolElems.begin();
-        containingElems[l] = elemID;
-        containingElemRanks[l] = rankID;
-      } else {
-        /*--- No volume element contains all surface nodes - fallback failed ---*/
-        pointsFailed.push_back(l);
-      }
+      volumeADT.DetermineNearestElement(coor, dist, subElemID, elemID, rankID);
+      containingElems[l] = elemID;
+      containingElemRanks[l] = rankID;
     }
   }
 
@@ -254,7 +224,6 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
     const unsigned short nNodes = elem->GetnNodes();
     const unsigned short VTK_Type = elem->GetVTK_Type();
     const su2double elemVolume = elem->GetVolume();
-    if (elemVolume < 0) cout << "Negative source volume!!!" << endl;
 
     /*--- Get solution at nodes ---*/
     vector<vector<su2double>> vertexSol(nNodes, vector<su2double>(nVar, 0.0));
@@ -334,8 +303,8 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     /*--- Get destination triangle vertices ---*/
     for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
-      dstTri[iNode * 2 + 0] = coor_dst[nodeID * nDim + 0];
-      dstTri[iNode * 2 + 1] = coor_dst[nodeID * nDim + 1];
+      for (auto iDim = 0u; iDim < nDim; ++iDim)
+        dstTri[iNode * nDim + iDim] = coor_dst[nodeID * nDim + iDim];
     }
 
     /*--------------------------------------------------------------------------*/
@@ -363,8 +332,8 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       /*--- Get source triangle vertices ---*/
       for (auto iNode = 0u; iNode < 3; ++iNode) {
         unsigned long nodeID = srcElem->GetNode(iNode);
-        srcTri[iNode * 2 + 0] = geometry_src->nodes->GetCoord(nodeID, 0);
-        srcTri[iNode * 2 + 1] = geometry_src->nodes->GetCoord(nodeID, 1);
+        for (auto iDim = 0u; iDim < nDim; ++iDim)
+          srcTri[iNode * nDim + iDim] = geometry_src->nodes->GetCoord(nodeID, iDim);
       }
 
       /*--- Check for intersection and detect new candidates ---*/
@@ -405,7 +374,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   meshedIntersection.clear();
   newCandidates.clear();
 
-  const su2double EPS = 1e-16;
+  const su2double EPS = 1e-9;
 
   /*--- Triangle vertices: P is destination and Q is source ---*/
   su2double P[3][2] = {{dstTri[0], dstTri[1]}, {dstTri[2], dstTri[3]}, {dstTri[4], dstTri[5]}};
@@ -456,9 +425,10 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
 
   /*--- Check if KP vertices are strictly inside KQ ---*/
   for (auto i = 0u; i < 3; ++i) {
-    if ((power_P[i][0] > EPS) &&
-        (power_P[i][1] > EPS) &&
-        (power_P[i][2] > EPS)) {
+    if ((power_P[i][0] > -EPS) &&
+        (power_P[i][1] > -EPS) &&
+        (power_P[i][2] > -EPS) &&
+        (!isDegenerateVertexP[i])) {
       cloudPoints.push_back(P[i][0]);
       cloudPoints.push_back(P[i][1]);
     }
@@ -466,9 +436,10 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
 
   /*--- Check if KQ vertices are strictly inside KP ---*/
   for (auto i = 0u; i < 3; ++i) {
-    if ((power_Q[i][0] > EPS) &&
-        (power_Q[i][1] > EPS) &&
-        (power_Q[i][2] > EPS)) {
+    if ((power_Q[i][0] > -EPS) &&
+        (power_Q[i][1] > -EPS) &&
+        (power_Q[i][2] > -EPS) &&
+        (!isDegenerateVertexQ[i])) {
       cloudPoints.push_back(Q[i][0]);
       cloudPoints.push_back(Q[i][1]);
       AddVertexBallToCandidates(geometry_src, srcElemID, i, newCandidates);
@@ -648,66 +619,64 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(su2doub
         su2double dy_P = P1[1] - P0[1];
         su2double lengthP_sq = dx_P*dx_P + dy_P*dy_P;
 
-        if (lengthP_sq > EPS*EPS) {
-          /*--- Find parameter values where Q vertices lie on P edge ---*/
-          /*--- Q0 = P0 + s_Q0 * (P1 - P0) ---*/
-          /*--- Q1 = P0 + s_Q1 * (P1 - P0) ---*/
+        /*--- Find parameter values where Q vertices lie on P edge ---*/
+        /*--- Q0 = P0 + s_Q0 * (P1 - P0) ---*/
+        /*--- Q1 = P0 + s_Q1 * (P1 - P0) ---*/
 
-          su2double s_Q0 = ((Q0[0] - P0[0]) * dx_P +
-                            (Q0[1] - P0[1]) * dy_P) / lengthP_sq;
-          su2double s_Q1 = ((Q1[0] - P0[0]) * dx_P +
-                            (Q1[1] - P0[1]) * dy_P) / lengthP_sq;
+        su2double s_Q0 = ((Q0[0] - P0[0]) * dx_P +
+                          (Q0[1] - P0[1]) * dy_P) / lengthP_sq;
+        su2double s_Q1 = ((Q1[0] - P0[0]) * dx_P +
+                          (Q1[1] - P0[1]) * dy_P) / lengthP_sq;
 
-          /*--- Edge P spans parameter interval [0, 1] ---*/
-          /*--- Edge Q spans parameter interval [min(s_Q0, s_Q1), max(s_Q0, s_Q1)] ---*/
-          su2double s_min = min(s_Q0, s_Q1);
-          su2double s_max = max(s_Q0, s_Q1);
+        /*--- Edge P spans parameter interval [0, 1] ---*/
+        /*--- Edge Q spans parameter interval [min(s_Q0, s_Q1), max(s_Q0, s_Q1)] ---*/
+        su2double s_min = min(s_Q0, s_Q1);
+        su2double s_max = max(s_Q0, s_Q1);
 
-          /*--- Find overlap of intervals [0, 1] and [s_min, s_max] ---*/
-          su2double overlap_start = max(0.0, s_min);
-          su2double overlap_end = min(1.0, s_max);
+        /*--- Find overlap of intervals [0, 1] and [s_min, s_max] ---*/
+        su2double overlap_start = max(0.0, s_min);
+        su2double overlap_end = min(1.0, s_max);
 
-          if (overlap_start < overlap_end) {
-            /*--- There is overlap, add intersection points ---*/
-            /*--- Add start point of overlap ---*/
-            su2double X_start = P0[0] + overlap_start * dx_P;
-            su2double Y_start = P0[1] + overlap_start * dy_P;
+        if (overlap_start < overlap_end) {
+          /*--- There is overlap, add intersection points ---*/
+          /*--- Add start point of overlap ---*/
+          su2double X_start = P0[0] + overlap_start * dx_P;
+          su2double Y_start = P0[1] + overlap_start * dy_P;
 
-            /*--- Check if start point corresponds to a known vertex ---*/
-            int Pi_start = -1, Qj_start = -1;
-            if (abs(overlap_start - 0.0) < EPS) {
-              Pi_start = iP0;  // Start point is P0
-            } else if (abs(overlap_start - 1.0) < EPS) {
-              Pi_start = iP1;  // Start point is P1
+          /*--- Check if start point corresponds to a known vertex ---*/
+          int Pi_start = -1, Qj_start = -1;
+          if (abs(overlap_start - 0.0) < EPS) {
+            Pi_start = iP0;  // Start point is P0
+          } else if (abs(overlap_start - 1.0) < EPS) {
+            Pi_start = iP1;  // Start point is P1
+          }
+          if (abs(s_Q0 - overlap_start) < EPS) {
+            Qj_start = jQ0;  // Start point is Q0
+          } else if (abs(s_Q1 - overlap_start) < EPS) {
+            Qj_start = jQ1;  // Start point is Q1
+          }
+          addPoint(X_start, Y_start, Pi_start, Qj_start);
+
+          /*--- Add end point of overlap if different from start ---*/
+          if (abs(overlap_end - overlap_start) > EPS) {
+            su2double X_end = P0[0] + overlap_end * dx_P;
+            su2double Y_end = P0[1] + overlap_end * dy_P;
+
+            /*--- Check if end point corresponds to a known vertex ---*/
+            int Pi_end = -1, Qj_end = -1;
+            if (abs(overlap_end - 0.0) < EPS) {
+              Pi_end = iP0;  // End point is P0
+            } else if (abs(overlap_end - 1.0) < EPS) {
+              Pi_end = iP1;  // End point is P1
             }
-            if (abs(s_Q0 - overlap_start) < EPS) {
-              Qj_start = jQ0;  // Start point is Q0
-            } else if (abs(s_Q1 - overlap_start) < EPS) {
-              Qj_start = jQ1;  // Start point is Q1
+            if (abs(s_Q0 - overlap_end) < EPS) {
+              Qj_end = jQ0;  // End point is Q0
+            } else if (abs(s_Q1 - overlap_end) < EPS) {
+              Qj_end = jQ1;  // End point is Q1
             }
-            addPoint(X_start, Y_start, Pi_start, Qj_start);
-
-            /*--- Add end point of overlap if different from start ---*/
-            if (abs(overlap_end - overlap_start) > EPS) {
-              su2double X_end = P0[0] + overlap_end * dx_P;
-              su2double Y_end = P0[1] + overlap_end * dy_P;
-
-              /*--- Check if end point corresponds to a known vertex ---*/
-              int Pi_end = -1, Qj_end = -1;
-              if (abs(overlap_end - 0.0) < EPS) {
-                Pi_end = iP0;  // End point is P0
-              } else if (abs(overlap_end - 1.0) < EPS) {
-                Pi_end = iP1;  // End point is P1
-              }
-              if (abs(s_Q0 - overlap_end) < EPS) {
-                Qj_end = jQ0;  // End point is Q0
-              } else if (abs(s_Q1 - overlap_end) < EPS) {
-                Qj_end = jQ1;  // End point is Q1
-              }
-              addPoint(X_end, Y_end, Pi_end, Qj_end);
-            } // if multiple overlap
-          } // if overlap
-        } // if lengthP_sq
+            addPoint(X_end, Y_end, Pi_end, Qj_end);
+          } // if multiple overlap
+        } // if overlap
       } // if zeroCount == 4
     } // for jQ
   } // for iP
@@ -883,6 +852,10 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
   vector<unsigned long> countRelDiff(5, 0);
 
+  /*--- Counters for non-matching boundary treatment ---*/
+  unsigned long totalBoundaryElems = 0;
+  unsigned long nonConservativeTreatment = 0;
+
   for (const auto& intersection : overlappingElements) {
     unsigned long dstElemID = intersection.first;
     const IntersectionMesh& srcElemMeshes = intersection.second;
@@ -946,62 +919,72 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
 
           /*--- Add contribution to destination mass and gradient ---*/
           dstMass[iVar] += area * u_quad;
-          dstGrad[iVar * nDim + 0] += area * grad_u[0];
-          dstGrad[iVar * nDim + 1] += area * grad_u[1];
+          for (auto iDim = 0u; iDim < nDim; ++iDim)
+            dstGrad[iVar * nDim + iDim] += area * grad_u[iDim];
         }
-
-        /*--- Use 3-point Gauss quadrature for exact integration of linear functions ---*/
-        /*--- Quadrature points in reference triangle (r,s) coordinates ---*/
-        // const su2double r[3] = {0.5, 0.0, 0.5};
-        // const su2double s[3] = {0.0, 0.5, 0.5};
-        // const su2double w[3] = {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0};  // Equal weights
-
-        // /*--- Integrate mass and gradient using Gauss quadrature ---*/
-        // for (auto iVar = 0u; iVar < nVar; ++iVar) {
-        //   const su2double u_src = srcMass[iVar] / srcVolume;
-        //   const su2double* grad_u = srcGrad.data() + iVar * nDim;
-
-        //   su2double mass_integral = 0.0;
-        //   su2double grad_integral[2] = {0.0, 0.0};
-
-        //   /*--- Loop over quadrature points ---*/
-        //   for (auto iGauss = 0u; iGauss < 3; ++iGauss) {
-        //     /*--- Map reference coordinates to physical coordinates ---*/
-        //     const su2double xi = (1.0 - r[iGauss] - s[iGauss]) * x0 + r[iGauss] * x1 + s[iGauss] * x2;
-        //     const su2double yi = (1.0 - r[iGauss] - s[iGauss]) * y0 + r[iGauss] * y1 + s[iGauss] * y2;
-
-        //     /*--- Displacement from source centroid to quadrature point ---*/
-        //     const su2double dx = xi - G_K_src[0];
-        //     const su2double dy = yi - G_K_src[1];
-
-        //     /*--- Evaluate solution at quadrature point ---*/
-        //     const su2double u_quad = u_src + grad_u[0] * dx + grad_u[1] * dy;
-
-        //     /*--- Add weighted contribution to integrals ---*/
-        //     mass_integral += w[iGauss] * u_quad;
-        //     grad_integral[0] += w[iGauss] * grad_u[0];
-        //     grad_integral[1] += w[iGauss] * grad_u[1];
-        //   }
-
-        //   /*--- Add contribution to destination mass and gradient ---*/
-        //   dstMass[iVar] += area * mass_integral;
-        //   dstGrad[iVar * nDim + 0] += area * grad_integral[0];
-        //   dstGrad[iVar * nDim + 1] += area * grad_integral[1];
-        // }
       }
     }
 
     /*--- Volume average integral: gra(u_dst) = int_K_dst (gra(u) dA) / |K_dst| ---*/
     const su2double dstVolume = dstElem->GetVolume();
-    for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      for (auto iDim = 0u; iDim < nDim; ++iDim) {
-        dstGrad[iVar * nDim + iDim] /= dstVolume;
+
+    /*--- Check if this volume element is on the boundary and has poor coverage ---*/
+    bool isNextToBoundary = false;
+    for (auto j = 0u; j < 3; ++j) {
+      auto nodeID = dstElem->GetNode(j);
+      if (geometry_dst->nodes->GetPhysicalBoundary(nodeID)) {
+        isNextToBoundary = true;
+        totalBoundaryElems++;
+        break;
       }
     }
+
+    /*--- Normalize by intersection volume instead of destination volume ---*/
+    /*--- For matching volumes, this should have no impact               ---*/
+    /*--- For non-matching domains, this preserves P1-exactness          ---*/
+    /*--- This preserves constant/linear solutions in non-matching domains ---*/
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      /*--- For mass: divide by intersection volume to get correct barycenter value ---*/
+      dstMass[iVar] = dstMass[iVar] * dstVolume / totalTriangleArea;
+
+      /*--- For gradient: use intersection-weighted average ---*/
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        dstGrad[iVar * nDim + iDim] /= totalTriangleArea;
+      }
+    }
+
+    // const su2double coverageRatio = totalTriangleArea / dstVolume;
+    // const su2double coverageThreshold = 0.999;
+
+    // if (isNextToBoundary && coverageRatio < coverageThreshold) {
+    //   /*--- For boundary elements with poor coverage, violate conservation ---*/
+    //   /*--- to preserve P1-exactness and maximum principle (Alauzet 5.2.3) ---*/
+    //   nonConservativeTreatment++;
+
+    //   /*--- Normalize by intersection volume instead of destination volume ---*/
+    //   /*--- This preserves constant/linear solutions in non-matching domains ---*/
+    //   for (auto iVar = 0u; iVar < nVar; ++iVar) {
+    //     /*--- For mass: divide by intersection volume to get correct barycenter value ---*/
+    //     dstMass[iVar] = (dstMass[iVar] / totalTriangleArea) * dstVolume;
+
+    //     /*--- For gradient: use intersection-weighted average ---*/
+    //     for (auto iDim = 0u; iDim < nDim; ++iDim) {
+    //       dstGrad[iVar * nDim + iDim] /= totalTriangleArea;
+    //     }
+    //   }
+    // } else {
+    //   /*--- Standard conservative treatment for well-covered elements ---*/
+    //   for (auto iVar = 0u; iVar < nVar; ++iVar) {
+    //     for (auto iDim = 0u; iDim < nDim; ++iDim) {
+    //       dstGrad[iVar * nDim + iDim] /= dstVolume;
+    //     }
+    //   }
+    // }
 
     /*--- Compare total triangle area with destination element volume ---*/
     const su2double absDiff = abs(dstVolume - totalTriangleArea);
     const su2double relDiff = absDiff / dstVolume;
+    if (isNextToBoundary)
     for (auto i = 0u; i < 5; ++i) {
       if (absDiff > absDiffTol[i]) countAbsDiff[i]++;
       if (relDiff > relDiffTol[i]) countRelDiff[i]++;
@@ -1009,13 +992,13 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   }
 
   if (rank == MASTER_NODE) {
-    cout << "Area conservation check (absolute difference):" << endl;
+    cout << "Area conservation (absolute difference):" << endl;
     for (auto i = 0u; i < 5; ++i) {
       cout << "  Number exceeding " << scientific << setprecision(1);
       cout << absDiffTol[i] << ": ";
       cout << countAbsDiff[i] << endl;
     }
-    cout << "Area conservation check (relative difference):" << endl;
+    cout << "Area conservation (relative difference):" << endl;
     for (auto i = 0u; i < 5; ++i) {
       cout << "  Number exceeding " << fixed << setprecision(0) << setw(3);
       cout << relDiffTol[i] * 100 << "%: ";
@@ -1055,7 +1038,8 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       dstVertices[iNode * 2 + 1] = coor_dst[nodeID * nDim + 1];
     }
 
-    /*--- Element centroid (barycenter G_K) ---*/
+    /*--- Element volume and centroid (barycenter G_K) ---*/
+    const su2double elemVolume = dstElem->GetVolume();
     const su2double* G_K = dstElem->GetCG();
 
     /*--- For each variable, apply Alauzet's maximum principle correction ---*/
@@ -1087,8 +1071,6 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       /*--- Step 2: Get current solution at destination element.               ---*/
       /*--------------------------------------------------------------------------*/
-      const su2double elemVolume = dstElem->GetVolume();
-      if (elemVolume < 0) cout << "Negative dest volume!!!" << endl;
       const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
       const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
 

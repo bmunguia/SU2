@@ -64,7 +64,4 @@ class CLinearVolumeInterpolator : public CVolumeInterpolator {
 
     void VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
                              const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed);
-
-    void SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst, CSolver* solver_src,
-                              CSolver* solver_dst, vector<unsigned long> &pointsFailed);
 };

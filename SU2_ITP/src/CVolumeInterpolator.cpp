@@ -539,6 +539,9 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
   if (!srcSurfaceADT.IsEmpty() && !dstSurfaceADT.IsEmpty()) {
     const unsigned long nDOFs = coor_dst.size() / nDim;
     for (auto l = 0u; l < nDOFs; ++l) {
+      /*--- For now, limit to surface nodes ---*/
+      if (!geometry_dst->nodes->GetPhysicalBoundary(l)) continue;
+
       /*--- Find nearest wall points ---*/
       unsigned short srcMarkerID, dstMarkerID;
       unsigned long srcElemID, dstElemID;
@@ -555,13 +558,110 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
 
       /*--- Find the closest point on the destination surface mesh to the source wall point ---*/
       dstSurfaceADT.DetermineNearestElement(surfCoorSrc, dstDist, dstMarkerID, dstElemID, dstRankID);
-      NearestPointOnElement(geometry_dst, dstMarkerID, dstElemID, coor, surfCoorDst,
+      NearestPointOnElement(geometry_dst, dstMarkerID, dstElemID, surfCoorSrc, surfCoorDst,
                             dstDist, nDim);
 
       /*--- Determine the curvature correction, which is the vector from the  ---*/
       /*--- wall coordinate of the output grid to the wall coordinates on the ---*/
       /*--- input grid                                                        ---*/
       for (auto k = 0u; k < nDim; ++k) coor[k] += surfCoorSrc[k] - surfCoorDst[k];
+    }
+  }
+}
+
+void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst, CSolver* solver_src,
+                                               CSolver* solver_dst, vector<unsigned long> &pointsFailed) {
+  if (pointsFailed.empty()) return;
+
+  /*--- Check if surface ADT was built successfully ---*/
+  CADTElemClass& surfaceADT = GetSourceSurfaceADT();
+  if (!surfaceADT.IsEmpty()) {
+    /*--- Search for donor elements for failed points ---*/
+    if (rank == MASTER_NODE) {
+      cout << "Performing minimum distance search for " << pointsFailed.size()
+           << " failed points." << endl << flush;
+    }
+
+    /*--- Loop over failed points for minimum distance search ---*/
+    unsigned long nExtrapolated = 0;
+    for (auto l = 0u; l < pointsFailed.size(); ++l) {
+      /*--- Get coordinates of failed point ---*/
+      const unsigned long pointID = pointsFailed[l];
+      const su2double* coor = geometry_dst->nodes->GetCoord(pointID);
+
+      /*--- Find nearest surface element ---*/
+      unsigned short markerID;
+      unsigned long elemID;
+      int rankID;
+      su2double dist;
+      su2double surfCoor[3];
+
+      /*--- Find the closest point on the source surface mesh ---*/
+      surfaceADT.DetermineNearestElement(coor, dist, markerID, elemID, rankID);
+      NearestPointOnElement(geometry_src, markerID, elemID, coor, surfCoor,
+                            dist, nDim);
+
+      /*--- Get surface element information ---*/
+      unsigned short nNodes = geometry_src->bound[markerID][elemID]->GetnNodes();
+
+      /*--- Use nearest surface element nodes for interpolation ---*/
+      su2double weightsInterpol[4];
+      if (geometry_src->GetnDim() == 3) {
+        /*--- Use surface ADT to get interpolation weights*/
+        su2double parCoor[3];
+        surfaceADT.DetermineContainingElement(surfCoor, markerID, elemID, rankID, parCoor, weightsInterpol);
+      } else {
+        /*--- For 2D case (LINE elements), use inverse distance weighting ---*/
+        su2double totalWeight = 0.0;
+
+        for (auto iNode = 0u; iNode < nNodes; ++iNode) {
+          unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
+
+          /*--- Compute distance from interpolation point to node ---*/
+          su2double dist2 = 0.0;
+          for (auto k = 0u; k < nDim; ++k) {
+            su2double diff = coor[k] - geometry_src->nodes->GetCoord(nodeID, k);
+            dist2 += diff * diff;
+          }
+
+          /*--- Inverse distance weighting (with small epsilon to avoid division by zero) ---*/
+          weightsInterpol[iNode] = 1.0 / (sqrt(dist2) + 1e-12);
+          totalWeight += weightsInterpol[iNode];
+        }
+
+        /*--- Normalize weights ---*/
+        for (auto iNode = 0u; iNode < nNodes; ++iNode) {
+          weightsInterpol[iNode] /= totalWeight;
+        }
+      }
+
+      /*--- Initialize interpolated solution to zero ---*/
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
+        solver_dst->GetNodes()->SetSolution(pointID, iVar, 0.0);
+      }
+
+      /*--- Interpolate using shape function weights ---*/
+      for (auto iNode = 0u; iNode < nNodes; ++iNode) {
+        unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
+
+        for (auto iVar = 0u; iVar < nVar; ++iVar) {
+          su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
+          solver_dst->GetNodes()->Add_DeltaSolution(pointID, iVar, weightsInterpol[iNode] * val);
+        }
+      }
+
+      nExtrapolated++;
+    }
+
+    if (rank == MASTER_NODE) {
+      cout << "Surface search finished. " << nExtrapolated << " points extrapolated."
+           << endl << flush;
+    }
+
+  } else {
+    /*--- No surface elements found ---*/
+    if (rank == MASTER_NODE) {
+      cout << " No surface elements found for minimum distance search." << endl;
     }
   }
 }

@@ -109,17 +109,17 @@ class CVolumeInterpolator {
 
     std::unique_ptr<CADTElemClass> BuildSurfaceADT(const CConfig* config, CGeometry* geometry);
 
-    std::unique_ptr<CFEMStandardElement> InitializeFEMStandardElement() {
+    std::unique_ptr<CFEMStandardElement> InitializeFEMStandardElement(CConfig* config) {
       unsigned short nPoly = 1;
-      bool constJac = false;
-      unsigned short orderExact = 2 * nPoly + 1;
+      bool constJac = true;
+      unsigned short orderExact = 0; // Let CFEMStandardElementBase determine the order
       unsigned short VTK_Type = TRIANGLE;
       if (nDim == 3) {
         VTK_Type = TETRAHEDRON;
       }
 
       return std::unique_ptr<CFEMStandardElement>(
-          new CFEMStandardElement(VTK_Type, nPoly, constJac, nullptr, orderExact));
+          new CFEMStandardElement(VTK_Type, nPoly, constJac, config, orderExact));
     }
 
     /*!
@@ -195,8 +195,8 @@ class CVolumeInterpolator {
     virtual void VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
                                      const vector<su2double> &coor_corrected, vector<unsigned long> &pointsFailed) { }
 
-    virtual void SurfaceInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                      const vector<su2double> &coor_dst, vector<unsigned long> &pointsFailed) { }
+    void SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst, CSolver* solver_src,
+                              CSolver* solver_dst, vector<unsigned long> &pointsFailed);
 
     void NearestPointOnElement(CGeometry* geometry, unsigned short markerID, unsigned long elemID,
                               const su2double* coor, su2double* surfCoor, su2double& dist2Elem,
