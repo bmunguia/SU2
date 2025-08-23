@@ -30,6 +30,68 @@
 #include <iostream>
 #include <limits>
 
+/*--- Implementation of base class methods ---*/
+void CRTreeSearchBase::SetPoint2D(Point2D& pt, const su2double* coor) const {
+  boost::geometry::set<0>(pt, coor[0]);
+  boost::geometry::set<1>(pt, coor[1]);
+}
+
+void CRTreeSearchBase::SetPoint3D(Point3D& pt, const su2double* coor) const {
+  boost::geometry::set<0>(pt, coor[0]);
+  boost::geometry::set<1>(pt, coor[1]);
+  boost::geometry::set<2>(pt, coor[2]);
+}
+
+Box2D CRTreeSearchBase::CreateBoundingBox2D(const su2double* tri, su2double padding) const {
+  /*--- Extract triangle vertices ---*/
+  const su2double x0 = tri[0], y0 = tri[1];
+  const su2double x1 = tri[2], y1 = tri[3];
+  const su2double x2 = tri[4], y2 = tri[5];
+
+  /*--- Find bounding box coordinates ---*/
+  const su2double xmin = std::min({x0, x1, x2}) - padding;
+  const su2double xmax = std::max({x0, x1, x2}) + padding;
+  const su2double ymin = std::min({y0, y1, y2}) - padding;
+  const su2double ymax = std::max({y0, y1, y2}) + padding;
+
+  /*--- Create points for bounding box ---*/
+  Point2D minCorner, maxCorner;
+  boost::geometry::set<0>(minCorner, xmin);
+  boost::geometry::set<1>(minCorner, ymin);
+  boost::geometry::set<0>(maxCorner, xmax);
+  boost::geometry::set<1>(maxCorner, ymax);
+
+  return Box2D(minCorner, maxCorner);
+}
+
+Box3D CRTreeSearchBase::CreateBoundingBox3D(const su2double* tet, su2double padding) const {
+  /*--- Extract tetrahedron vertices ---*/
+  const su2double x0 = tet[0], y0 = tet[1], z0 = tet[2];
+  const su2double x1 = tet[3], y1 = tet[4], z1 = tet[5];
+  const su2double x2 = tet[6], y2 = tet[7], z2 = tet[8];
+  const su2double x3 = tet[9], y3 = tet[10], z3 = tet[11];
+
+  /*--- Find bounding box coordinates ---*/
+  const su2double xmin = std::min({x0, x1, x2, x3}) - padding;
+  const su2double xmax = std::max({x0, x1, x2, x3}) + padding;
+  const su2double ymin = std::min({y0, y1, y2, y3}) - padding;
+  const su2double ymax = std::max({y0, y1, y2, y3}) + padding;
+  const su2double zmin = std::min({z0, z1, z2, z3}) - padding;
+  const su2double zmax = std::max({z0, z1, z2, z3}) + padding;
+
+  /*--- Create points for bounding box ---*/
+  Point3D minCorner, maxCorner;
+  boost::geometry::set<0>(minCorner, xmin);
+  boost::geometry::set<1>(minCorner, ymin);
+  boost::geometry::set<2>(minCorner, zmin);
+  boost::geometry::set<0>(maxCorner, xmax);
+  boost::geometry::set<1>(maxCorner, ymax);
+  boost::geometry::set<2>(maxCorner, zmax);
+
+  return Box3D(minCorner, maxCorner);
+}
+
+/*--- Template class implementation ---*/
 template<unsigned short nDim>
 CRTreeSearch<nDim>::CRTreeSearch(SU2_Comm MPICommunicator) : treeBuilt(false) {
   rank = SU2_MPI::GetRank();
@@ -55,8 +117,19 @@ void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry_src) {
   for (unsigned long iPoint = 0; iPoint < nPoint; ++iPoint) {
     /*--- Get node coordinates for all dimensions ---*/
     Point pt;
+    su2double coor[3];
     for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
-      boost::geometry::set<iDim>(pt, geometry_src->nodes->GetCoord(iPoint, iDim));
+      coor[iDim] = geometry_src->nodes->GetCoord(iPoint, iDim);
+    }
+
+    /*--- Set point coordinates using template point type ---*/
+    if constexpr (nDim == 2) {
+      boost::geometry::set<0>(pt, coor[0]);
+      boost::geometry::set<1>(pt, coor[1]);
+    } else if constexpr (nDim == 3) {
+      boost::geometry::set<0>(pt, coor[0]);
+      boost::geometry::set<1>(pt, coor[1]);
+      boost::geometry::set<2>(pt, coor[2]);
     }
 
     /*--- Add to vector ---*/
@@ -85,65 +158,11 @@ typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox(const su2
 
 template<unsigned short nDim>
 typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox(const su2double* elemCoords, su2double padding) const {
-  if (nDim == 2) {
+  if constexpr (nDim == 2) {
     return CreateBoundingBox2D(elemCoords, padding);
-  } else if (nDim == 3) {
+  } else if constexpr (nDim == 3) {
     return CreateBoundingBox3D(elemCoords, padding);
-  } else {
-    std::cerr << "Error: Unsupported dimension " << nDim << " in CreateBoundingBox." << std::endl;
-    return Box();
   }
-}
-
-template<unsigned short nDim>
-typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox2D(const su2double* tri, su2double padding) const {
-  /*--- Extract triangle vertices ---*/
-  const su2double x0 = tri[0], y0 = tri[1];
-  const su2double x1 = tri[2], y1 = tri[3];
-  const su2double x2 = tri[4], y2 = tri[5];
-
-  /*--- Find bounding box coordinates ---*/
-  const su2double xmin = std::min({x0, x1, x2}) - padding;
-  const su2double xmax = std::max({x0, x1, x2}) + padding;
-  const su2double ymin = std::min({y0, y1, y2}) - padding;
-  const su2double ymax = std::max({y0, y1, y2}) + padding;
-
-  /*--- Create points for bounding box ---*/
-  Point minCorner, maxCorner;
-  boost::geometry::set<0>(minCorner, xmin);
-  boost::geometry::set<1>(minCorner, ymin);
-  boost::geometry::set<0>(maxCorner, xmax);
-  boost::geometry::set<1>(maxCorner, ymax);
-
-  return Box(minCorner, maxCorner);
-}
-
-template<unsigned short nDim>
-typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox3D(const su2double* tet, su2double padding) const {
-  /*--- Extract tetrahedron vertices ---*/
-  const su2double x0 = tet[0], y0 = tet[1], z0 = tet[2];
-  const su2double x1 = tet[3], y1 = tet[4], z1 = tet[5];
-  const su2double x2 = tet[6], y2 = tet[7], z2 = tet[8];
-  const su2double x3 = tet[9], y3 = tet[10], z3 = tet[11];
-
-  /*--- Find bounding box coordinates ---*/
-  const su2double xmin = std::min({x0, x1, x2, x3}) - padding;
-  const su2double xmax = std::max({x0, x1, x2, x3}) + padding;
-  const su2double ymin = std::min({y0, y1, y2, y3}) - padding;
-  const su2double ymax = std::max({y0, y1, y2, y3}) + padding;
-  const su2double zmin = std::min({z0, z1, z2, z3}) - padding;
-  const su2double zmax = std::max({z0, z1, z2, z3}) + padding;
-
-  /*--- Create points for bounding box ---*/
-  Point minCorner, maxCorner;
-  boost::geometry::set<0>(minCorner, xmin);
-  boost::geometry::set<1>(minCorner, ymin);
-  boost::geometry::set<2>(minCorner, zmin);
-  boost::geometry::set<0>(maxCorner, xmax);
-  boost::geometry::set<1>(maxCorner, ymax);
-  boost::geometry::set<2>(maxCorner, zmax);
-
-  return Box(minCorner, maxCorner);
 }
 
 template<unsigned short nDim>
@@ -164,6 +183,18 @@ void CRTreeSearch<nDim>::SearchNodesInBox(const Box& boundingBox, std::set<unsig
   for (const auto& nodeValue : queryResults) {
     containedNodes.insert(nodeValue.second);
   }
+}
+
+template<unsigned short nDim>
+void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes) const {
+  Box boundingBox = CreateBoundingBox(elemCoords);
+  SearchNodesInBox(boundingBox, containedNodes);
+}
+
+template<unsigned short nDim>
+void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoords, su2double padding, std::set<unsigned long>& containedNodes) const {
+  Box boundingBox = CreateBoundingBox(elemCoords, padding);
+  SearchNodesInBox(boundingBox, containedNodes);
 }
 
 /*--- Explicit template instantiations for 2D and 3D ---*/

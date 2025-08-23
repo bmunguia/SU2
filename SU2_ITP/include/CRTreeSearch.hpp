@@ -39,6 +39,98 @@
 #include <vector>
 #include <set>
 
+/*--- Define geometry types outside the class for concrete use ---*/
+using Point2D = boost::geometry::model::point<su2double, 2, boost::geometry::cs::cartesian>;
+using Point3D = boost::geometry::model::point<su2double, 3, boost::geometry::cs::cartesian>;
+using Box2D = boost::geometry::model::box<Point2D>;
+using Box3D = boost::geometry::model::box<Point3D>;
+using NodeValue2D = std::pair<Point2D, unsigned long>;
+using NodeValue3D = std::pair<Point3D, unsigned long>;
+using RTree2D = boost::geometry::index::rtree<NodeValue2D, boost::geometry::index::quadratic<16>>;
+using RTree3D = boost::geometry::index::rtree<NodeValue3D, boost::geometry::index::quadratic<16>>;
+
+/*!
+ * \class CRTreeSearchBase
+ * \brief Base class for spatial search operations using R-tree.
+ *        Provides a common interface for different dimensional R-trees.
+ */
+class CRTreeSearchBase {
+public:
+  /*!
+   * \brief Virtual destructor.
+   */
+  virtual ~CRTreeSearchBase() = default;
+
+  /*!
+   * \brief Build the R-tree from source mesh nodes.
+   * \param[in] geometry_src - Source mesh geometry.
+   */
+  virtual void BuildTree(CGeometry* geometry_src) = 0;
+
+  /*!
+   * \brief Clear the tree and reset the built flag.
+   */
+  virtual void ClearTree() = 0;
+
+  /*!
+   * \brief Check if the tree has been built.
+   * \return True if tree is built, false otherwise.
+   */
+  virtual bool IsTreeBuilt() const = 0;
+
+  /*!
+   * \brief Get the number of nodes in the tree.
+   * \return Number of nodes stored in the tree.
+   */
+  virtual size_t GetTreeSize() const = 0;
+
+  /*!
+   * \brief Search for nodes within a bounding box (element coordinates).
+   * \param[in] elemCoords - Array of element coordinates.
+   * \param[out] containedNodes - Set of node IDs found within the bounding box.
+   */
+  virtual void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes) const = 0;
+
+  /*!
+   * \brief Search for nodes within a bounding box (element coordinates with padding).
+   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] padding - Additional padding around the element.
+   * \param[out] containedNodes - Set of node IDs found within the bounding box.
+   */
+  virtual void SearchNodesInElement(const su2double* elemCoords, su2double padding, std::set<unsigned long>& containedNodes) const = 0;
+
+protected:
+  /*!
+   * \brief Set coordinates for a 2D point.
+   * \param[out] pt - Point to set coordinates for.
+   * \param[in] coor - Array of coordinates [x, y].
+   */
+  void SetPoint2D(Point2D& pt, const su2double* coor) const;
+
+  /*!
+   * \brief Set coordinates for a 3D point.
+   * \param[out] pt - Point to set coordinates for.
+   * \param[in] coor - Array of coordinates [x, y, z].
+   */
+  void SetPoint3D(Point3D& pt, const su2double* coor) const;
+
+  /*!
+   * \brief Create a 2D bounding box from triangle vertices with padding.
+   * \param[in] tri - Flat array of triangle coordinates.
+   * \param[in] padding - Additional padding around the triangle.
+   * \return Bounding box encompassing the triangle with padding.
+   */
+  Box2D CreateBoundingBox2D(const su2double* tri, su2double padding) const;
+
+  /*!
+   * \brief Create a 3D bounding box from tetrahedron vertices with padding.
+   * \param[in] tet - Flat array of tetrahedron coordinates.
+   * \param[in] padding - Additional padding around the tetrahedron.
+   * \return Bounding box encompassing the tetrahedron with padding.
+   */
+  Box3D CreateBoundingBox3D(const su2double* tet, su2double padding) const;
+};
+
 /*!
  * \class CRTreeSearch
  * \brief Class for spatial search operations using Boost R-tree.
@@ -46,13 +138,13 @@
  * \tparam nDim Number of spatial dimensions.
  */
 template<unsigned short nDim>
-class CRTreeSearch {
+class CRTreeSearch : public CRTreeSearchBase {
 public:
-  /*--- Boost.Geometry type definitions ---*/
-  using Point = boost::geometry::model::point<su2double, nDim, boost::geometry::cs::cartesian>;
-  using Box = boost::geometry::model::box<Point>;
-  using NodeValue = std::pair<Point, unsigned long>;
-  using RTree = boost::geometry::index::rtree<NodeValue, boost::geometry::index::quadratic<16>>;
+  /*--- Dimension-specific type definitions ---*/
+  using Point = typename std::conditional<nDim == 2, Point2D, Point3D>::type;
+  using Box = typename std::conditional<nDim == 2, Box2D, Box3D>::type;
+  using NodeValue = typename std::conditional<nDim == 2, NodeValue2D, NodeValue3D>::type;
+  using RTree = typename std::conditional<nDim == 2, RTree2D, RTree3D>::type;
 
 private:
   int rank;
@@ -75,12 +167,24 @@ public:
    * \brief Build the R-tree from source mesh nodes.
    * \param[in] geometry_src - Source mesh geometry.
    */
-  void BuildTree(CGeometry* geometry_src);
-  
+  void BuildTree(CGeometry* geometry_src) override;
+
   /*!
    * \brief Clear the tree and reset the built flag.
    */
-  void ClearTree();
+  void ClearTree() override;
+
+  /*!
+   * \brief Check if the tree has been built.
+   * \return True if tree is built, false otherwise.
+   */
+  bool IsTreeBuilt() const override { return treeBuilt; }
+
+  /*!
+   * \brief Get the number of nodes in the tree.
+   * \return Number of nodes stored in the tree.
+   */
+  size_t GetTreeSize() const override { return nodeTree.size(); }
 
   /*!
    * \brief Create a bounding box from element vertices.
@@ -97,25 +201,6 @@ public:
    */
   Box CreateBoundingBox(const su2double* elemCoords, su2double padding) const;
 
-private:
-  /*!
-   * \brief Create a bounding box from 2D triangle vertices with padding.
-   * \param[in] tri - Flat array of triangle coordinates.
-   * \param[in] padding - Additional padding around the triangle.
-   * \return Bounding box encompassing the triangle with padding.
-   */
-  Box CreateBoundingBox2D(const su2double* tri, su2double padding) const;
-
-  /*!
-   * \brief Create a bounding box from 3D tetrahedron vertices with padding.
-   * \param[in] tet - Flat array of tetrahedron coordinates.
-   * \param[in] padding - Additional padding around the tetrahedron.
-   * \return Bounding box encompassing the tetrahedron with padding.
-   */
-  Box CreateBoundingBox3D(const su2double* tet, su2double padding) const;
-
-public:
-
   /*!
    * \brief Search for nodes within a bounding box.
    * \param[in] boundingBox - The bounding box to search within.
@@ -124,14 +209,17 @@ public:
   void SearchNodesInBox(const Box& boundingBox, std::set<unsigned long>& containedNodes) const;
 
   /*!
-   * \brief Check if the tree has been built.
-   * \return True if tree is built, false otherwise.
+   * \brief Search for nodes within a bounding box (element coordinates).
+   * \param[in] elemCoords - Array of element coordinates.
+   * \param[out] containedNodes - Set of node IDs found within the bounding box.
    */
-  bool IsTreeBuilt() const { return treeBuilt; }
+  void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes) const override;
 
   /*!
-   * \brief Get the number of nodes in the tree.
-   * \return Number of nodes stored in the tree.
+   * \brief Search for nodes within a bounding box (element coordinates with padding).
+   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] padding - Additional padding around the element.
+   * \param[out] containedNodes - Set of node IDs found within the bounding box.
    */
-  size_t GetTreeSize() const { return nodeTree.size(); }
+  void SearchNodesInElement(const su2double* elemCoords, su2double padding, std::set<unsigned long>& containedNodes) const override;
 };

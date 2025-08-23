@@ -27,6 +27,7 @@
  */
 
  #include "../include/CVolumeInterpolator.hpp"
+ #include "../include/CRTreeSearch.hpp"
 
 CVolumeInterpolator::CVolumeInterpolator(SU2_Comm MPICommunicator) {
   /*--- Set up MPI ---*/
@@ -247,22 +248,38 @@ void CVolumeInterpolator::LoadRestarts(CConfig* config, CGeometry** geometry_con
 
 void CVolumeInterpolator::InitializeADTs(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst, bool update) {
   if (!srcVolumeADT_ptr || update) {
-    if (rank == MASTER_NODE) cout << "Building volume ADT." << flush;
+    if (rank == MASTER_NODE) std::cout << "Building volume ADT for source mesh." << std::endl;
     srcVolumeADT_ptr = BuildVolumeADT(geometry_src);
-    if (rank == MASTER_NODE) cout << " Done." << endl;
+    if (rank == MASTER_NODE) std::cout << " Done." << std::endl;
   }
 
   if (!srcSurfaceADT_ptr || update) {
-    if (rank == MASTER_NODE) cout << "Building source surface ADT." << flush;
+    if (rank == MASTER_NODE) std::cout << "Building surface ADT for source mesh." << std::endl;
     srcSurfaceADT_ptr = BuildSurfaceADT(config, geometry_src);
-    if (rank == MASTER_NODE) cout << " Done." << endl;
+    if (rank == MASTER_NODE) std::cout << " Done." << std::endl;
   }
 
   if (!dstSurfaceADT_ptr || update) {
-    if (rank == MASTER_NODE) cout << "Building destination surface ADT." << flush;
+    if (rank == MASTER_NODE) std::cout << "Building surface ADT for destination mesh." << std::endl;
     dstSurfaceADT_ptr = BuildSurfaceADT(config, geometry_dst);
-    if (rank == MASTER_NODE) cout << " Done." << endl;
   }
+}
+
+void CVolumeInterpolator::InitializeRTree(CGeometry* geometry_src) {
+  if (rank == MASTER_NODE) {
+    std::cout << "Initializing R-tree for source mesh." << std::endl;
+  }
+
+  if (nDim == 2) {
+    rTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
+  } else if (nDim == 3) {
+    rTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
+  } else {
+    SU2_MPI::Error("Invalid dimension for R-tree initialization.", CURRENT_FUNCTION);
+  }
+
+  /*--- Build the tree ---*/
+  rTree_ptr->BuildTree(geometry_src);
 }
 
 std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildVolumeADT(CGeometry* geometry) {

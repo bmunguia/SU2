@@ -1,5 +1,5 @@
 su2_itp_src = ['SU2_ITP.cpp']
-itp_lib_src = ['CVolumeInterpolator.cpp', 'CLinearVolumeInterpolator.cpp', 'CConservativeVolumeInterpolator.cpp']
+itp_lib_src = ['CVolumeInterpolator.cpp', 'CLinearVolumeInterpolator.cpp', 'CConservativeVolumeInterpolator.cpp', 'CRTreeSearch.cpp']
 if get_option('enable-normal')
 
   su2_itp_lib = static_library('su2_itp', itp_lib_src,

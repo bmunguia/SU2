@@ -30,6 +30,8 @@
 #include <cmath>
 #include <memory>
 
+#include "CRTreeSearch.hpp"
+
 #include "../../Common/include/parallelization/mpi_structure.hpp"
 
 #include "../../SU2_CFD/include/solvers/CBaselineSolver.hpp"
@@ -57,6 +59,8 @@ class CVolumeInterpolator {
     unsigned long nPoint_dst = 0;  /*!< \brief Number of points on the destination mesh. */
     unsigned long nElem_src = 0;   /*!< \brief Number of elements on the source mesh. */
     unsigned long nElem_dst = 0;   /*!< \brief Number of elements on the destination mesh. */
+
+    std::unique_ptr<CRTreeSearchBase> rTree_ptr; /*!< \brief R-tree for spatial search. */
 
     std::unique_ptr<CFEMStandardElement> stdElement_ptr; /*!< \brief Standard element object used for Gauss quadrature. */
 
@@ -104,6 +108,8 @@ class CVolumeInterpolator {
      * \param[in] update - <code>TRUE</code> means to re-initialize the ADTs
      */
     void InitializeADTs(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst, bool update = false);
+
+    void InitializeRTree(CGeometry* geometry_src);
 
     std::unique_ptr<CADTElemClass> BuildVolumeADT(CGeometry* geometry);
 
@@ -164,6 +170,17 @@ class CVolumeInterpolator {
         SU2_MPI::Error("FEM standard element not initialized. Call InitializeFEMStandardElement first.", CURRENT_FUNCTION);
       }
       return *stdElement_ptr;
+    }
+
+    /*!
+     * \brief Get reference to R-tree.
+     * \return Reference to R-tree
+     */
+    CRTreeSearchBase& GetRTree() {
+      if (!rTree_ptr) {
+        SU2_MPI::Error("R-tree not initialized. Call InitializeRTree first.", CURRENT_FUNCTION);
+      }
+      return *rTree_ptr;
     }
 
     void InitializeCoords(CGeometry* geometry, vector<su2double>& coords) {
