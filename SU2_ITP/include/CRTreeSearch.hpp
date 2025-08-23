@@ -39,15 +39,17 @@
 #include <vector>
 #include <set>
 
+namespace bg = boost::geometry;
+
 /*--- Define geometry types outside the class for concrete use ---*/
-using Point2D = boost::geometry::model::point<su2double, 2, boost::geometry::cs::cartesian>;
-using Point3D = boost::geometry::model::point<su2double, 3, boost::geometry::cs::cartesian>;
-using Box2D = boost::geometry::model::box<Point2D>;
-using Box3D = boost::geometry::model::box<Point3D>;
+using Point2D = bg::model::point<su2double, 2, bg::cs::cartesian>;
+using Point3D = bg::model::point<su2double, 3, bg::cs::cartesian>;
+using Box2D = bg::model::box<Point2D>;
+using Box3D = bg::model::box<Point3D>;
 using NodeValue2D = std::pair<Point2D, unsigned long>;
 using NodeValue3D = std::pair<Point3D, unsigned long>;
-using RTree2D = boost::geometry::index::rtree<NodeValue2D, boost::geometry::index::quadratic<16>>;
-using RTree3D = boost::geometry::index::rtree<NodeValue3D, boost::geometry::index::quadratic<16>>;
+using RTree2D = bg::index::rtree<NodeValue2D, bg::index::quadratic<16>>;
+using RTree3D = bg::index::rtree<NodeValue3D, bg::index::quadratic<16>>;
 
 /*!
  * \class CRTreeSearchBase

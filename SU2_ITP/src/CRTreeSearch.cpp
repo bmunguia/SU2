@@ -32,14 +32,14 @@
 
 /*--- Implementation of base class methods ---*/
 void CRTreeSearchBase::SetPoint2D(Point2D& pt, const su2double* coor) const {
-  boost::geometry::set<0>(pt, coor[0]);
-  boost::geometry::set<1>(pt, coor[1]);
+  bg::set<0>(pt, coor[0]);
+  bg::set<1>(pt, coor[1]);
 }
 
 void CRTreeSearchBase::SetPoint3D(Point3D& pt, const su2double* coor) const {
-  boost::geometry::set<0>(pt, coor[0]);
-  boost::geometry::set<1>(pt, coor[1]);
-  boost::geometry::set<2>(pt, coor[2]);
+  bg::set<0>(pt, coor[0]);
+  bg::set<1>(pt, coor[1]);
+  bg::set<2>(pt, coor[2]);
 }
 
 Box2D CRTreeSearchBase::CreateBoundingBox2D(const su2double* tri, su2double padding) const {
@@ -56,10 +56,10 @@ Box2D CRTreeSearchBase::CreateBoundingBox2D(const su2double* tri, su2double padd
 
   /*--- Create points for bounding box ---*/
   Point2D minCorner, maxCorner;
-  boost::geometry::set<0>(minCorner, xmin);
-  boost::geometry::set<1>(minCorner, ymin);
-  boost::geometry::set<0>(maxCorner, xmax);
-  boost::geometry::set<1>(maxCorner, ymax);
+  bg::set<0>(minCorner, xmin);
+  bg::set<1>(minCorner, ymin);
+  bg::set<0>(maxCorner, xmax);
+  bg::set<1>(maxCorner, ymax);
 
   return Box2D(minCorner, maxCorner);
 }
@@ -81,12 +81,12 @@ Box3D CRTreeSearchBase::CreateBoundingBox3D(const su2double* tet, su2double padd
 
   /*--- Create points for bounding box ---*/
   Point3D minCorner, maxCorner;
-  boost::geometry::set<0>(minCorner, xmin);
-  boost::geometry::set<1>(minCorner, ymin);
-  boost::geometry::set<2>(minCorner, zmin);
-  boost::geometry::set<0>(maxCorner, xmax);
-  boost::geometry::set<1>(maxCorner, ymax);
-  boost::geometry::set<2>(maxCorner, zmax);
+  bg::set<0>(minCorner, xmin);
+  bg::set<1>(minCorner, ymin);
+  bg::set<2>(minCorner, zmin);
+  bg::set<0>(maxCorner, xmax);
+  bg::set<1>(maxCorner, ymax);
+  bg::set<2>(maxCorner, zmax);
 
   return Box3D(minCorner, maxCorner);
 }
@@ -124,12 +124,12 @@ void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry_src) {
 
     /*--- Set point coordinates using template point type ---*/
     if constexpr (nDim == 2) {
-      boost::geometry::set<0>(pt, coor[0]);
-      boost::geometry::set<1>(pt, coor[1]);
+      bg::set<0>(pt, coor[0]);
+      bg::set<1>(pt, coor[1]);
     } else if constexpr (nDim == 3) {
-      boost::geometry::set<0>(pt, coor[0]);
-      boost::geometry::set<1>(pt, coor[1]);
-      boost::geometry::set<2>(pt, coor[2]);
+      bg::set<0>(pt, coor[0]);
+      bg::set<1>(pt, coor[1]);
+      bg::set<2>(pt, coor[2]);
     }
 
     /*--- Add to vector ---*/
@@ -177,7 +177,7 @@ void CRTreeSearch<nDim>::SearchNodesInBox(const Box& boundingBox, std::set<unsig
 
   /*--- Query the R-tree for all nodes within the bounding box ---*/
   std::vector<NodeValue> queryResults;
-  nodeTree.query(boost::geometry::index::within(boundingBox), std::back_inserter(queryResults));
+  nodeTree.query(bg::index::within(boundingBox), std::back_inserter(queryResults));
 
   /*--- Extract node IDs from query results ---*/
   for (const auto& nodeValue : queryResults) {
