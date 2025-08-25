@@ -131,27 +131,20 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     void ComputeOverlappingElements(CGeometry* geometry_src,
                                     CGeometry* geometry_dst,
                                     const vector<su2double> &coor_dst,
-                                    const vector<optional<unsigned long>>& containingElems,
                                     IntersectionMeshMap& overlappingElements);
 
     /*!
      * \brief Triangle-triangle intersection using Alauzet method (signed distance functions).
-     * \param[in] geometry_src - Source mesh geometry (for neighbor detection)
-     * \param[in] srcTri - Second triangle vertices (source triangle)
-     * \param[in] dstTri - First triangle vertices (destination triangle)
-     * \param[in] srcElemID - Source element ID
+     * \param[in] dstTri - Destination triangle vertex coordinates
+     * \param[in] srcTri - Source triangle vertex coordinates
      * \param[out] intersectionPoints - Cloud of intersection points
-     * \param[out] meshedIntersection - Output triangle vertices (6 coordinates per triangle: x0,y0,x1,y1,x2,y2)
-     * \param[out] newCandidates - New candidate elements detected during intersection
+     * \param[out] meshedIntersection - Flat array of meshed intersection coordinates, 6 per triangle
      * \return True if triangles intersect
      */
-    bool TriangleTriangleIntersection(CGeometry* geometry_src,
-                                      const su2double dstTri[6],
+    bool TriangleTriangleIntersection(const su2double dstTri[6],
                                       const su2double srcTri[6],
-                                      unsigned long srcElemID,
                                       vector<su2double>& intersectionPoints,
-                                      vector<su2double>& meshedIntersection,
-                                      set<unsigned long>& newCandidates);
+                                      vector<su2double>& meshedIntersection);
 
     /*!
      * \brief Add face (edge in 2D) neighbor to candidate list when face is intersected.

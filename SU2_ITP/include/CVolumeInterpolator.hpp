@@ -33,6 +33,7 @@
 #include "CRTreeSearch.hpp"
 
 #include "../../Common/include/parallelization/mpi_structure.hpp"
+#include "../../Common/include/fem/fem_standard_element.hpp"
 
 #include "../../SU2_CFD/include/solvers/CBaselineSolver.hpp"
 #include "../../SU2_CFD/include/solvers/CBaselineSolver_FEM.hpp"
@@ -60,7 +61,9 @@ class CVolumeInterpolator {
     unsigned long nElem_src = 0;   /*!< \brief Number of elements on the source mesh. */
     unsigned long nElem_dst = 0;   /*!< \brief Number of elements on the destination mesh. */
 
-    std::unique_ptr<CRTreeSearchBase> rTree_ptr; /*!< \brief R-tree for spatial search. */
+        /*--- R-tree data structures for spatial search ---*/
+    std::unique_ptr<CRTreeSearchBase> srcRTree_ptr; /*!< \brief R-tree for source mesh spatial search. */
+    std::unique_ptr<CRTreeSearchBase> dstRTree_ptr; /*!< \brief R-tree for destination mesh spatial search. */
 
     std::unique_ptr<CFEMStandardElement> stdElement_ptr; /*!< \brief Standard element object used for Gauss quadrature. */
 
@@ -109,7 +112,7 @@ class CVolumeInterpolator {
      */
     void InitializeADTs(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst, bool update = false);
 
-    void InitializeRTree(CGeometry* geometry_src);
+    void InitializeRTrees(CGeometry* geometry_src, CGeometry* geometry_dst);
 
     std::unique_ptr<CADTElemClass> BuildVolumeADT(CGeometry* geometry);
 
@@ -173,14 +176,25 @@ class CVolumeInterpolator {
     }
 
     /*!
-     * \brief Get reference to R-tree.
-     * \return Reference to R-tree
+     * \brief Get reference to source R-tree.
+     * \return Reference to source R-tree
      */
-    CRTreeSearchBase& GetRTree() {
-      if (!rTree_ptr) {
-        SU2_MPI::Error("R-tree not initialized. Call InitializeRTree first.", CURRENT_FUNCTION);
+    CRTreeSearchBase& GetSourceRTree() {
+      if (!srcRTree_ptr) {
+        SU2_MPI::Error("Source R-tree not initialized. Call InitializeRTrees first.", CURRENT_FUNCTION);
       }
-      return *rTree_ptr;
+      return *srcRTree_ptr;
+    }
+
+    /*!
+     * \brief Get reference to destination R-tree.
+     * \return Reference to destination R-tree
+     */
+    CRTreeSearchBase& GetDestRTree() {
+      if (!dstRTree_ptr) {
+        SU2_MPI::Error("Destination R-tree not initialized. Call InitializeRTrees first.", CURRENT_FUNCTION);
+      }
+      return *dstRTree_ptr;
     }
 
     void InitializeCoords(CGeometry* geometry, vector<su2double>& coords) {

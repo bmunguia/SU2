@@ -26,11 +26,9 @@
  * License along with SU2. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <queue>
-#include <iomanip>
+#include <cmath>
 
 #include "../include/CConservativeVolumeInterpolator.hpp"
-#include "../../Common/include/fem/fem_standard_element.hpp"
 
 CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) {}
@@ -46,8 +44,11 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
     cout << geometry_dst->GetGlobal_nElemDomain() << " elements." << endl;
   }
 
-  /*--- Build the ADTs ---*/
-  InitializeADTs(config, geometry_src, geometry_dst);
+  // /*--- Build the ADTs ---*/
+  // InitializeADTs(config, geometry_src, geometry_dst);
+
+  /*--- Build the R-trees ---*/
+  InitializeRTrees(geometry_src, geometry_dst);
 
   /*--- Initialize the FEM standard element ---*/
   if (!stdElement_ptr) {
@@ -88,41 +89,22 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   InitializeCoords(geometry_dst, coorDst);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 1: Apply the curvature correction to the destination nodes.   ---*/
+  /*--- Step 1: Compute the intersection of elements K_dst with elements   ---*/
+  /*---         K_src it overlaps, and mesh the intersection regions.      ---*/
   /*--------------------------------------------------------------------------*/
-  // if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
-  // ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst);
+  if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
+  IntersectionMeshMap overlappingElements;
+  ComputeOverlappingElements(geometry_src, geometry_dst, coorDst, overlappingElements);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 2: Localize destination nodes on the source mesh.             ---*/
-  /*---         containingElems is a map from destination mesh nodes to    ---*/
-  /*---         containing elements on the source mesh, and pointsFailed   ---*/
-  /*---         is all the nodes for which no containing element was found ---*/
-  /*--------------------------------------------------------------------------*/
-  if (rank == MASTER_NODE) cout << "Performing containment search." << endl;
-  vector<optional<unsigned long>> containingElems;
-  vector<int> containingElemRanks;
-  vector<unsigned long> pointsFailed;
-  PointLocalization(geometry_src, coorDst, containingElems, containingElemRanks,
-                    pointsFailed);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 3: Compute solution mass and gradient on source mesh.         ---*/
+  /*--- Step 2: Compute solution mass and gradient on source mesh.         ---*/
   /*--------------------------------------------------------------------------*/
   vector<vector<su2double>> srcElemMass;
   vector<vector<su2double>> srcElemGrad;
   ComputeSourceSolutionMass(geometry_src, solver_src, srcElemMass, srcElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 4: Compute the intersection of elements K_dst with elements   ---*/
-  /*---         K_src it overlaps.                                         ---*/
-  /*--------------------------------------------------------------------------*/
-  if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
-  IntersectionMeshMap overlappingElements;
-  ComputeOverlappingElements(geometry_src, geometry_dst, coorDst, containingElems, overlappingElements);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 5: Compute destination mesh mass and gradient using Gauss     ---*/
+  /*--- Step 3: Compute destination mesh mass and gradient using Gauss     ---*/
   /*---         quadrature over intersection regions.                      ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing destination mesh mass and gradients." << endl;
@@ -132,14 +114,14 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                                     srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 6: Correct the gradient to enforce the maximum principle.     ---*/
+  /*--- Step 4: Correct the gradient to enforce the maximum principle.     ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
   ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDst, overlappingElements,
                                   srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 7: Perform averaging to get solution at vertices.             ---*/
+  /*--- Step 5: Perform averaging to get solution at vertices.             ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Distributing solution to destination nodes." << endl;
   DistributeSolutionToNodes(geometry_dst, solver_dst, coorDst, dstElemMass, dstElemGrad);
@@ -149,10 +131,10 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*---         search, for the points that could not be interpolated via  ---*/
   /*---         the regular volume interpolation.                          ---*/
   /*--------------------------------------------------------------------------*/
-  if (pointsFailed.size()) {
-    if (rank == MASTER_NODE) cout << "Performing fallback surface interpolation. " << endl;
-    SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, pointsFailed);
-  }
+  // if (pointsFailed.size()) {
+  //   if (rank == MASTER_NODE) cout << "Performing fallback surface interpolation. " << endl;
+  //   SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, pointsFailed);
+  // }
 }
 
 void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
@@ -253,17 +235,22 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
 void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geometry_src,
                                                                  CGeometry* geometry_dst,
                                                                  const vector<su2double> &coor_dst,
-                                                                 const vector<optional<unsigned long>>& containingElems,
                                                                  IntersectionMeshMap& overlappingElements) {
+  /*--- Get references to both R-trees ---*/
+  CRTreeSearchBase& srcRTree = GetSourceRTree();
+  CRTreeSearchBase& dstRTree = GetDestRTree();
   overlappingElements.clear();
 
   /*--- Storage for triangle vertex coordinates ---*/
   su2double srcTri[6], dstTri[6];
 
+  /*--- Storage for the R-tree searches ---*/
+  set<unsigned long> containedNodes;
+  set<unsigned long> candidateElems;
+
   /*--- Storage for result of intersection test ---*/
   vector<su2double> intersectionPoints;
   vector<su2double> meshedIntersection;
-  set<unsigned long> newCandidates;
 
   /*--- Only handle triangular elements for now ---*/
   if (nDim != 2) {
@@ -274,7 +261,58 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     return;
   }
 
-  /*--- Loop over all destination elements ---*/
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 1: Build initial candidate list by searching for destination  ---*/
+  /*---         nodes in source elements (reverse search).                 ---*/
+  /*--------------------------------------------------------------------------*/
+  if (rank == MASTER_NODE) {
+    cout << "Building reverse candidate mapping (source -> destination)..." << endl;
+  }
+
+  /*--- Storage for reverse candidate mapping: candidateSrcElems[dstElemID] = {srcElemIDs} ---*/
+  vector<set<unsigned long>> candidateSrcElems(geometry_dst->GetnElem());
+
+  /*--- Loop over all source elements to build reverse mapping ---*/
+  set<unsigned long> containedDstNodes;
+  for (auto srcElemID = 0u; srcElemID < geometry_src->GetnElem(); ++srcElemID) {
+    auto* srcElem = geometry_src->elem[srcElemID];
+
+    /*--- Skip non-triangular source elements ---*/
+    if (srcElem->GetVTK_Type() != TRIANGLE) continue;
+
+    /*--- Get source triangle vertices ---*/
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
+      unsigned long nodeID = srcElem->GetNode(iNode);
+      for (auto iDim = 0u; iDim < nDim; ++iDim)
+        srcTri[iNode * nDim + iDim] = geometry_src->nodes->GetCoord(nodeID, iDim);
+    }
+
+    /*--- Find destination nodes within this source element's bounding box ---*/
+    containedDstNodes.clear();
+    dstRTree.SearchNodesInElement(srcTri, containedDstNodes, 1e-8);
+
+    /*--- Add this source element as candidate for all destination elements containing these nodes ---*/
+    for (auto dstNodeID : containedDstNodes) {
+      const unsigned short nElem_node = geometry_dst->nodes->GetnElem(dstNodeID);
+      for (auto jElem = 0; jElem < nElem_node; ++jElem) {
+        unsigned long dstElemID = geometry_dst->nodes->GetElem(dstNodeID, jElem);
+        candidateSrcElems[dstElemID].insert(srcElemID);
+      }
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    unsigned long totalReverseCandidates = 0;
+    for (const auto& candidates : candidateSrcElems) {
+      totalReverseCandidates += candidates.size();
+    }
+    cout << "Reverse search found " << totalReverseCandidates << " total candidate pairs." << endl;
+  }
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 2: Main loop over destination elements - combine forward and  ---*/
+  /*---         reverse searches, then test for intersections.             ---*/
+  /*--------------------------------------------------------------------------*/
   unsigned long totalOverlaps = 0;
   unsigned long failedIntersections = 0;
   for (auto dstElemID = 0u; dstElemID < geometry_dst->GetnElem(); ++dstElemID) {
@@ -284,49 +322,56 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     if (dstElem->GetVTK_Type() != TRIANGLE) continue;
 
     /*--------------------------------------------------------------------------*/
-    /*--- Step 1: Build initial list from elements K_src containing vertices ---*/
-    /*---         of K_dst                                                   ---*/
+    /*--- Step 2a: Get destination triangle vertices.                        ---*/
     /*--------------------------------------------------------------------------*/
-    set<unsigned long> candidateList;
-
-    for (auto iNode = 0u; iNode < 3; ++iNode) {
-      unsigned long nodeID = dstElem->GetNode(iNode);
-      /*--- Find corresponding point index in corrected coordinates ---*/
-      if (containingElems[nodeID].has_value()) {
-        candidateList.insert(containingElems[nodeID].value());
-      }
-    }
-
-    /*--- Skip this destination element if no initial candidates found ---*/
-    if (candidateList.empty()) continue;
-
-    /*--- Get destination triangle vertices ---*/
     for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
       for (auto iDim = 0u; iDim < nDim; ++iDim)
-        dstTri[iNode * nDim + iDim] = coor_dst[nodeID * nDim + iDim];
+        dstTri[iNode * nDim + iDim] = geometry_dst->nodes->GetCoord(nodeID, iDim);
     }
 
     /*--------------------------------------------------------------------------*/
-    /*--- Step 2: Process candidate list, adding new elements during         ---*/
-    /*---         intersection, and meshing the convex polygon formed by the ---*/
-    /*---         intersection                                               ---*/
+    /*--- Step 2b: Forward search - find source nodes in dest element bbox.  ---*/
     /*--------------------------------------------------------------------------*/
-    set<unsigned long> processedElems;
-    queue<unsigned long> toProcess;
+    containedNodes.clear();
+    srcRTree.SearchNodesInElement(dstTri, containedNodes, 1e-8);
 
-    /*--- Initialize queue with initial candidate list ---*/
-    for (auto srcElemID : candidateList) {
-      toProcess.push(srcElemID);
-      processedElems.insert(srcElemID);
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 2c: Create the list of candidate source elements. Use mesh    ---*/
+    /*---          connectivity data to form the list of K_src that contain  ---*/
+    /*---          points in containedNodes. Also add reverse candidates.    ---*/
+    /*--------------------------------------------------------------------------*/
+    candidateElems.clear();
+
+    /*--- Forward search candidates: source elements containing nodes in dest bounding box ---*/
+    for (auto srcNodeID : containedNodes) {
+      const unsigned short nElem_node = geometry_src->nodes->GetnElem(srcNodeID);
+      for (auto jElem = 0; jElem < nElem_node; ++jElem) {
+        unsigned long srcElemID = geometry_src->nodes->GetElem(srcNodeID, jElem);
+        candidateElems.insert(srcElemID);
+      }
     }
 
-    /*--- Process elements, potentially adding new ones during intersection ---*/
-    while (!toProcess.empty()) {
-      unsigned long srcElemID = toProcess.front();
-      toProcess.pop();
+    /*--- Reverse search candidates: source elements from precomputed mapping ---*/
+    for (auto srcElemID : candidateSrcElems[dstElemID]) {
+      candidateElems.insert(srcElemID);
+    }
 
+    /*--- Debug output for first few elements ---*/
+    if (rank == MASTER_NODE && dstElemID < 5) {
+      cout << "Destination element " << dstElemID << ": found " << containedNodes.size()
+           << " contained nodes, " << candidateSrcElems[dstElemID].size() << " reverse candidates, "
+           << candidateElems.size() << " total candidate elements." << endl;
+    }
+
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 2d: Test the candidate elements. For any which intersect,     ---*/
+    /*---          mesh the intersection region.                             ---*/
+    /*--------------------------------------------------------------------------*/
+    for (auto srcElemID : candidateElems) {
       auto* srcElem = geometry_src->elem[srcElemID];
+
+      /*--- Skip non-triangular source elements ---*/
       if (srcElem->GetVTK_Type() != TRIANGLE) continue;
 
       /*--- Get source triangle vertices ---*/
@@ -337,21 +382,14 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       }
 
       /*--- Check for intersection and detect new candidates ---*/
-      if (TriangleTriangleIntersection(geometry_src, dstTri, srcTri, srcElemID, intersectionPoints,
-                                       meshedIntersection, newCandidates)) {
+      intersectionPoints.clear();
+      meshedIntersection.clear();
+      if (TriangleTriangleIntersection(dstTri, srcTri, intersectionPoints, meshedIntersection)) {
         overlappingElements[dstElemID].push_back(make_pair(srcElemID, meshedIntersection));
         totalOverlaps++;
       } else {
         /*--- Triangle intersection failed ---*/
         failedIntersections++;
-      }
-
-      /*--- Add new candidates to processing queue ---*/
-      for (auto newElemID : newCandidates) {
-        if (processedElems.count(newElemID) == 0) {
-          toProcess.push(newElemID);
-          processedElems.insert(newElemID);
-        }
       }
     }
   }
@@ -360,20 +398,14 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
     cout << "Found " << totalOverlaps << " total overlapping element pairs." << endl;
     cout << "Number of destination elements with overlaps: " << overlappingElements.size() << endl;
     cout << "Number of failed triangle intersections: " << failedIntersections << "." << endl;
+    cout << "Total destination elements processed: " << geometry_dst->GetnElem() << endl;
   }
 }
 
-bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* geometry_src,
-                                                                   const su2double dstTri[6],
+bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(const su2double dstTri[6],
                                                                    const su2double srcTri[6],
-                                                                   unsigned long srcElemID,
                                                                    vector<su2double>& intersectionPoints,
-                                                                   vector<su2double>& meshedIntersection,
-                                                                   set<unsigned long>& newCandidates) {
-  intersectionPoints.clear();
-  meshedIntersection.clear();
-  newCandidates.clear();
-
+                                                                   vector<su2double>& meshedIntersection) {
   const su2double EPS = 1e-9;
 
   /*--- Triangle vertices: P is destination and Q is source ---*/
@@ -388,10 +420,8 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   /*--- Step 1: Compute all 18 vertex-edge powers handle degenerate        ---*/
   /*---         intersection cases (1, 2, or 4 signed distances being 0).  ---*/
   /*--------------------------------------------------------------------------*/
-  vector<su2double> cloudPoints;
-
-  /*--- Compute powers: power_P[i][j] = power of vertex Pi w.r.t. edge j of triangle Q ---*/
-  /*---                 power_Q[i][j] = power of vertex Qi w.r.t. edge j of triangle P ---*/
+  /*--- power_P[i][j] = power of vertex Pi w.r.t. edge j of triangle Q ---*/
+  /*--- power_Q[i][j] = power of vertex Qi w.r.t. edge j of triangle P ---*/
   su2double power_P[3][3], power_Q[3][3];
   for (auto i = 0u; i < 3; ++i) {
     for (auto j = 0u; j < 3; ++j) {
@@ -413,15 +443,8 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   bool isDegenerateVertexP[3] = {};
   bool isDegenerateVertexQ[3] = {};
   bool isDegenerateEdgePair[3][3] = {};
-  ProcessDegenerateEdgeIntersections(P_edges, Q_edges, power_P, power_Q, EPS, cloudPoints,
+  ProcessDegenerateEdgeIntersections(P_edges, Q_edges, power_P, power_Q, EPS, intersectionPoints,
                                      isDegenerateVertexP, isDegenerateVertexQ, isDegenerateEdgePair);
-
-  /*--- Add vertex ball of all degenerate vertices of Q ---*/
-  for (auto i = 0u; i < 3; ++i) {
-    if (isDegenerateVertexQ[i]) {
-      AddVertexBallToCandidates(geometry_src, srcElemID, i, newCandidates);
-    }
-  }
 
   /*--- Check if KP vertices are strictly inside KQ ---*/
   for (auto i = 0u; i < 3; ++i) {
@@ -429,8 +452,8 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
         (power_P[i][1] > -EPS) &&
         (power_P[i][2] > -EPS) &&
         (!isDegenerateVertexP[i])) {
-      cloudPoints.push_back(P[i][0]);
-      cloudPoints.push_back(P[i][1]);
+      intersectionPoints.push_back(P[i][0]);
+      intersectionPoints.push_back(P[i][1]);
     }
   }
 
@@ -440,9 +463,8 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
         (power_Q[i][1] > -EPS) &&
         (power_Q[i][2] > -EPS) &&
         (!isDegenerateVertexQ[i])) {
-      cloudPoints.push_back(Q[i][0]);
-      cloudPoints.push_back(Q[i][1]);
-      AddVertexBallToCandidates(geometry_src, srcElemID, i, newCandidates);
+      intersectionPoints.push_back(Q[i][0]);
+      intersectionPoints.push_back(Q[i][1]);
     }
   }
 
@@ -478,23 +500,18 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
         su2double intersectionX = P0[0] + t * (P1[0] - P0[0]);
         su2double intersectionY = P0[1] + t * (P1[1] - P0[1]);
 
-        cloudPoints.push_back(intersectionX);
-        cloudPoints.push_back(intersectionY);
+        intersectionPoints.push_back(intersectionX);
+        intersectionPoints.push_back(intersectionY);
 
         wasIntersected = true;
       }
-    }
-
-    if (wasIntersected) {
-      /*--- Add face neighbor to candidates ---*/
-      AddFaceNeighborToCandidates(geometry_src, srcElemID, jQ, newCandidates);
     }
   }
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 4: Mesh the intersection polygon.                             ---*/
   /*--------------------------------------------------------------------------*/
-  MeshConvexPolygon(cloudPoints, meshedIntersection);
+  MeshConvexPolygon(intersectionPoints, meshedIntersection);
 
   return (!meshedIntersection.empty());
 }
@@ -1201,6 +1218,8 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
     /*--- Compute weighted average and set solution for this node ---*/
     for (auto iVar = 0u; iVar < nVar; ++iVar) {
       const su2double avgValue = totalValue[iVar] / totalWeight;
+      if (isnan(avgValue)) SU2_MPI::Error(string("Invalid mass at destination node ") + to_string(l) , CURRENT_FUNCTION);
+
       solver_dst->GetNodes()->SetSolution(l, iVar, avgValue);
       solver_dst->GetNodes()->SetSolution_Old(l, iVar, avgValue);
     }

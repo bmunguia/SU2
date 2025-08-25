@@ -64,10 +64,10 @@ public:
   virtual ~CRTreeSearchBase() = default;
 
   /*!
-   * \brief Build the R-tree from source mesh nodes.
-   * \param[in] geometry_src - Source mesh geometry.
+   * \brief Build the R-tree from mesh nodes.
+   * \param[in] geometry - Mesh geometry.
    */
-  virtual void BuildTree(CGeometry* geometry_src) = 0;
+  virtual void BuildTree(CGeometry* geometry) = 0;
 
   /*!
    * \brief Clear the tree and reset the built flag.
@@ -96,10 +96,10 @@ public:
   /*!
    * \brief Search for nodes within a bounding box (element coordinates with padding).
    * \param[in] elemCoords - Array of element coordinates.
-   * \param[in] padding - Additional padding around the element.
    * \param[out] containedNodes - Set of node IDs found within the bounding box.
+   * \param[in] padding - Additional padding around the element.
    */
-  virtual void SearchNodesInElement(const su2double* elemCoords, su2double padding, std::set<unsigned long>& containedNodes) const = 0;
+  virtual void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes, su2double padding) const = 0;
 
 protected:
   /*!
@@ -150,7 +150,7 @@ public:
 
 private:
   int rank;
-  RTree nodeTree;  /*!< \brief R-tree for spatial indexing of source mesh nodes. */
+  RTree nodeTree;  /*!< \brief R-tree for spatial indexing of mesh nodes. */
   bool treeBuilt;  /*!< \brief Whether the tree has been built. */
 
 public:
@@ -166,10 +166,10 @@ public:
   ~CRTreeSearch() = default;
 
   /*!
-   * \brief Build the R-tree from source mesh nodes.
-   * \param[in] geometry_src - Source mesh geometry.
+   * \brief Build the R-tree from mesh nodes.
+   * \param[in] geometry - Mesh geometry.
    */
-  void BuildTree(CGeometry* geometry_src) override;
+  void BuildTree(CGeometry* geometry) override;
 
   /*!
    * \brief Clear the tree and reset the built flag.
@@ -220,8 +220,8 @@ public:
   /*!
    * \brief Search for nodes within a bounding box (element coordinates with padding).
    * \param[in] elemCoords - Array of element coordinates.
-   * \param[in] padding - Additional padding around the element.
    * \param[out] containedNodes - Set of node IDs found within the bounding box.
+   * \param[in] padding - Additional padding around the element.
    */
-  void SearchNodesInElement(const su2double* elemCoords, su2double padding, std::set<unsigned long>& containedNodes) const override;
+  void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes, su2double padding) const override;
 };

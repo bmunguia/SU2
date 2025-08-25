@@ -98,28 +98,28 @@ CRTreeSearch<nDim>::CRTreeSearch(SU2_Comm MPICommunicator) : treeBuilt(false) {
 }
 
 template<unsigned short nDim>
-void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry_src) {
+void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry) {
   /*--- Clear any existing tree ---*/
   ClearTree();
 
   if (rank == MASTER_NODE) {
-    std::cout << "Building R-tree for source mesh nodes." << std::flush;
+    std::cout << "Building R-tree for mesh nodes." << std::flush;
   }
 
-  /*--- Get the number of points in the source mesh ---*/
-  const unsigned long nPoint = geometry_src->GetnPoint();
+  /*--- Get the number of points in the mesh ---*/
+  const unsigned long nPoint = geometry->GetnPoint();
 
-  /*--- Vector to store all node-point pairs for bulk loading ---*/
+  /*--- Vector to store all node-point pairs ---*/
   std::vector<NodeValue> nodeValues;
   nodeValues.reserve(nPoint);
 
-  /*--- Loop over all source mesh nodes and add them to the tree ---*/
+  /*--- Loop over all mesh nodes and add them to the tree ---*/
   for (unsigned long iPoint = 0; iPoint < nPoint; ++iPoint) {
     /*--- Get node coordinates for all dimensions ---*/
     Point pt;
     su2double coor[3];
     for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
-      coor[iDim] = geometry_src->nodes->GetCoord(iPoint, iDim);
+      coor[iDim] = geometry->nodes->GetCoord(iPoint, iDim);
     }
 
     /*--- Set point coordinates using template point type ---*/
@@ -136,7 +136,7 @@ void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry_src) {
     nodeValues.emplace_back(pt, iPoint);
   }
 
-  /*--- Build the R-tree using bulk loading for better performance ---*/
+  /*--- Build the R-tree ---*/
   nodeTree = RTree(nodeValues.begin(), nodeValues.end());
   treeBuilt = true;
 
@@ -177,7 +177,7 @@ void CRTreeSearch<nDim>::SearchNodesInBox(const Box& boundingBox, std::set<unsig
 
   /*--- Query the R-tree for all nodes within the bounding box ---*/
   std::vector<NodeValue> queryResults;
-  nodeTree.query(bg::index::within(boundingBox), std::back_inserter(queryResults));
+  nodeTree.query(bg::index::intersects(boundingBox), std::back_inserter(queryResults));
 
   /*--- Extract node IDs from query results ---*/
   for (const auto& nodeValue : queryResults) {
@@ -192,7 +192,7 @@ void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoords, std::
 }
 
 template<unsigned short nDim>
-void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoords, su2double padding, std::set<unsigned long>& containedNodes) const {
+void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes, su2double padding) const {
   Box boundingBox = CreateBoundingBox(elemCoords, padding);
   SearchNodesInBox(boundingBox, containedNodes);
 }
