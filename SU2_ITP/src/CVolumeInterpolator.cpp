@@ -270,22 +270,15 @@ void CVolumeInterpolator::InitializeRTrees(CGeometry* geometry_src, CGeometry* g
     cout << "Initializing R-trees for source and destination meshes." << endl;
   }
 
-  /*--- Initialize source R-tree ---*/
+  /*--- Initialize source and destination R-tree classes ---*/
   if (nDim == 2) {
     srcRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
-  } else if (nDim == 3) {
-    srcRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
-  } else {
-    SU2_MPI::Error("Invalid dimension for source R-tree initialization.", CURRENT_FUNCTION);
-  }
-
-  /*--- Initialize destination R-tree ---*/
-  if (nDim == 2) {
     dstRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
   } else if (nDim == 3) {
+    srcRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
     dstRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
   } else {
-    SU2_MPI::Error("Invalid dimension for destination R-tree initialization.", CURRENT_FUNCTION);
+    SU2_MPI::Error("Invalid dimension for source R-tree initialization.", CURRENT_FUNCTION);
   }
 
   /*--- Build both trees ---*/

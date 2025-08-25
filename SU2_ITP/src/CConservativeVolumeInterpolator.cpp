@@ -199,13 +199,13 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
   elemMass.resize(nElem_src, vector<su2double>(nVar, 0.0));
   elemGrad.resize(nElem_src, vector<su2double>(nVar * nDim, 0.0));
 
-  su2double vertexCoords[6];
+  su2double vertexCoor[6];
 
   for (auto elemID = 0u; elemID < geometry->GetnElem(); ++elemID) {
     auto* elem = geometry->elem[elemID];
     const unsigned short nNodes = elem->GetnNodes();
     const unsigned short VTK_Type = elem->GetVTK_Type();
-    const su2double elemVolume = elem->GetVolume();
+    const su2double elemVol = elem->GetVolume();
 
     /*--- Get solution at nodes ---*/
     vector<vector<su2double>> vertexSol(nNodes, vector<su2double>(nVar, 0.0));
@@ -222,12 +222,12 @@ void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geome
     /*--- Get triangle vertex coordinates ---*/
     for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned long nodeID = elem->GetNode(iNode);
-      vertexCoords[iNode * 2 + 0] = geometry->nodes->GetCoord(nodeID, 0);
-      vertexCoords[iNode * 2 + 1] = geometry->nodes->GetCoord(nodeID, 1);
+      vertexCoor[iNode * 2 + 0] = geometry->nodes->GetCoord(nodeID, 0);
+      vertexCoor[iNode * 2 + 1] = geometry->nodes->GetCoord(nodeID, 1);
     }
 
     /*--- Compute mass and gradient ---*/
-    ComputeTriangleMassAndGradient(vertexCoords, vertexSol, elemVolume, nVar,
+    ComputeTriangleMassAndGradient(vertexCoor, vertexSol, elemVol, nVar,
                                    elemMass[elemID], elemGrad[elemID]);
   }
 }
@@ -1056,7 +1056,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
     }
 
     /*--- Element volume and centroid (barycenter G_K) ---*/
-    const su2double elemVolume = dstElem->GetVolume();
+    const su2double elemVol = dstElem->GetVolume();
     const su2double* G_K = dstElem->GetCG();
 
     /*--- For each variable, apply Alauzet's maximum principle correction ---*/
@@ -1088,7 +1088,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       /*--- Step 2: Get current solution at destination element.               ---*/
       /*--------------------------------------------------------------------------*/
-      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
+      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVol;
       const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
 
       /*--------------------------------------------------------------------------*/
@@ -1156,7 +1156,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       }
 
       /*--- Compute corrected mass and gradient ---*/
-      ComputeTriangleMassAndGradient(dstVertices, vertexSol, elemVolume, 1,
+      ComputeTriangleMassAndGradient(dstVertices, vertexSol, elemVol, 1,
                                      correctedMass, correctedGrad);
 
       /*--- Update destination element data ---*/
@@ -1192,7 +1192,7 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
       if (elem->GetVTK_Type() != TRIANGLE) continue;
 
       /*--- Get element volume and centroid ---*/
-      const su2double elemVolume = elem->GetVolume();
+      const su2double elemVol = elem->GetVolume();
       const su2double* G_K = elem->GetCG();
 
       /*--- Vector from centroid to node ---*/
@@ -1201,18 +1201,18 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
       /*--- Loop over variables ---*/
       for (auto iVar = 0u; iVar < nVar; ++iVar) {
         /*--- Get element-centered solution ---*/
-        const su2double u_G = dstElemMass[elemID][iVar] / elemVolume;
+        const su2double u_G = dstElemMass[elemID][iVar] / elemVol;
         const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
 
         /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) · (P_i - G_K) ---*/
         const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
 
         /*--- Accumulate weighted contribution ---*/
-        totalValue[iVar] += vertexValue * elemVolume;
+        totalValue[iVar] += vertexValue * elemVol;
       }
 
       /*--- Accumulate weight ---*/
-      totalWeight += elemVolume;
+      totalWeight += elemVol;
     }
 
     /*--- Compute weighted average and set solution for this node ---*/
@@ -1226,9 +1226,9 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2double vertexCoords[6],
+void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2double vertexCoor[6],
                                                                      const vector<vector<su2double>>& vertexSol,
-                                                                     const su2double elemVolume,
+                                                                     const su2double elemVol,
                                                                      const unsigned short nVar,
                                                                      vector<su2double>& mass,
                                                                      vector<su2double>& grad) {
@@ -1237,9 +1237,9 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2do
   fill(grad.begin(), grad.end(), 0.0);
 
   /*--- Extract triangle vertices ---*/
-  const su2double x0 = vertexCoords[0], y0 = vertexCoords[1];
-  const su2double x1 = vertexCoords[2], y1 = vertexCoords[3];
-  const su2double x2 = vertexCoords[4], y2 = vertexCoords[5];
+  const su2double x0 = vertexCoor[0], y0 = vertexCoor[1];
+  const su2double x1 = vertexCoor[2], y1 = vertexCoor[3];
+  const su2double x2 = vertexCoor[4], y2 = vertexCoor[5];
 
   /*--- Calculate determinant and area ---*/
   const su2double det = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
@@ -1264,9 +1264,9 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2do
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su2double vertexCoords[6],
+void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su2double vertexCoor[6],
                                                                         const vector<vector<su2double>>& vertexSol,
-                                                                        const su2double elemVolume,
+                                                                        const su2double elemVol,
                                                                         const unsigned short nVar,
                                                                         vector<su2double>& mass,
                                                                         vector<su2double>& grad) {
@@ -1291,10 +1291,10 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
     for (auto iNode = 0u; iNode < 3; ++iNode) {
       unsigned short ind = iInt * 3 + iNode;
 
-      dxdr += vertexCoords[iNode * 2 + 0] * drLagBasis[ind];
-      dydr += vertexCoords[iNode * 2 + 1] * drLagBasis[ind];
-      dxds += vertexCoords[iNode * 2 + 0] * dsLagBasis[ind];
-      dyds += vertexCoords[iNode * 2 + 1] * dsLagBasis[ind];
+      dxdr += vertexCoor[iNode * 2 + 0] * drLagBasis[ind];
+      dydr += vertexCoor[iNode * 2 + 1] * drLagBasis[ind];
+      dxds += vertexCoor[iNode * 2 + 0] * dsLagBasis[ind];
+      dyds += vertexCoor[iNode * 2 + 1] * dsLagBasis[ind];
     }
 
     /*--- Compute Jacobian determinant ---*/
@@ -1340,7 +1340,7 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
   /*--- Normalize gradients by volume ---*/
   for (auto iVar = 0u; iVar < nVar; ++iVar) {
     for (auto k = 0u; k < nDim; ++k) {
-      grad[iVar * nDim + k] /= elemVolume;
+      grad[iVar * nDim + k] /= elemVol;
     }
   }
 }

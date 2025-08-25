@@ -245,32 +245,32 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
   private:
     /*!
      * \brief Compute solution mass and gradient in a triangular element from vertex values.
-     * \param[in] vertexCoords - Triangle vertex coordinates (6 values: x0,y0,x1,y1,x2,y2)
-     * \param[in] vertexSolutions - Solution values at vertices (nVar values per vertex)
-     * \param[in] elemVolume - Volume of the element
+     * \param[in] vertexCoor - Triangle vertex coordinates (6 values: x0,y0,x1,y1,x2,y2)
+     * \param[in] vertexSol - Solution values at vertices (nVar values per vertex)
+     * \param[in] elemVol - Volume of the element
      * \param[in] nVar - Number of variables
      * \param[out] mass - Computed mass integral for each variable
      * \param[out] grad - Computed gradient for each variable (nVar*nDim values)
      */
-    void ComputeTriangleMassAndGradient(const su2double vertexCoords[6],
-                                        const vector<vector<su2double>>& vertexSolutions,
-                                        const su2double elemVolume,
+    void ComputeTriangleMassAndGradient(const su2double vertexCoor[6],
+                                        const vector<vector<su2double>>& vertexSol,
+                                        const su2double elemVol,
                                         const unsigned short nVar,
                                         vector<su2double>& mass,
                                         vector<su2double>& grad);
 
     /*!
      * \brief Compute solution mass and gradient in a triangular element from vertex values using CFEMStandardElement.
-     * \param[in] vertexCoords - Triangle vertex coordinates (6 values: x0,y0,x1,y1,x2,y2)
+     * \param[in] vertexCoor - Triangle vertex coordinates (6 values: x0,y0,x1,y1,x2,y2)
      * \param[in] vertexSol - Solution values at vertices (nVar values per vertex)
-     * \param[in] elemVolume - Volume of the element
+     * \param[in] elemVol - Volume of the element
      * \param[in] nVar - Number of variables
      * \param[out] mass - Computed mass integral for each variable
      * \param[out] grad - Computed gradient for each variable (nVar*nDim values)
      */
-    void ComputeTriangleMassAndGradientFEM(const su2double vertexCoords[6],
+    void ComputeTriangleMassAndGradientFEM(const su2double vertexCoor[6],
                                            const vector<vector<su2double>>& vertexSol,
-                                           const su2double elemVolume,
+                                           const su2double elemVol,
                                            const unsigned short nVar,
                                            vector<su2double>& mass,
                                            vector<su2double>& grad);

@@ -88,18 +88,18 @@ public:
 
   /*!
    * \brief Search for nodes within a bounding box (element coordinates).
-   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] elemCoor - Array of element vertex coordinates.
    * \param[out] containedNodes - Set of node IDs found within the bounding box.
    */
-  virtual void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes) const = 0;
+  virtual void SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes) const = 0;
 
   /*!
    * \brief Search for nodes within a bounding box (element coordinates with padding).
-   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] elemCoor - Array of element vertex coordinates.
    * \param[out] containedNodes - Set of node IDs found within the bounding box.
    * \param[in] padding - Additional padding around the element.
    */
-  virtual void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes, su2double padding) const = 0;
+  virtual void SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes, su2double padding) const = 0;
 
 protected:
   /*!
@@ -189,19 +189,26 @@ public:
   size_t GetTreeSize() const override { return nodeTree.size(); }
 
   /*!
+   * \brief Set coordinates for a point.
+   * \param[out] pt - Point to set coordinates for.
+   * \param[in] coor - Array of coordinates.
+   */
+  void SetPoint(Point& pt, const su2double* coor) const;
+
+  /*!
    * \brief Create a bounding box from element vertices.
-   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] elemCoor - Array of element vertex coordinates.
    * \return Bounding box encompassing the element.
    */
-  Box CreateBoundingBox(const su2double* elemCoords) const;
+  Box CreateBoundingBox(const su2double* elemCoor) const;
 
   /*!
    * \brief Create a bounding box from element vertices with padding.
-   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] elemCoor - Array of element vertex coordinates.
    * \param[in] padding - Additional padding around the element.
    * \return Bounding box encompassing the element with padding.
    */
-  Box CreateBoundingBox(const su2double* elemCoords, su2double padding) const;
+  Box CreateBoundingBox(const su2double* elemCoor, su2double padding) const;
 
   /*!
    * \brief Search for nodes within a bounding box.
@@ -212,16 +219,16 @@ public:
 
   /*!
    * \brief Search for nodes within a bounding box (element coordinates).
-   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] elemCoor - Array of element vertex coordinates.
    * \param[out] containedNodes - Set of node IDs found within the bounding box.
    */
-  void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes) const override;
+  void SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes) const override;
 
   /*!
    * \brief Search for nodes within a bounding box (element coordinates with padding).
-   * \param[in] elemCoords - Array of element coordinates.
+   * \param[in] elemCoor - Array of element vertex coordinates.
    * \param[out] containedNodes - Set of node IDs found within the bounding box.
    * \param[in] padding - Additional padding around the element.
    */
-  void SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes, su2double padding) const override;
+  void SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes, su2double padding) const override;
 };

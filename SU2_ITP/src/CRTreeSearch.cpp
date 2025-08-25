@@ -55,11 +55,8 @@ Box2D CRTreeSearchBase::CreateBoundingBox2D(const su2double* tri, su2double padd
   const su2double ymax = std::max({y0, y1, y2}) + padding;
 
   /*--- Create points for bounding box ---*/
-  Point2D minCorner, maxCorner;
-  bg::set<0>(minCorner, xmin);
-  bg::set<1>(minCorner, ymin);
-  bg::set<0>(maxCorner, xmax);
-  bg::set<1>(maxCorner, ymax);
+  Point2D minCorner(xmin, ymin);
+  Point2D maxCorner(xmax, ymax);
 
   return Box2D(minCorner, maxCorner);
 }
@@ -80,13 +77,8 @@ Box3D CRTreeSearchBase::CreateBoundingBox3D(const su2double* tet, su2double padd
   const su2double zmax = std::max({z0, z1, z2, z3}) + padding;
 
   /*--- Create points for bounding box ---*/
-  Point3D minCorner, maxCorner;
-  bg::set<0>(minCorner, xmin);
-  bg::set<1>(minCorner, ymin);
-  bg::set<2>(minCorner, zmin);
-  bg::set<0>(maxCorner, xmax);
-  bg::set<1>(maxCorner, ymax);
-  bg::set<2>(maxCorner, zmax);
+  Point3D minCorner(xmin, ymin, zmin);
+  Point3D maxCorner(xmax, ymax, zmax);
 
   return Box3D(minCorner, maxCorner);
 }
@@ -109,6 +101,10 @@ void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry) {
   /*--- Get the number of points in the mesh ---*/
   const unsigned long nPoint = geometry->GetnPoint();
 
+  /*--- Storage for point coordinates ---*/
+  su2double coor[3];
+  Point pt;
+
   /*--- Vector to store all node-point pairs ---*/
   std::vector<NodeValue> nodeValues;
   nodeValues.reserve(nPoint);
@@ -116,21 +112,12 @@ void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry) {
   /*--- Loop over all mesh nodes and add them to the tree ---*/
   for (unsigned long iPoint = 0; iPoint < nPoint; ++iPoint) {
     /*--- Get node coordinates for all dimensions ---*/
-    Point pt;
-    su2double coor[3];
     for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
       coor[iDim] = geometry->nodes->GetCoord(iPoint, iDim);
     }
 
     /*--- Set point coordinates using template point type ---*/
-    if constexpr (nDim == 2) {
-      bg::set<0>(pt, coor[0]);
-      bg::set<1>(pt, coor[1]);
-    } else if constexpr (nDim == 3) {
-      bg::set<0>(pt, coor[0]);
-      bg::set<1>(pt, coor[1]);
-      bg::set<2>(pt, coor[2]);
-    }
+    SetPoint(pt, coor);
 
     /*--- Add to vector ---*/
     nodeValues.emplace_back(pt, iPoint);
@@ -152,16 +139,25 @@ void CRTreeSearch<nDim>::ClearTree() {
 }
 
 template<unsigned short nDim>
-typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox(const su2double* elemCoords) const {
-  return CreateBoundingBox(elemCoords, 0.0);
+void CRTreeSearch<nDim>::SetPoint(Point& pt, const su2double* coor) const {
+  if constexpr (nDim == 2) {
+    SetPoint2D(pt, coor);
+  } else if constexpr (nDim == 3) {
+    SetPoint3D(pt, coor);
+  }
 }
 
 template<unsigned short nDim>
-typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox(const su2double* elemCoords, su2double padding) const {
+typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox(const su2double* elemCoor) const {
+  return CreateBoundingBox(elemCoor, 0.0);
+}
+
+template<unsigned short nDim>
+typename CRTreeSearch<nDim>::Box CRTreeSearch<nDim>::CreateBoundingBox(const su2double* elemCoor, su2double padding) const {
   if constexpr (nDim == 2) {
-    return CreateBoundingBox2D(elemCoords, padding);
+    return CreateBoundingBox2D(elemCoor, padding);
   } else if constexpr (nDim == 3) {
-    return CreateBoundingBox3D(elemCoords, padding);
+    return CreateBoundingBox3D(elemCoor, padding);
   }
 }
 
@@ -186,14 +182,14 @@ void CRTreeSearch<nDim>::SearchNodesInBox(const Box& boundingBox, std::set<unsig
 }
 
 template<unsigned short nDim>
-void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes) const {
-  Box boundingBox = CreateBoundingBox(elemCoords);
+void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes) const {
+  Box boundingBox = CreateBoundingBox(elemCoor);
   SearchNodesInBox(boundingBox, containedNodes);
 }
 
 template<unsigned short nDim>
-void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoords, std::set<unsigned long>& containedNodes, su2double padding) const {
-  Box boundingBox = CreateBoundingBox(elemCoords, padding);
+void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes, su2double padding) const {
+  Box boundingBox = CreateBoundingBox(elemCoor, padding);
   SearchNodesInBox(boundingBox, containedNodes);
 }
 
