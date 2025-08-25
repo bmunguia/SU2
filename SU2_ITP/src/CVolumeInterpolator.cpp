@@ -266,24 +266,37 @@ void CVolumeInterpolator::InitializeADTs(const CConfig* config, CGeometry* geome
 }
 
 void CVolumeInterpolator::InitializeRTrees(CGeometry* geometry_src, CGeometry* geometry_dst) {
-  if (rank == MASTER_NODE) {
+  if (rank == MASTER_NODE)
     cout << "Initializing R-trees for source and destination meshes." << endl;
-  }
 
   /*--- Initialize source and destination R-tree classes ---*/
-  if (nDim == 2) {
-    srcRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
-    dstRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
-  } else if (nDim == 3) {
-    srcRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
-    dstRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
-  } else {
-    SU2_MPI::Error("Invalid dimension for source R-tree initialization.", CURRENT_FUNCTION);
+  switch (nDim) {
+    case 2: {
+      srcRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
+      dstRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
+      break;
+    }
+    case 3: {
+      srcRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
+      dstRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
+      break;
+    }
+    default: {
+      SU2_MPI::Error("Invalid dimension for source R-tree initialization.", CURRENT_FUNCTION);
+    }
   }
 
   /*--- Build both trees ---*/
+  if (rank == MASTER_NODE)
+    cout << "Building R-tree for source mesh nodes." << flush;
   srcRTree_ptr->BuildTree(geometry_src);
+  if (rank == MASTER_NODE) {
+    cout << " Done. Added " << GetSourceRTree().GetTreeSize() << " nodes." << endl;
+    cout << "Building R-tree for destination mesh nodes." << flush;
+  }
   dstRTree_ptr->BuildTree(geometry_dst);
+  if (rank == MASTER_NODE)
+    cout << " Done. Added " << GetDestRTree().GetTreeSize() << " nodes." << endl;
 }
 
 std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildVolumeADT(CGeometry* geometry) {

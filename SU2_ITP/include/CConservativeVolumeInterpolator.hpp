@@ -2,7 +2,7 @@
  * \file CConservativeVolumeInterpolator.hpp
  * \brief Headers of the main conservative solution interpolation subroutines.
  *        The subroutines and functions are in the <i>CConservativeVolumeInterpolator.cpp</i> file.
- * \author B. Munguía, E. van der Weide
+ * \author B. Munguía
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -30,13 +30,19 @@
 #include <optional>
 #include "CVolumeInterpolator.hpp"
 
-using IntersectionMesh = vector<pair<unsigned long, vector<su2double>>>;
+struct IntersectionData {
+    unsigned long elemID;
+    vector<su2double> coords;  // Coordinates of each intersection sub-element vertex
+    vector<su2double> vols;    // Volume of each intersection sub-element
+};
+
+using IntersectionMesh = vector<IntersectionData>;
 using IntersectionMeshMap = map<unsigned long, IntersectionMesh>;
 
 /*!
  * \class CConservativeVolumeInterpolator
  * \brief Performs conservative solution interpolation between meshes using the Alauzet 2015 method.
- * \author B. Munguía, E. van der Weide
+ * \author B. Munguía
  */
 class CConservativeVolumeInterpolator : public CVolumeInterpolator {
   public:
@@ -105,7 +111,8 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_src - Source mesh solver
-     * \param[in] overlappingElements - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
+     * \param[in] overlapMeshes - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
+     * \param[in] incompleteOverlaps - List of destination element IDs with incomplete overlap
      * \param[in] srcElemMass - Source element masses
      * \param[in] srcElemGrad - Source element gradients
      * \param[out] dstElemMass - Destination element masses
@@ -114,61 +121,42 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     void ComputeDestinationMassAndGradient(CGeometry* geometry_src,
                                            CGeometry* geometry_dst,
                                            CSolver* solver_src,
-                                           const IntersectionMeshMap& overlappingElements,
+                                           const IntersectionMeshMap& overlapMeshes,
+                                           const vector<unsigned long>& incompleteOverlaps,
                                            const vector<vector<su2double>>& srcElemMass,
                                            const vector<vector<su2double>>& srcElemGrad,
                                            vector<vector<su2double>>& dstElemMass,
                                            vector<vector<su2double>>& dstElemGrad);
 
     /*!
-     * \brief Compute overlapping elements between source and destination meshes.
+     * \brief Compute overlapping elements between source and destination meshes, and mesh the intersection regions.
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
      * \param[in] containingElems - Elements containing destination points (from point localization)
-     * \param[out] overlappingElements - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
+     * \param[out] overlapMeshes - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
+     * \param[out] incompleteOverlaps - List of destination element IDs with incomplete overlap
      */
-    void ComputeOverlappingElements(CGeometry* geometry_src,
-                                    CGeometry* geometry_dst,
-                                    const vector<su2double> &coor_dst,
-                                    IntersectionMeshMap& overlappingElements);
+    void CreateIntersectionMeshes(CGeometry* geometry_src,
+                                  CGeometry* geometry_dst,
+                                  const vector<su2double> &coor_dst,
+                                  IntersectionMeshMap& overlapMeshes,
+                                  vector<unsigned long>& incompleteOverlaps);
 
     /*!
      * \brief Triangle-triangle intersection using Alauzet method (signed distance functions).
      * \param[in] dstTri - Destination triangle vertex coordinates
      * \param[in] srcTri - Source triangle vertex coordinates
      * \param[out] intersectionPoints - Cloud of intersection points
-     * \param[out] meshedIntersection - Flat array of meshed intersection coordinates, 6 per triangle
+     * \param[out] intersectionElemCoords - Flat array of meshed intersection coordinates
+     * \param[out] intersectionElemVols - Volumes of meshed intersection region elements
      * \return True if triangles intersect
      */
     bool TriangleTriangleIntersection(const su2double dstTri[6],
                                       const su2double srcTri[6],
                                       vector<su2double>& intersectionPoints,
-                                      vector<su2double>& meshedIntersection);
-
-    /*!
-     * \brief Add face (edge in 2D) neighbor to candidate list when face is intersected.
-     * \param[in] geometry - Mesh geometry
-     * \param[in] elemID - Element ID
-     * \param[in] faceIndex - Local face index (0, 1, or 2 for triangles)
-     * \param[out] newCandidates - Set to add new candidates to
-     */
-    void AddFaceNeighborToCandidates(CGeometry* geometry_src,
-                                     unsigned long srcElemID,
-                                     unsigned short edgeIndex,
-                                     set<unsigned long>& newCandidates);
-
-    /*!
-     * \brief Add vertex ball to candidate list when vertex is inside triangle.
-     * \param[in] geometry_src - Source mesh geometry
-     * \param[in] srcElemID - Source element ID
-     * \param[in] localNodeID - Local vertex index (0, 1, or 2 for triangles)
-     * \param[out] newCandidates - Set to add new candidates to
-     */
-    void AddVertexBallToCandidates(CGeometry* geometry_src,
-                                   unsigned long srcElemID,
-                                   unsigned short localNodeID,
-                                   set<unsigned long>& newCandidates);
+                                      vector<su2double>& intersectionElemCoords,
+                                      vector<su2double>& intersectionElemVols);
 
     /*!
      * \brief Process degenerate edge-edge intersection cases following Alauzet's algorithm.
@@ -202,9 +190,12 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     /*!
      * \brief Mesh a convex polygon into triangles following Alauzet's method.
      * \param[in] polygonPoints - Convex polygon vertices (x,y pairs in order)
-     * \param[out] polygonMesh - Output triangle vertices (6 coordinates per triangle: x0,y0,x1,y1,x2,y2)
+     * \param[out] polygonElemCoords - Flat array of meshed intersection coordinates
+     * \param[out] polygonElemVols - Volumes of meshed intersection region elements
      */
-    void MeshConvexPolygon(const vector<su2double>& polygonPoints, vector<su2double>& polygonMesh);
+    void MeshConvexPolygon(const vector<su2double>& polygonPoints,
+                           vector<su2double>& polygonElemCoords,
+                           vector<su2double>& polygonElemVols);
 
     /*!
      * \brief Apply local maximum principle correction following Alauzet's method.
@@ -212,7 +203,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_src - Source mesh solver
      * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
-     * \param[in] overlappingElements - Map from dst element ID to overlapping src element IDs
+     * \param[in] overlapMeshes - Map from dst element ID to overlapping src element IDs
      * \param[in] srcElemMass - Source element masses
      * \param[in] srcElemGrad - Source element gradients
      * \param[in,out] dstElemMass - Destination element masses
@@ -222,7 +213,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                          CGeometry* geometry_dst,
                                          CSolver* solver_src,
                                          const vector<su2double>& coor_dst,
-                                         const IntersectionMeshMap& overlappingElements,
+                                         const IntersectionMeshMap& overlapMeshes,
                                          const vector<vector<su2double>>& srcElemMass,
                                          const vector<vector<su2double>>& srcElemGrad,
                                          vector<vector<su2double>>& dstElemMass,

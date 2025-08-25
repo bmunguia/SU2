@@ -27,7 +27,6 @@
 
 #include "../include/CRTreeSearch.hpp"
 #include <algorithm>
-#include <iostream>
 #include <limits>
 
 /*--- Implementation of base class methods ---*/
@@ -94,10 +93,6 @@ void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry) {
   /*--- Clear any existing tree ---*/
   ClearTree();
 
-  if (rank == MASTER_NODE) {
-    std::cout << "Building R-tree for mesh nodes." << std::flush;
-  }
-
   /*--- Get the number of points in the mesh ---*/
   const unsigned long nPoint = geometry->GetnPoint();
 
@@ -126,10 +121,6 @@ void CRTreeSearch<nDim>::BuildTree(CGeometry* geometry) {
   /*--- Build the R-tree ---*/
   nodeTree = RTree(nodeValues.begin(), nodeValues.end());
   treeBuilt = true;
-
-  if (rank == MASTER_NODE) {
-    std::cout << " Done. Added " << nodeTree.size() << " nodes to R-tree." << std::endl;
-  }
 }
 
 template<unsigned short nDim>
