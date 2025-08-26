@@ -31,7 +31,7 @@
 #include "CVolumeInterpolator.hpp"
 
 struct IntersectionData {
-    unsigned long elemID;
+    unsigned long srcElemID;   // ID of source element for the current intersection
     vector<su2double> coords;  // Coordinates of each intersection sub-element vertex
     vector<su2double> vols;    // Volume of each intersection sub-element
 };
@@ -136,12 +136,14 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] containingElems - Elements containing destination points (from point localization)
      * \param[out] overlapMeshes - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
      * \param[out] incompleteOverlaps - List of destination element IDs with incomplete overlap
+     * \param[out] uncoveredNodes - Set of destination node IDs that are not covered by any source element
      */
     void CreateIntersectionMeshes(CGeometry* geometry_src,
                                   CGeometry* geometry_dst,
                                   const vector<su2double> &coor_dst,
                                   IntersectionMeshMap& overlapMeshes,
-                                  vector<unsigned long>& incompleteOverlaps);
+                                  vector<unsigned long>& incompleteOverlaps,
+                                  set<unsigned long>& uncoveredNodes);
 
     /*!
      * \brief Triangle-triangle intersection using Alauzet method (signed distance functions).
@@ -150,13 +152,17 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[out] intersectionPoints - Cloud of intersection points
      * \param[out] intersectionElemCoords - Flat array of meshed intersection coordinates
      * \param[out] intersectionElemVols - Volumes of meshed intersection region elements
+     * \param[out] isCoveredVertexP - boolean array indicating which vertices of P are part of the intersection
+     * \param[out] isCoveredVertexQ - boolean array indicating which vertices of Q are part of the intersection
      * \return True if triangles intersect
      */
     bool TriangleTriangleIntersection(const su2double dstTri[6],
                                       const su2double srcTri[6],
                                       vector<su2double>& intersectionPoints,
                                       vector<su2double>& intersectionElemCoords,
-                                      vector<su2double>& intersectionElemVols);
+                                      vector<su2double>& intersectionElemVols,
+                                      bool isCoveredVertexP[3],
+                                      bool isCoveredVertexQ[3]);
 
     /*!
      * \brief Process degenerate edge-edge intersection cases following Alauzet's algorithm.
@@ -232,6 +238,42 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                    const vector<su2double>& coor_dst,
                                    const vector<vector<su2double>>& dstElemMass,
                                    const vector<vector<su2double>>& dstElemGrad);
+
+    /*!
+     * \brief Handle solution distribution to destination nodes outside the source domain.
+     * \param[in] geometry_src - Source mesh geometry
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_src - Source mesh solver
+     * \param[in] solver_dst - Destination mesh solver
+     * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
+     * \param[in] overlapMeshes - Map from dst element ID to overlapping src element IDs
+     * \param[in] uncoveredNodes - Set of destination node IDs that are not covered by any source element
+     * \param[in] dstElemMass - Destination element masses
+     * \param[in] dstElemGrad - Destination element gradients
+     */
+    void DistributeSolutionOutsideDomain(CGeometry* geometry_src,
+                                         CGeometry* geometry_dst,
+                                         CSolver* solver_src,
+                                         CSolver* solver_dst,
+                                         const vector<su2double>& coor_dst,
+                                         const IntersectionMeshMap& overlapMeshes,
+                                         const set<unsigned long>& uncoveredNodes,
+                                         const vector<vector<su2double>>& dstElemMass,
+                                         const vector<vector<su2double>>& dstElemGrad);
+
+    /*!
+     * \brief Perform surface interpolation for physical boundary nodes using nearest surface elements.
+     * \param[in] geometry_src - Source mesh geometry
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_src - Source mesh solver
+     * \param[in,out] solver_dst - Destination mesh solver (solution will be updated)
+     * \param[in] coor_dst - Destination mesh coordinates
+     */
+    void SurfaceInterpolation(CGeometry* geometry_src,
+                              CGeometry* geometry_dst,
+                              CSolver* solver_src,
+                              CSolver* solver_dst,
+                              const vector<su2double>& coor_dst);
 
   private:
     /*!

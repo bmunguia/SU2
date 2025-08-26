@@ -274,11 +274,13 @@ void CVolumeInterpolator::InitializeRTrees(CGeometry* geometry_src, CGeometry* g
     case 2: {
       srcRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
       dstRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
+      srcSurfaceRTree_ptr = std::make_unique<CRTreeSearch<2>>(SU2_MPI::GetComm());
       break;
     }
     case 3: {
       srcRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
       dstRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
+      srcSurfaceRTree_ptr = std::make_unique<CRTreeSearch<3>>(SU2_MPI::GetComm());
       break;
     }
     default: {
@@ -295,8 +297,13 @@ void CVolumeInterpolator::InitializeRTrees(CGeometry* geometry_src, CGeometry* g
     cout << "Building R-tree for destination mesh nodes." << flush;
   }
   dstRTree_ptr->BuildTree(geometry_dst);
-  if (rank == MASTER_NODE)
+  if (rank == MASTER_NODE) {
     cout << " Done. Added " << GetDestRTree().GetTreeSize() << " nodes." << endl;
+    cout << "Building R-tree for source surface nodes." << flush;
+  }
+  srcSurfaceRTree_ptr->BuildSurfaceTree(geometry_src);
+  if (rank == MASTER_NODE)
+    cout << " Done. Added " << GetSourceSurfaceRTree().GetTreeSize() << " surface nodes." << endl;
 }
 
 std::unique_ptr<CADTElemClass> CVolumeInterpolator::BuildVolumeADT(CGeometry* geometry) {
@@ -585,15 +592,15 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
 
       su2double* coor = coor_dst.data() + l * nDim;
 
-      /*--- Find the closest point on the source surface mesh ---*/
-      srcSurfaceADT.DetermineNearestElement(coor, srcDist, srcMarkerID, srcElemID, srcRankID);
-      NearestPointOnElement(geometry_src, srcMarkerID, srcElemID, coor, surfCoorSrc,
-                            srcDist, nDim);
-
       /*--- Find the closest point on the destination surface mesh to the source wall point ---*/
-      dstSurfaceADT.DetermineNearestElement(surfCoorSrc, dstDist, dstMarkerID, dstElemID, dstRankID);
-      NearestPointOnElement(geometry_dst, dstMarkerID, dstElemID, surfCoorSrc, surfCoorDst,
+      dstSurfaceADT.DetermineNearestElement(coor, dstDist, dstMarkerID, dstElemID, dstRankID);
+      NearestPointOnElement(geometry_dst, dstMarkerID, dstElemID, coor, surfCoorDst,
                             dstDist, nDim);
+
+      /*--- Find the closest point on the source surface mesh ---*/
+      srcSurfaceADT.DetermineNearestElement(surfCoorDst, srcDist, srcMarkerID, srcElemID, srcRankID);
+      NearestPointOnElement(geometry_src, srcMarkerID, srcElemID, surfCoorDst, surfCoorSrc,
+                            srcDist, nDim);
 
       /*--- Determine the curvature correction, which is the vector from the  ---*/
       /*--- wall coordinate of the output grid to the wall coordinates on the ---*/

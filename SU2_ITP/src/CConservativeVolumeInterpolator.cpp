@@ -45,8 +45,8 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
     cout << geometry_dst->GetGlobal_nElemDomain() << " elements." << endl;
   }
 
-  // /*--- Build the ADTs ---*/
-  // InitializeADTs(config, geometry_src, geometry_dst);
+  /*--- Build the ADTs ---*/
+  InitializeADTs(config, geometry_src, geometry_dst);
 
   /*--- Build the R-trees ---*/
   InitializeRTrees(geometry_src, geometry_dst);
@@ -96,7 +96,8 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
   IntersectionMeshMap overlapMeshes;
   vector<unsigned long> incompleteOverlaps;
-  CreateIntersectionMeshes(geometry_src, geometry_dst, coorDst, overlapMeshes, incompleteOverlaps);
+  set<unsigned long> uncoveredNodes;
+  CreateIntersectionMeshes(geometry_src, geometry_dst, coorDst, overlapMeshes, incompleteOverlaps, uncoveredNodes);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 2: Compute solution mass and gradient on source mesh.         ---*/
@@ -131,14 +132,19 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   DistributeSolutionToNodes(geometry_dst, solver_dst, coorDst, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 8: Carry out a surface interpolation, via a minimum distance  ---*/
-  /*---         search, for the points that could not be interpolated via  ---*/
-  /*---         the regular volume interpolation.                          ---*/
+  /*--- Step 6: Handle volume nodes outside the source domain.             ---*/
   /*--------------------------------------------------------------------------*/
-  // if (pointsFailed.size()) {
-  //   if (rank == MASTER_NODE) cout << "Performing fallback surface interpolation. " << endl;
-  //   SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, pointsFailed);
-  // }
+  if (!uncoveredNodes.empty()) {
+    if (rank == MASTER_NODE) cout << "Distributing solution to nodes outside source domain." << endl;
+    DistributeSolutionOutsideDomain(geometry_src, geometry_dst, solver_src, solver_dst, coorDst,
+                                    overlapMeshes, uncoveredNodes, dstElemMass, dstElemGrad);
+  }
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 7: Handle surface nodes via linear interpolation.             ---*/
+  /*--------------------------------------------------------------------------*/
+  if (rank == MASTER_NODE) cout << "Performing surface interpolation. " << endl;
+  SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, coorDst);
 }
 
 void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
@@ -240,9 +246,17 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
                                                                CGeometry* geometry_dst,
                                                                const vector<su2double> &coor_dst,
                                                                IntersectionMeshMap& overlapMeshes,
-                                                               vector<unsigned long>& incompleteOverlaps) {
+                                                               vector<unsigned long>& incompleteOverlaps,
+                                                               set<unsigned long>& uncoveredNodes) {
   overlapMeshes.clear();
   incompleteOverlaps.clear();
+  uncoveredNodes.clear();
+
+  /*--- Initialize all nodes as potentially uncovered ---*/
+  for (auto l = 0u; l < nPoint_dst; ++l) {
+    if (!geometry_dst->nodes->GetPhysicalBoundary(l))
+      uncoveredNodes.insert(l);
+  }
 
   /*--- Get references to both R-trees ---*/
   CRTreeSearchBase& srcRTree = GetSourceRTree();
@@ -263,7 +277,7 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
   /*--- Tolerances and counts for intersection volume check ---*/
   su2double absDiffTol[5] = {1e-10, 1e-8, 1e-6, 1e-4, 1e-2};
   su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
-  const su2double overlapTol = 0.05;
+  const su2double overlapTol = 0.95;
   vector<unsigned long> countAbsDiff(5, 0);
   vector<unsigned long> countRelDiff(5, 0);
 
@@ -381,6 +395,7 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
     /*---          mesh the intersection region.                             ---*/
     /*--------------------------------------------------------------------------*/
     su2double intersectionVol = 0.0;
+    set<unsigned long> covered_vertices;
     for (auto srcElemID : candidateElems) {
       auto* srcElem = geometry_src->elem[srcElemID];
 
@@ -398,11 +413,20 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
       intersectionPoints.clear();
       intersectionElemCoords.clear();
       intersectionElemVols.clear();
+
+      bool isCoveredVertexP[3] = {};
+      bool isCoveredVertexQ[3] = {};
       if (TriangleTriangleIntersection(dstTri, srcTri, intersectionPoints,
-                                       intersectionElemCoords, intersectionElemVols)) {
+                                       intersectionElemCoords, intersectionElemVols,
+                                      isCoveredVertexP, isCoveredVertexQ)) {
         overlapMeshes[dstElemID].push_back({srcElemID, intersectionElemCoords, intersectionElemVols});
         intersectionVol += accumulate(intersectionElemVols.begin(), intersectionElemVols.end(), 0.0);
         totalOverlaps++;
+
+        for (auto iNode = 0u; iNode < 3; ++iNode) {
+          if (isCoveredVertexP[iNode])
+            covered_vertices.insert(dstElem->GetNode(iNode));
+        }
       } else {
         /*--- Triangle intersection failed ---*/
         failedIntersections++;
@@ -416,6 +440,17 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
     if (relDiff > overlapTol) {
       /*--- Mark element as having incomplete overlap ---*/
       incompleteOverlaps.push_back(dstElemID);
+    }
+
+    /*--- If this element has any intersection, mark its nodes as covered ---*/
+    if (intersectionVol > 0.0) {
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
+        unsigned long dstNodeID = dstElem->GetNode(iNode);
+        uncoveredNodes.erase(dstNodeID);
+      }
+      // for (auto dstNodeID : covered_vertices) {
+      //   uncoveredNodes.erase(dstNodeID);
+      // }
     }
 
     /*--- Compare total triangle area with destination element volume ---*/
@@ -448,6 +483,7 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
       cout << countRelDiff[i] << endl;
     }
     cout << "Elements with incomplete overlap: " << incompleteOverlaps.size() << endl;
+    cout << "Nodes outside source domain: " << uncoveredNodes.size() << endl;
   }
 }
 
@@ -455,7 +491,9 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(const su2doub
                                                                    const su2double srcTri[6],
                                                                    vector<su2double>& intersectionPoints,
                                                                    vector<su2double>& intersectionElemCoords,
-                                                                   vector<su2double>& intersectionElemVols) {
+                                                                   vector<su2double>& intersectionElemVols,
+                                                                   bool isCoveredVertexP[3],
+                                                                   bool isCoveredVertexQ[3]) {
   const su2double EPS = 1e-9;
 
   /*--- Triangle vertices: P is destination and Q is source ---*/
@@ -496,6 +534,12 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(const su2doub
   ProcessDegenerateEdgeIntersections(P_edges, Q_edges, power_P, power_Q, EPS, intersectionPoints,
                                      isDegenerateVertexP, isDegenerateVertexQ, isDegenerateEdgePair);
 
+  /*--- Track covered vertices ---*/
+  for (auto i = 0u; i < 3; ++i) {
+    if (isDegenerateVertexP[i]) isCoveredVertexP[i] = true;
+    if (isDegenerateVertexQ[i]) isCoveredVertexQ[i] = true;
+  }
+
   /*--- Check if KP vertices are strictly inside KQ ---*/
   for (auto i = 0u; i < 3; ++i) {
     if ((power_P[i][0] > -EPS) &&
@@ -504,6 +548,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(const su2doub
         (!isDegenerateVertexP[i])) {
       intersectionPoints.push_back(P[i][0]);
       intersectionPoints.push_back(P[i][1]);
+      isCoveredVertexP[i] = true;
     }
   }
 
@@ -515,6 +560,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(const su2doub
         (!isDegenerateVertexQ[i])) {
       intersectionPoints.push_back(Q[i][0]);
       intersectionPoints.push_back(Q[i][1]);
+      isCoveredVertexQ[i] = true;
     }
   }
 
@@ -907,7 +953,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
     su2double intersectionVol = 0.0;
 
     for (const auto& srcElemMesh : srcElemMeshes) {
-      unsigned long srcElemID = srcElemMesh.elemID;
+      unsigned long srcElemID = srcElemMesh.srcElemID;
       const vector<su2double>& triElemCoords = srcElemMesh.coords;
       const vector<su2double>& triElemVols = srcElemMesh.vols;
       unsigned int numTri = triElemCoords.size() / nCoorPerElem;
@@ -958,7 +1004,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
     /*--- scale mass to destination element volume ---*/
     const su2double dstElemVol = dstElem->GetVolume();
     for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      dstMass[iVar] = (dstMass[iVar] / intersectionVol) * dstElemVol;
+      dstMass[iVar] = dstMass[iVar] * dstElemVol / intersectionVol;
       dstGrad[iVar * nDim + 0] /= intersectionVol;
       dstGrad[iVar * nDim + 1] /= intersectionVol;
     }
@@ -1010,7 +1056,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
 
       /*--- Find all vertices Q from source elements K_src that K overlaps ---*/
       for (const auto& srcElemMesh : srcElemMeshes) {
-        unsigned long srcElemID = srcElemMesh.elemID;
+        unsigned long srcElemID = srcElemMesh.srcElemID;
         auto* srcElem = geometry_src->elem[srcElemID];
         if (srcElem->GetVTK_Type() != TRIANGLE) continue;
 
@@ -1041,7 +1087,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
         const su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
         const su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
 
-        /*--- u_K(P_i) = u_K(G_K) + gra(u_K) · G_K P_i ---*/
+        /*--- u_K(P_i) = u_K(G_K) + gra(u_K) * G_K P_i ---*/
         u_K_P[iNode] = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
       }
 
@@ -1145,7 +1191,7 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
         const su2double u_G = dstElemMass[elemID][iVar] / elemVol;
         const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
 
-        /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) · (P_i - G_K) ---*/
+        /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) * (P_i - G_K) ---*/
         const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
 
         /*--- Accumulate weighted contribution ---*/
@@ -1283,5 +1329,286 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
     for (auto k = 0u; k < nDim; ++k) {
       grad[iVar * nDim + k] /= elemVol;
     }
+  }
+}
+
+void CConservativeVolumeInterpolator::DistributeSolutionOutsideDomain(CGeometry* geometry_src,
+                                                                      CGeometry* geometry_dst,
+                                                                      CSolver* solver_src,
+                                                                      CSolver* solver_dst,
+                                                                      const vector<su2double>& coor_dst,
+                                                                      const IntersectionMeshMap& overlapMeshes,
+                                                                      const set<unsigned long>& uncoveredNodes,
+                                                                      const vector<vector<su2double>>& dstElemMass,
+                                                                      const vector<vector<su2double>>& dstElemGrad) {
+  unsigned long nVolumeExtrapolated = 0;
+
+  for (const auto nodeID : uncoveredNodes) {
+    const su2double* coor = coor_dst.data() + nodeID * nDim;
+
+    /*--- Find nearest covered node for extrapolation ---*/
+    su2double dist2Min = numeric_limits<su2double>::max();
+    long nearestNodeID = -1;
+    vector<su2double> grad(nVar * nDim, 0.0);
+
+    /*--- Step 1: Search over neighbors and check if any of them are covered ---*/
+    bool foundCoveredNeighbor = false;
+    const unsigned short nElem_node = geometry_dst->nodes->GetnElem(nodeID);
+
+    for (auto j = 0u; j < nElem_node; ++j) {
+      unsigned long elemID = geometry_dst->nodes->GetElem(nodeID, j);
+      auto* elem = geometry_dst->elem[elemID];
+
+      for (auto iNode = 0u; iNode < elem->GetnNodes(); ++iNode) {
+        unsigned long candidateNodeID = elem->GetNode(iNode);
+
+        /*--- Skip if this candidate is also uncovered ---*/
+        if (uncoveredNodes.find(candidateNodeID) != uncoveredNodes.end()) continue;
+
+        /*--- Compute distance ---*/
+        su2double dist2 = 0.0;
+        for (auto k = 0u; k < nDim; ++k) {
+          su2double ds = coor[k] - coor_dst[candidateNodeID * nDim + k];
+          dist2 += ds * ds;
+        }
+
+        if (dist2 < dist2Min) {
+          dist2Min = dist2;
+          nearestNodeID = candidateNodeID;
+          foundCoveredNeighbor = true;
+        }
+      }
+    }
+
+    /*--- Step 2: If no neighbor is covered, use R-tree search with processed set ---*/
+    if (!foundCoveredNeighbor) {
+      /*--- Compute initial search radius based on maximum edge length connected to this node ---*/
+      su2double maxEdgeLength = 0.0;
+
+      for (auto j = 0u; j < nElem_node; ++j) {
+        unsigned long elemID = geometry_dst->nodes->GetElem(nodeID, j);
+        auto* elem = geometry_dst->elem[elemID];
+
+        /*--- Find maximum distance to any neighbor node in this element ---*/
+        for (auto iNode = 0u; iNode < elem->GetnNodes(); ++iNode) {
+          unsigned long neighborNodeID = elem->GetNode(iNode);
+          if (neighborNodeID == nodeID) continue; // Skip self
+
+          /*--- Compute edge length ---*/
+          su2double edgeLength2 = 0.0;
+          for (auto k = 0u; k < nDim; ++k) {
+            su2double ds = coor[k] - coor_dst[neighborNodeID * nDim + k];
+            edgeLength2 += ds * ds;
+          }
+          maxEdgeLength = max(maxEdgeLength, sqrt(edgeLength2));
+        }
+      }
+
+      /*--- Use maximum edge length as initial search radius (fallback to small value if no edges) ---*/
+      su2double searchRadius = (maxEdgeLength > 0.0) ? maxEdgeLength : 1e-3;
+      const su2double radiusGrowthFactor = 2.0;
+
+      /*--- Set to track processed nodes to avoid redundant checks ---*/
+      set<unsigned long> processed;
+
+      /*--- R-tree search with expanding radius ---*/
+      CRTreeSearchBase& dstRTree = GetDestRTree();
+
+      while (nearestNodeID == -1) {
+        /*--- Create expanding bounding box around the uncovered node ---*/
+        su2double elemCoor[2 * nDim];  // For 2D: [xmin, ymin, xmax, ymax]
+        for (auto k = 0u; k < nDim; ++k) {
+          elemCoor[k] = coor[k] - searchRadius;         // Min coordinates
+          elemCoor[nDim + k] = coor[k] + searchRadius;  // Max coordinates
+        }
+
+        /*--- Search for nodes in the expanding bounding box ---*/
+        set<unsigned long> candidateNodes;
+        dstRTree.SearchNodesInElement(elemCoor, candidateNodes);
+
+        /*--- Find the nearest covered node among candidates ---*/
+        for (auto candidateNodeID : candidateNodes) {
+          /*--- Skip if already processed ---*/
+          if (processed.find(candidateNodeID) != processed.end()) continue;
+          processed.insert(candidateNodeID);
+
+          /*--- Skip if this candidate is also uncovered ---*/
+          if (uncoveredNodes.find(candidateNodeID) != uncoveredNodes.end()) continue;
+
+          /*--- Compute actual distance ---*/
+          su2double dist2 = 0.0;
+          for (auto k = 0u; k < nDim; ++k) {
+            su2double ds = coor[k] - coor_dst[candidateNodeID * nDim + k];
+            dist2 += ds * ds;
+          }
+
+          if (dist2 < dist2Min) {
+            dist2Min = dist2;
+            nearestNodeID = candidateNodeID;
+          }
+        }
+
+        /*--- Expand search radius for next iteration ---*/
+        searchRadius *= radiusGrowthFactor;
+      }
+    }
+
+    /*--- Perform extrapolation if we found a suitable reference node ---*/
+    if (nearestNodeID > 0) {
+      /*--- Compute area-weighted average gradient for elements containing nearest node ---*/
+      fill(grad.begin(), grad.end(), 0.0);
+      su2double totalVol = 0.0;
+
+      const unsigned short nElem_nearest = geometry_dst->nodes->GetnElem(nearestNodeID);
+      for (auto k = 0u; k < nElem_nearest; ++k) {
+        unsigned long nearestElemID = geometry_dst->nodes->GetElem(nearestNodeID, k);
+
+        /*--- Only include elements that have overlap ---*/
+        if (overlapMeshes.find(nearestElemID) != overlapMeshes.end()) {
+          const su2double elemVol = geometry_dst->elem[nearestElemID]->GetVolume();
+          totalVol += elemVol;
+
+          for (auto iVar = 0u; iVar < nVar; ++iVar) {
+            for (auto iDim = 0u; iDim < nDim; ++iDim) {
+              grad[iVar * nDim + iDim] += dstElemGrad[nearestElemID][iVar * nDim + iDim] * elemVol;
+            }
+          }
+        }
+      }
+
+      /*--- Normalize by total area ---*/
+      if (totalVol > 0.0) {
+        for (auto iVar = 0u; iVar < nVar; ++iVar) {
+          for (auto iDim = 0u; iDim < nDim; ++iDim) {
+            grad[iVar * nDim + iDim] /= totalVol;
+          }
+        }
+      }
+
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
+        /*--- Get solution value at nearest node ---*/
+        su2double nearestValue = solver_dst->GetNodes()->GetSolution(nearestNodeID, iVar);
+
+        /*--- Extrapolate: u(p_i) = u(p_nearest) + gra(u_K) * (p_i - p_nearest) ---*/
+        su2double extrapolatedValue = nearestValue;
+        for (auto iDim = 0u; iDim < nDim; ++iDim) {
+          su2double ds = coor[iDim] - coor_dst[nearestNodeID * nDim + iDim];
+          extrapolatedValue += grad[iVar * nDim + iDim] * ds;
+        }
+
+        solver_dst->GetNodes()->SetSolution(nodeID, iVar, extrapolatedValue);
+        solver_dst->GetNodes()->SetSolution_Old(nodeID, iVar, extrapolatedValue);
+      }
+
+      nVolumeExtrapolated++;
+    }
+  }
+
+  if (rank == MASTER_NODE)
+    cout << "Volume nodes extrapolated: " << nVolumeExtrapolated << endl;
+}
+
+void CConservativeVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src,
+                                                           CGeometry* geometry_dst,
+                                                           CSolver* solver_src,
+                                                           CSolver* solver_dst,
+                                                           const vector<su2double>& coor_dst) {
+  unsigned long nSurfaceInterpolated = 0;
+
+  CRTreeSearchBase& surfRTree = GetSourceSurfaceRTree();
+
+  if (!surfRTree.IsSurfaceTreeBuilt()) {
+    if (rank == MASTER_NODE) {
+      cout << "Warning: Source R-tree not built. Cannot perform surface interpolation." << endl;
+    }
+    return;
+  }
+
+  /*--- Storage for the R-tree search ---*/
+  unsigned long nearestNode;
+  std::vector<unsigned short> markerIDs;
+  std::vector<unsigned long> elemIDs;
+
+  for (auto l = 0u; l < nPoint_dst; ++l) {
+    if (!geometry_dst->nodes->GetPhysicalBoundary(l)) continue;
+
+    /*--- Search for the nearest surface node ---*/
+    const su2double* coor = coor_dst.data() + l * nDim;
+    if (surfRTree.SearchNearestSurfaceNode(coor, nearestNode, markerIDs, elemIDs)) {
+      unsigned short markerID;
+      unsigned long elemID;
+      int rankID;
+      su2double dist, distMin = numeric_limits<su2double>::max();
+      su2double surfCoor[3], surfCoorMin[3];
+
+      for (auto i = 0u; i < markerIDs.size(); ++i) {
+        const unsigned short iMarker = markerIDs[i];
+        const unsigned long iElem = elemIDs[i];
+        NearestPointOnElement(geometry_src, iMarker, iElem, coor, surfCoor,
+                              dist, nDim);
+
+        if (dist < distMin) {
+          markerID = iMarker;
+          elemID = iElem;
+          distMin = dist;
+          for (auto k = 0u; k < nDim; ++k)
+            surfCoorMin[k] = surfCoor[k];
+        }
+      }
+
+      /*--- Get surface element information ---*/
+      unsigned short nNode = geometry_src->bound[markerID][elemID]->GetnNodes();
+
+      /*--- Use nearest surface element nodes for interpolation ---*/
+      su2double weightsInterpol[4];
+      if (geometry_src->GetnDim() == 3) {
+        /*--- TODO: implement 3D interpolation weights ---*/
+        SU2_MPI::Error("Not implemented for 3D yet.", CURRENT_FUNCTION);
+      } else {
+        /*--- For 2D case (LINE elements), use inverse distance weighting ---*/
+        su2double totalWeight = 0.0;
+
+        for (auto iNode = 0u; iNode < nNode; ++iNode) {
+          unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
+
+          /*--- Compute distance from interpolation point to node ---*/
+          su2double dist2 = 0.0;
+          for (auto k = 0u; k < nDim; ++k) {
+            su2double diff = coor[k] - geometry_src->nodes->GetCoord(nodeID, k);
+            dist2 += diff * diff;
+          }
+
+          /*--- Inverse distance weighting (with small epsilon to avoid division by zero) ---*/
+          weightsInterpol[iNode] = 1.0 / (sqrt(dist2) + 1e-12);
+          totalWeight += weightsInterpol[iNode];
+        }
+
+        /*--- Normalize weights ---*/
+        for (auto iNode = 0u; iNode < nNode; ++iNode) {
+          weightsInterpol[iNode] /= totalWeight;
+        }
+      }
+
+      /*--- Initialize interpolated solution to zero ---*/
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
+        solver_dst->GetNodes()->SetSolution(l, iVar, 0.0);
+      }
+
+      /*--- Interpolate using shape function weights ---*/
+      for (auto iNode = 0u; iNode < nNode; ++iNode) {
+        unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
+
+        for (auto iVar = 0u; iVar < nVar; ++iVar) {
+          su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
+          solver_dst->GetNodes()->Add_DeltaSolution(l, iVar, weightsInterpol[iNode] * val);
+        }
+      }
+
+      nSurfaceInterpolated++;
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Boundary nodes interpolated: " << nSurfaceInterpolated << endl;
   }
 }

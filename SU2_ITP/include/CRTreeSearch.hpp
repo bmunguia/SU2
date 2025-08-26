@@ -51,6 +51,12 @@ using NodeValue3D = std::pair<Point3D, unsigned long>;
 using RTree2D = bg::index::rtree<NodeValue2D, bg::index::quadratic<16>>;
 using RTree3D = bg::index::rtree<NodeValue3D, bg::index::quadratic<16>>;
 
+/*--- Surface node value types using tuples to store multiple marker/element associations ---*/
+using SurfaceNodeValue2D = std::tuple<Point2D, unsigned long, std::vector<unsigned short>, std::vector<unsigned long>>;
+using SurfaceNodeValue3D = std::tuple<Point3D, unsigned long, std::vector<unsigned short>, std::vector<unsigned long>>;
+using SurfaceRTree2D = bg::index::rtree<SurfaceNodeValue2D, bg::index::quadratic<16>>;
+using SurfaceRTree3D = bg::index::rtree<SurfaceNodeValue3D, bg::index::quadratic<16>>;
+
 /*!
  * \class CRTreeSearchBase
  * \brief Base class for spatial search operations using R-tree.
@@ -81,6 +87,12 @@ public:
   virtual bool IsTreeBuilt() const = 0;
 
   /*!
+   * \brief Check if the surface tree has been built.
+   * \return True if surface tree is built, false otherwise.
+   */
+  virtual bool IsSurfaceTreeBuilt() const = 0;
+
+  /*!
    * \brief Get the number of nodes in the tree.
    * \return Number of nodes stored in the tree.
    */
@@ -100,6 +112,24 @@ public:
    * \param[in] padding - Additional padding around the element.
    */
   virtual void SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes, su2double padding) const = 0;
+
+  /*!
+   * \brief Build the surface R-tree from physical boundary nodes.
+   * \param[in] geometry - Mesh geometry.
+   */
+  virtual void BuildSurfaceTree(CGeometry* geometry) = 0;
+
+  /*!
+   * \brief Search for the nearest surface node to a given point.
+   * \param[in] coor - Query point coordinates.
+   * \param[out] nearestNodeID - ID of the nearest surface node.
+   * \param[out] markerIDs - List of marker IDs associated with the node.
+   * \param[out] elemIDs - List of boundary element IDs associated with the node.
+   * \return True if a nearest node was found, false otherwise.
+   */
+  virtual bool SearchNearestSurfaceNode(const su2double* coor, unsigned long& nearestNodeID,
+                                       std::vector<unsigned short>& markerIDs,
+                                       std::vector<unsigned long>& elemIDs) const = 0;
 
 protected:
   /*!
@@ -147,11 +177,15 @@ public:
   using Box = typename std::conditional<nDim == 2, Box2D, Box3D>::type;
   using NodeValue = typename std::conditional<nDim == 2, NodeValue2D, NodeValue3D>::type;
   using RTree = typename std::conditional<nDim == 2, RTree2D, RTree3D>::type;
+  using SurfaceNodeValue = typename std::conditional<nDim == 2, SurfaceNodeValue2D, SurfaceNodeValue3D>::type;
+  using SurfaceRTree = typename std::conditional<nDim == 2, SurfaceRTree2D, SurfaceRTree3D>::type;
 
 private:
   int rank;
-  RTree nodeTree;  /*!< \brief R-tree for spatial indexing of mesh nodes. */
-  bool treeBuilt;  /*!< \brief Whether the tree has been built. */
+  RTree nodeTree;          /*!< \brief R-tree for spatial indexing of mesh nodes. */
+  SurfaceRTree surfaceTree; /*!< \brief R-tree for spatial indexing of surface nodes. */
+  bool treeBuilt;          /*!< \brief Whether the node tree has been built. */
+  bool surfaceTreeBuilt;   /*!< \brief Whether the surface tree has been built. */
 
 public:
   /*!
@@ -181,6 +215,12 @@ public:
    * \return True if tree is built, false otherwise.
    */
   bool IsTreeBuilt() const override { return treeBuilt; }
+
+  /*!
+   * \brief Check if the surface tree has been built.
+   * \return True if surface tree is built, false otherwise.
+   */
+  bool IsSurfaceTreeBuilt() const override { return surfaceTreeBuilt; }
 
   /*!
    * \brief Get the number of nodes in the tree.
@@ -231,4 +271,22 @@ public:
    * \param[in] padding - Additional padding around the element.
    */
   void SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes, su2double padding) const override;
+
+  /*!
+   * \brief Build the surface R-tree from physical boundary nodes.
+   * \param[in] geometry - Mesh geometry.
+   */
+  void BuildSurfaceTree(CGeometry* geometry) override;
+
+  /*!
+   * \brief Search for the nearest surface node to a given point.
+   * \param[in] coor - Query point coordinates.
+   * \param[out] nearestNodeID - ID of the nearest surface node.
+   * \param[out] markerIDs - List of marker IDs associated with the node.
+   * \param[out] elemIDs - List of boundary element IDs associated with the node.
+   * \return True if a nearest node was found, false otherwise.
+   */
+  bool SearchNearestSurfaceNode(const su2double* coor, unsigned long& nearestNodeID,
+                               std::vector<unsigned short>& markerIDs,
+                               std::vector<unsigned long>& elemIDs) const override;
 };

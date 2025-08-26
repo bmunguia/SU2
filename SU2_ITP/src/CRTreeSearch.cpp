@@ -84,7 +84,7 @@ Box3D CRTreeSearchBase::CreateBoundingBox3D(const su2double* tet, su2double padd
 
 /*--- Template class implementation ---*/
 template<unsigned short nDim>
-CRTreeSearch<nDim>::CRTreeSearch(SU2_Comm MPICommunicator) : treeBuilt(false) {
+CRTreeSearch<nDim>::CRTreeSearch(SU2_Comm MPICommunicator) : treeBuilt(false), surfaceTreeBuilt(false) {
   rank = SU2_MPI::GetRank();
 }
 
@@ -127,6 +127,7 @@ template<unsigned short nDim>
 void CRTreeSearch<nDim>::ClearTree() {
   nodeTree.clear();
   treeBuilt = false;
+  surfaceTreeBuilt = false;
 }
 
 template<unsigned short nDim>
@@ -182,6 +183,94 @@ template<unsigned short nDim>
 void CRTreeSearch<nDim>::SearchNodesInElement(const su2double* elemCoor, std::set<unsigned long>& containedNodes, su2double padding) const {
   Box boundingBox = CreateBoundingBox(elemCoor, padding);
   SearchNodesInBox(boundingBox, containedNodes);
+}
+
+template<unsigned short nDim>
+void CRTreeSearch<nDim>::BuildSurfaceTree(CGeometry* geometry) {
+  /*--- Clear any existing surface tree ---*/
+  surfaceTree.clear();
+  surfaceTreeBuilt = false;
+
+  /*--- Storage for point coordinates ---*/
+  su2double coor[3];
+  Point pt;
+
+  /*--- Map from nodeID to lists of markerIDs and elemIDs ---*/
+  std::map<unsigned long, std::vector<unsigned short>> nodeToMarkers;
+  std::map<unsigned long, std::vector<unsigned long>> nodeToElements;
+
+  /*--- Loop over all boundary markers ---*/
+  for (auto iMarker = 0u; iMarker < geometry->GetnMarker(); ++iMarker) {
+    /*--- Loop over all elements on this boundary marker ---*/
+    for (auto iElem = 0ul; iElem < geometry->GetnElem_Bound(iMarker); ++iElem) {
+      /*--- Loop over nodes of this boundary element ---*/
+      for (auto iNode = 0u; iNode < geometry->bound[iMarker][iElem]->GetnNodes(); ++iNode) {
+        const auto nodeID = geometry->bound[iMarker][iElem]->GetNode(iNode);
+
+        /*--- Add this marker to the node's marker list ---*/
+        nodeToMarkers[nodeID].push_back(static_cast<unsigned short>(iMarker));
+
+        /*--- Add this element to the node's element list ---*/
+        nodeToElements[nodeID].push_back(iElem);
+      }
+    }
+  }
+
+  /*--- Now build the vector of SurfaceNodeValue tuples ---*/
+  std::vector<SurfaceNodeValue> surfaceNodeValues;
+  surfaceNodeValues.reserve(nodeToMarkers.size());
+
+  for (const auto& nodeEntry : nodeToMarkers) {
+    const auto nodeID = nodeEntry.first;
+    const auto& markerIDs = nodeEntry.second;
+    const auto& elemIDs = nodeToElements[nodeID];
+
+    /*--- Get node coordinates ---*/
+    for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
+      coor[iDim] = geometry->nodes->GetCoord(nodeID, iDim);
+    }
+
+    /*--- Set point coordinates ---*/
+    SetPoint(pt, coor);
+
+    /*--- Create tuple: (point, nodeID, markerIDs, elemIDs) ---*/
+    surfaceNodeValues.emplace_back(pt, nodeID, markerIDs, elemIDs);
+  }
+
+  /*--- Build the surface R-tree ---*/
+  if (!surfaceNodeValues.empty()) {
+    surfaceTree = SurfaceRTree(surfaceNodeValues.begin(), surfaceNodeValues.end());
+    surfaceTreeBuilt = true;
+  }
+}
+
+template<unsigned short nDim>
+bool CRTreeSearch<nDim>::SearchNearestSurfaceNode(const su2double* coor, unsigned long& nearestNodeID,
+                                                  std::vector<unsigned short>& markerIDs,
+                                                  std::vector<unsigned long>& elemIDs) const {
+  if (!surfaceTreeBuilt) {
+    std::cerr << "Error: Surface R-tree has not been built. Call BuildSurfaceTree() first." << std::endl;
+    return false;
+  }
+
+  /*--- Create query point ---*/
+  Point queryPoint;
+  SetPoint(queryPoint, coor);
+
+  /*--- Search for nearest neighbor in surface tree ---*/
+  std::vector<SurfaceNodeValue> result;
+  surfaceTree.query(bg::index::nearest(queryPoint, 1), std::back_inserter(result));
+
+  if (result.empty()) {
+    return false;
+  }
+
+  /*--- Extract results from tuple: (point, nodeID, markerIDs, elemIDs) ---*/
+  nearestNodeID = std::get<1>(result[0]);
+  markerIDs = std::get<2>(result[0]);
+  elemIDs = std::get<3>(result[0]);
+
+  return true;
 }
 
 /*--- Explicit template instantiations for 2D and 3D ---*/

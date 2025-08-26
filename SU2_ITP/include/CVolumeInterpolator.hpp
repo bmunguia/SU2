@@ -64,6 +64,7 @@ class CVolumeInterpolator {
         /*--- R-tree data structures for spatial search ---*/
     std::unique_ptr<CRTreeSearchBase> srcRTree_ptr; /*!< \brief R-tree for source mesh spatial search. */
     std::unique_ptr<CRTreeSearchBase> dstRTree_ptr; /*!< \brief R-tree for destination mesh spatial search. */
+    std::unique_ptr<CRTreeSearchBase> srcSurfaceRTree_ptr; /*!< \brief R-tree for source surface mesh spatial search. */
 
     std::unique_ptr<CFEMStandardElement> stdElement_ptr; /*!< \brief Standard element object used for Gauss quadrature. */
 
@@ -195,6 +196,17 @@ class CVolumeInterpolator {
         SU2_MPI::Error("Destination R-tree not initialized. Call InitializeRTrees first.", CURRENT_FUNCTION);
       }
       return *dstRTree_ptr;
+    }
+
+    /*!
+     * \brief Get reference to source surface R-tree.
+     * \return Reference to source surface R-tree
+     */
+    CRTreeSearchBase& GetSourceSurfaceRTree() {
+      if (!srcSurfaceRTree_ptr) {
+        SU2_MPI::Error("Source surface R-tree not initialized. Call InitializeRTrees first.", CURRENT_FUNCTION);
+      }
+      return *srcSurfaceRTree_ptr;
     }
 
     void InitializeCoords(CGeometry* geometry, vector<su2double>& coords) {
