@@ -569,25 +569,18 @@ void CVolumeInterpolator::ApplyCurvatureCorrection(const CConfig* config, CGeome
   }
 }
 
-void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst, CSolver* solver_src,
-                                               CSolver* solver_dst, vector<unsigned long> &pointsFailed) {
-  if (pointsFailed.empty()) return;
-
+void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst,
+                                               CSolver* solver_src, CSolver* solver_dst) {
   /*--- Check if surface ADT was built successfully ---*/
   CADTElemClass& surfaceADT = GetSourceSurfaceADT();
   if (!surfaceADT.IsEmpty()) {
-    /*--- Search for donor elements for failed points ---*/
-    if (rank == MASTER_NODE) {
-      cout << "Performing minimum distance search for " << pointsFailed.size()
-           << " failed points." << endl << flush;
-    }
-
     /*--- Loop over failed points for minimum distance search ---*/
     unsigned long nExtrapolated = 0;
-    for (auto l = 0u; l < pointsFailed.size(); ++l) {
-      /*--- Get coordinates of failed point ---*/
-      const unsigned long pointID = pointsFailed[l];
-      const su2double* coor = geometry_dst->nodes->GetCoord(pointID);
+    for (auto l = 0u; l < nPoint_dst; ++l) {
+      /*--- Skip volume nodes ---*/
+      if (!geometry_dst->nodes->GetPhysicalBoundary(l)) continue;
+
+      const su2double* coor = geometry_dst->nodes->GetCoord(l);
 
       /*--- Find nearest surface element ---*/
       unsigned short markerID;
@@ -637,7 +630,7 @@ void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometr
 
       /*--- Initialize interpolated solution to zero ---*/
       for (auto iVar = 0u; iVar < nVar; ++iVar) {
-        solver_dst->GetNodes()->SetSolution(pointID, iVar, 0.0);
+        solver_dst->GetNodes()->SetSolution(l, iVar, 0.0);
       }
 
       /*--- Interpolate using shape function weights ---*/
@@ -646,7 +639,7 @@ void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometr
 
         for (auto iVar = 0u; iVar < nVar; ++iVar) {
           su2double val = solver_src->GetNodes()->GetSolution(nodeID, iVar);
-          solver_dst->GetNodes()->Add_DeltaSolution(pointID, iVar, weightsInterpol[iNode] * val);
+          solver_dst->GetNodes()->Add_DeltaSolution(l, iVar, weightsInterpol[iNode] * val);
         }
       }
 

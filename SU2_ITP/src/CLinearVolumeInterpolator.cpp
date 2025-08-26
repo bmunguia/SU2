@@ -72,28 +72,25 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
   /*--------------------------------------------------------------------------*/
 
   if (rank == MASTER_NODE) cout << "Performing volume interpolation." << endl;
-  vector<unsigned long> pointsFailed;
-  VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDst, pointsFailed);
+  VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDst, uncoveredNodes);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 3: Carry out a surface interpolation, via a minimum distance  ---*/
   /*---         search, for the points that could not be interpolated via  ---*/
   /*---         the regular volume interpolation.                          ---*/
   /*--------------------------------------------------------------------------*/
-  if (pointsFailed.size()) {
-    if (rank == MASTER_NODE) cout << "Performing fallback surface interpolation. " << endl;
-    SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, pointsFailed);
-  }
+  if (rank == MASTER_NODE) cout << "Performing fallback surface interpolation. " << endl;
+  SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst);
 }
 
 void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                                    const vector<su2double>& coor_dst, vector<unsigned long>& pointsFailed) {
+                                                    const vector<su2double>& coor_dst, vector<unsigned long>& uncoveredNodes) {
   /*--- Search for donor elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
   const unsigned long nDOFsDst = coor_dst.size() / nDim;
 
   /*--- Loop over the DOFs to be interpolated ---*/
-  pointsFailed.clear();
+  uncoveredNodes.clear();
   for (auto l = 0u; l < nDOFsDst; ++l) {
     /*--- Set a pointer to the coordinates to be searched ---*/
     const su2double* coor = coor_dst.data() + l * nDim;
@@ -125,11 +122,11 @@ void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSo
       }
     } else {
       /*--- Containment search failed - store the index ---*/
-      pointsFailed.push_back(l);
+      uncoveredNodes.push_back(l);
     }
   }
 
   if (rank == MASTER_NODE) {
-    cout << "Volume search finished. " << pointsFailed.size() << " points failed." << endl << flush;
+    cout << "Volume search finished. " << uncoveredNodes.size() << " points failed." << endl << flush;
   }
 }

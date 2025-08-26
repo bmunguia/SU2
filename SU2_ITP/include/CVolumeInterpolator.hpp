@@ -202,10 +202,10 @@ class CVolumeInterpolator {
                                      CSolver* solver_src, CSolver* solver_dst) { }
 
     virtual void VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                     const vector<su2double> &coor_corrected, vector<unsigned long> &pointsFailed) { }
+                                     const vector<su2double> &coor_corrected, vector<unsigned long> &uncoveredNodes) { }
 
     void SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst, CSolver* solver_src,
-                              CSolver* solver_dst, vector<unsigned long> &pointsFailed);
+                              CSolver* solver_dst);
 
     void NearestPointOnElement(CGeometry* geometry, unsigned short markerID, unsigned long elemID,
                               const su2double* coor, su2double* surfCoor, su2double& dist2Elem,
