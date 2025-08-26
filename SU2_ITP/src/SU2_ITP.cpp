@@ -198,6 +198,7 @@ int main(int argc, char* argv[]) {
           config_dst[iZone]->SetiInst(INST_0);
 
           /*--- Either instantiate the solution class or load a restart file. ---*/
+          bool initialInterp = false;
           if (!SolutionInstantiated[iZone]) {
             /*--- Initialize the solution classes ---*/
             interpolator[iZone]->InitializeSolver(config_src[iZone], geometry_src[iZone][INST_0], solver_src[iZone][INST_0],
@@ -210,6 +211,7 @@ int main(int argc, char* argv[]) {
                                                   output[iZone], iZone, INST_0, nZone);
 
             SolutionInstantiated[iZone] = true;
+            initialInterp = true;
           }
 
           /*--- Load the solution on the source mesh ---*/
@@ -217,7 +219,7 @@ int main(int argc, char* argv[]) {
 
           /*--- Interpolate the solution ---*/
           interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
-                                           solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+                                           solver_src[iZone][INST_0], solver_dst[iZone][INST_0], initialInterp);
         }
 
         if (rank == MASTER_NODE) cout << "Writing the volume solution for time step " << TimeIter << "." << endl;
@@ -258,7 +260,7 @@ int main(int argc, char* argv[]) {
 
       /*--- Interpolate the solution ---*/
       interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
-                                       solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+                                       solver_src[iZone][INST_0], solver_dst[iZone][INST_0], true);
     }
     for (iZone = 0; iZone < nZone; iZone++) {
       interpolator[iZone]->WriteFiles(config_dst[iZone], geometry_dst[iZone][INST_0], solver_dst[iZone][INST_0],

@@ -32,7 +32,8 @@ CLinearVolumeInterpolator::CLinearVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) { }
 
 void CLinearVolumeInterpolator::Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                            CSolver** solver_container_src, CSolver** solver_container_dst) {
+                                            CSolver** solver_container_src, CSolver** solver_container_dst,
+                                            bool initial_interp) {
   if (rank == MASTER_NODE) {
     cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
     cout << "Linear solution interpolation from source mesh to destination mesh." << endl;

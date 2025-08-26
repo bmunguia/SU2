@@ -54,9 +54,11 @@ class CLinearVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_container_src - Source mesh solver
      * \param[in] solver_container_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
      */
     void Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                     CSolver** solver_container_src, CSolver** solver_container_dst) override;
+                     CSolver** solver_container_src, CSolver** solver_container_dst,
+                     bool initial_interp) override;
 
   private:
     void LinearInterpolation(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,

@@ -205,6 +205,7 @@ int main(int argc, char* argv[]) {
           config_ref[iZone]->SetiInst(INST_0);
 
           /*--- Either instantiate the solution class or load a restart file. ---*/
+          bool initialInterp = false;
           if (!SolutionInstantiated[iZone]) {
             /*--- Initialize the solution classes ---*/
             interpolator[iZone]->InitializeSolver(config_src[iZone], geometry_src[iZone][INST_0], solver_src[iZone][INST_0],
@@ -219,6 +220,7 @@ int main(int argc, char* argv[]) {
                                                   output[iZone], iZone, INST_0, nZone);
 
             SolutionInstantiated[iZone] = true;
+            initialInterp = true;
           }
 
           /*--- Load the solution on the source mesh ---*/
@@ -226,7 +228,7 @@ int main(int argc, char* argv[]) {
 
           /*--- Interpolate the solution ---*/
           interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
-                                           solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+                                           solver_src[iZone][INST_0], solver_dst[iZone][INST_0], initialInterp);
 
           /*--- Load the reference solution on the destination mesh ---*/
           interpolator[iZone]->LoadRestarts(config_ref[iZone], geometry_dst[iZone], solver_ref[iZone], iZone, INST_0, TimeIter, true);
@@ -299,7 +301,7 @@ int main(int argc, char* argv[]) {
 
       /*--- Interpolate the solution ---*/
       interpolator[iZone]->Interpolate(config_src[iZone], geometry_src[iZone][INST_0], geometry_dst[iZone][INST_0],
-                                       solver_src[iZone][INST_0], solver_dst[iZone][INST_0]);
+                                       solver_src[iZone][INST_0], solver_dst[iZone][INST_0], true);
 
       /*--- Load the reference solution on the destination mesh ---*/
 

@@ -27,7 +27,6 @@
  */
 
 #include <queue>
-#include <iomanip>
 
 #include "../include/CConservativeVolumeInterpolator.hpp"
 #include "../../Common/include/fem/fem_standard_element.hpp"
@@ -36,7 +35,8 @@ CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICom
     : CVolumeInterpolator(MPICommunicator) {}
 
 void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                                  CSolver** solver_container_src, CSolver** solver_container_dst) {
+                                                  CSolver** solver_container_src, CSolver** solver_container_dst,
+                                                  bool initial_interp) {
   if (rank == MASTER_NODE) {
     cout << endl << "----------------------------- Interpolation -----------------------------" << endl;
     cout << "Conservative solution interpolation from source mesh to destination mesh." << endl;
@@ -61,7 +61,7 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
     auto solver_src = solver_container_src[iSol];
     auto solver_dst = solver_container_dst[iSol];
     if (solver_src && solver_dst)
-      ConservativeInterpolation(config, geometry_src, geometry_dst, solver_src, solver_dst);
+      ConservativeInterpolation(config, geometry_src, geometry_dst, solver_src, solver_dst, initial_interp);
   }
 
   /*--- Preprocess the solution to get the primitive variables ---*/
@@ -77,49 +77,47 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                                                                 CGeometry* geometry_src,
                                                                 CGeometry* geometry_dst,
                                                                 CSolver* solver_src,
-                                                                CSolver* solver_dst) {
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 0: Initialize destination coordinate vector. If applying a    ---*/
-  /*---         curvature correction, this vector will be modified.        ---*/
-  /*---         Otherwise, it will just contain the original coordinates.  ---*/
-  /*--------------------------------------------------------------------------*/
-  nVar = solver_src->GetnVar();
-  vector<su2double> coorDst;
-  InitializeCoords(geometry_dst, coorDst);
+                                                                CSolver* solver_dst,
+                                                                bool initial_interp) {
+  if (initial_interp) {
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 0: Initialize destination coordinate vector. If applying a    ---*/
+    /*---         curvature correction, this vector will be modified.        ---*/
+    /*---         Otherwise, it will just contain the original coordinates.  ---*/
+    /*--------------------------------------------------------------------------*/
+    nVar = solver_src->GetnVar();
+    InitializeCoords(geometry_dst, coorDst);
+
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 1: Apply the curvature correction to the destination nodes.   ---*/
+    /*--------------------------------------------------------------------------*/
+    // if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
+    // ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst);
+
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 2: Localize destination nodes on the source mesh.             ---*/
+    /*---         containingElems is a map from destination mesh nodes to    ---*/
+    /*---         containing elements on the source mesh, and uncoveredNodes ---*/
+    /*---         is all the nodes for which no containing element was found ---*/
+    /*--------------------------------------------------------------------------*/
+    if (rank == MASTER_NODE) cout << "Performing containment search." << endl;
+    PointLocalization(geometry_src, coorDst, containingElems, containingElemRanks,
+                      uncoveredNodes);
+
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 3: Compute the intersection of elements K_dst with elements   ---*/
+    /*---         K_src it overlaps.                                         ---*/
+    /*--------------------------------------------------------------------------*/
+    if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
+    ComputeOverlappingElements(geometry_src, geometry_dst, coorDst, containingElems, overlapMeshes);
+  }
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 1: Apply the curvature correction to the destination nodes.   ---*/
-  /*--------------------------------------------------------------------------*/
-  // if (rank == MASTER_NODE) cout << "Applying curvature correction." << endl;
-  // ApplyCurvatureCorrection(config, geometry_src, geometry_dst, nDim, coorDst);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 2: Localize destination nodes on the source mesh.             ---*/
-  /*---         containingElems is a map from destination mesh nodes to    ---*/
-  /*---         containing elements on the source mesh, and pointsFailed   ---*/
-  /*---         is all the nodes for which no containing element was found ---*/
-  /*--------------------------------------------------------------------------*/
-  if (rank == MASTER_NODE) cout << "Performing containment search." << endl;
-  vector<optional<unsigned long>> containingElems;
-  vector<int> containingElemRanks;
-  vector<unsigned long> pointsFailed;
-  PointLocalization(geometry_src, coorDst, containingElems, containingElemRanks,
-                    pointsFailed);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 3: Compute solution mass and gradient on source mesh.         ---*/
+  /*--- Step 4: Compute solution mass and gradient on source mesh.         ---*/
   /*--------------------------------------------------------------------------*/
   vector<vector<su2double>> srcElemMass;
   vector<vector<su2double>> srcElemGrad;
   ComputeSourceSolutionMass(geometry_src, solver_src, srcElemMass, srcElemGrad);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 4: Compute the intersection of elements K_dst with elements   ---*/
-  /*---         K_src it overlaps.                                         ---*/
-  /*--------------------------------------------------------------------------*/
-  if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
-  IntersectionMeshMap overlappingElements;
-  ComputeOverlappingElements(geometry_src, geometry_dst, coorDst, containingElems, overlappingElements);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 5: Compute destination mesh mass and gradient using Gauss     ---*/
@@ -128,14 +126,14 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   if (rank == MASTER_NODE) cout << "Computing destination mesh mass and gradients." << endl;
   vector<vector<su2double>> dstElemMass;
   vector<vector<su2double>> dstElemGrad;
-  ComputeDestinationMassAndGradient(geometry_src, geometry_dst, solver_src, overlappingElements,
+  ComputeDestinationMassAndGradient(geometry_src, geometry_dst, solver_src, overlapMeshes,
                                     srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 6: Correct the gradient to enforce the maximum principle.     ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
-  ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDst, overlappingElements,
+  ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, coorDst, overlapMeshes,
                                   srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
@@ -149,9 +147,9 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*---         search, for the points that could not be interpolated via  ---*/
   /*---         the regular volume interpolation.                          ---*/
   /*--------------------------------------------------------------------------*/
-  if (pointsFailed.size()) {
+  if (uncoveredNodes.size()) {
     if (rank == MASTER_NODE) cout << "Performing fallback surface interpolation. " << endl;
-    SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, pointsFailed);
+    SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst, uncoveredNodes);
   }
 }
 
@@ -159,7 +157,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
                                                         const vector<su2double>& coor_dst,
                                                         vector<optional<unsigned long>>& containingElems,
                                                         vector<int>& containingElemRanks,
-                                                        vector<unsigned long>& pointsFailed) {
+                                                        vector<unsigned long>& uncoveredNodes) {
   /*--- Search for containing elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
   CADTElemClass& surfaceADT = GetSourceSurfaceADT();
@@ -169,7 +167,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   /*--- Loop over the DOFs to be interpolated ---*/
   containingElems.clear();
   containingElemRanks.clear();
-  pointsFailed.clear();
+  uncoveredNodes.clear();
 
   /*--- Initialize with invalid values ---*/
   containingElems.resize(nDOFsDst, nullopt);
@@ -196,7 +194,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
       /*--- but also add to the list of failed points, which will be       ---*/
       /*--- processed later via surface interpolation.                     ---*/
 
-      pointsFailed.push_back(l);
+      uncoveredNodes.push_back(l);
 
       /*--- Find nearest volume element ---*/
       su2double dist;
@@ -207,7 +205,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   }
 
   if (rank == MASTER_NODE) {
-    cout << "Volume search finished. " << pointsFailed.size() << " points failed." << endl << flush;
+    cout << "Volume search finished. " << uncoveredNodes.size() << " points failed." << endl << flush;
   }
 }
 
@@ -254,8 +252,8 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
                                                                  CGeometry* geometry_dst,
                                                                  const vector<su2double> &coor_dst,
                                                                  const vector<optional<unsigned long>>& containingElems,
-                                                                 IntersectionMeshMap& overlappingElements) {
-  overlappingElements.clear();
+                                                                 IntersectionMeshMap& overlapMeshes) {
+  overlapMeshes.clear();
 
   /*--- Storage for triangle vertex coordinates ---*/
   su2double srcTri[6], dstTri[6];
@@ -339,7 +337,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
       /*--- Check for intersection and detect new candidates ---*/
       if (TriangleTriangleIntersection(geometry_src, dstTri, srcTri, srcElemID, intersectionPoints,
                                        meshedIntersection, newCandidates)) {
-        overlappingElements[dstElemID].push_back(make_pair(srcElemID, meshedIntersection));
+        overlapMeshes[dstElemID].push_back(make_pair(srcElemID, meshedIntersection));
         totalOverlaps++;
       } else {
         /*--- Triangle intersection failed ---*/
@@ -358,7 +356,7 @@ void CConservativeVolumeInterpolator::ComputeOverlappingElements(CGeometry* geom
 
   if (rank == MASTER_NODE) {
     cout << "Found " << totalOverlaps << " total overlapping element pairs." << endl;
-    cout << "Number of destination elements with overlaps: " << overlappingElements.size() << endl;
+    cout << "Number of destination elements with overlaps: " << overlapMeshes.size() << endl;
     cout << "Number of failed triangle intersections: " << failedIntersections << "." << endl;
   }
 }
@@ -838,7 +836,7 @@ void CConservativeVolumeInterpolator::MeshConvexPolygon(const vector<su2double>&
 void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometry* geometry_src,
                                                                         CGeometry* geometry_dst,
                                                                         CSolver* solver_src,
-                                                                        const IntersectionMeshMap& overlappingElements,
+                                                                        const IntersectionMeshMap& overlapMeshes,
                                                                         const vector<vector<su2double>>& srcElemMass,
                                                                         const vector<vector<su2double>>& srcElemGrad,
                                                                         vector<vector<su2double>>& dstElemMass,
@@ -856,7 +854,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   unsigned long totalBoundaryElems = 0;
   unsigned long nonConservativeTreatment = 0;
 
-  for (const auto& intersection : overlappingElements) {
+  for (const auto& intersection : overlapMeshes) {
     unsigned long dstElemID = intersection.first;
     const IntersectionMesh& srcElemMeshes = intersection.second;
 
@@ -953,34 +951,6 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
       }
     }
 
-    // const su2double coverageRatio = totalTriangleArea / dstVolume;
-    // const su2double coverageThreshold = 0.999;
-
-    // if (isNextToBoundary && coverageRatio < coverageThreshold) {
-    //   /*--- For boundary elements with poor coverage, violate conservation ---*/
-    //   /*--- to preserve P1-exactness and maximum principle (Alauzet 5.2.3) ---*/
-    //   nonConservativeTreatment++;
-
-    //   /*--- Normalize by intersection volume instead of destination volume ---*/
-    //   /*--- This preserves constant/linear solutions in non-matching domains ---*/
-    //   for (auto iVar = 0u; iVar < nVar; ++iVar) {
-    //     /*--- For mass: divide by intersection volume to get correct barycenter value ---*/
-    //     dstMass[iVar] = (dstMass[iVar] / totalTriangleArea) * dstVolume;
-
-    //     /*--- For gradient: use intersection-weighted average ---*/
-    //     for (auto iDim = 0u; iDim < nDim; ++iDim) {
-    //       dstGrad[iVar * nDim + iDim] /= totalTriangleArea;
-    //     }
-    //   }
-    // } else {
-    //   /*--- Standard conservative treatment for well-covered elements ---*/
-    //   for (auto iVar = 0u; iVar < nVar; ++iVar) {
-    //     for (auto iDim = 0u; iDim < nDim; ++iDim) {
-    //       dstGrad[iVar * nDim + iDim] /= dstVolume;
-    //     }
-    //   }
-    // }
-
     /*--- Compare total triangle area with destination element volume ---*/
     const su2double absDiff = abs(dstVolume - totalTriangleArea);
     const su2double relDiff = absDiff / dstVolume;
@@ -1011,7 +981,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
                                                                       CGeometry* geometry_dst,
                                                                       CSolver* solver_src,
                                                                       const vector<su2double>& coor_dst,
-                                                                      const IntersectionMeshMap& overlappingElements,
+                                                                      const IntersectionMeshMap& overlapMeshes,
                                                                       const vector<vector<su2double>>& srcElemMass,
                                                                       const vector<vector<su2double>>& srcElemGrad,
                                                                       vector<vector<su2double>>& dstElemMass,
@@ -1023,7 +993,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
   vector<su2double> correctedMass(1, 0.0);
   vector<su2double> correctedGrad(1 * nDim, 0.0);
   vector<vector<su2double>> vertexSol(3, vector<su2double>(1));
-  for (const auto& intersection : overlappingElements) {
+  for (const auto& intersection : overlapMeshes) {
     unsigned long dstElemID = intersection.first;
     const IntersectionMesh& srcElemMeshes = intersection.second;
 

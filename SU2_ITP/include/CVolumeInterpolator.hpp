@@ -29,6 +29,7 @@
 
 #include <cmath>
 #include <memory>
+#include <optional>
 
 #include "../../Common/include/parallelization/mpi_structure.hpp"
 
@@ -57,6 +58,12 @@ class CVolumeInterpolator {
     unsigned long nPoint_dst = 0;  /*!< \brief Number of points on the destination mesh. */
     unsigned long nElem_src = 0;   /*!< \brief Number of elements on the source mesh. */
     unsigned long nElem_dst = 0;   /*!< \brief Number of elements on the destination mesh. */
+
+    vector<su2double> coorDst;     /*!< \brief Coordinates of destination mesh DOFs. */
+
+    vector<optional<unsigned long>> containingElems;  /*!< \brief Map of node index to source element containing the node. */
+    vector<int> containingElemRanks;                  /*!< \brief Map of node index to rank of source element containing the node. */
+    vector<unsigned long> uncoveredNodes;             /*!< \brief List of points for which there is no containing source element. */
 
     std::unique_ptr<CFEMStandardElement> stdElement_ptr; /*!< \brief Standard element object used for Gauss quadrature. */
 
@@ -184,9 +191,11 @@ class CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_container_src - Source mesh solver
      * \param[in] solver_container_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
      */
     virtual void Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                             CSolver** solver_container_src, CSolver** solver_container_dst) = 0;
+                             CSolver** solver_container_src, CSolver** solver_container_dst,
+                             bool initial_interp) = 0;
 
   protected:
     virtual void LinearInterpolation(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,

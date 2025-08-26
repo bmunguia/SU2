@@ -2,7 +2,7 @@
  * \file CConservativeVolumeInterpolator.hpp
  * \brief Headers of the main conservative solution interpolation subroutines.
  *        The subroutines and functions are in the <i>CConservativeVolumeInterpolator.cpp</i> file.
- * \author B. Munguía, E. van der Weide
+ * \author B. Munguía
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -27,7 +27,6 @@
 
 #pragma once
 
-#include <optional>
 #include "CVolumeInterpolator.hpp"
 
 using IntersectionMesh = vector<pair<unsigned long, vector<su2double>>>;
@@ -36,9 +35,11 @@ using IntersectionMeshMap = map<unsigned long, IntersectionMesh>;
 /*!
  * \class CConservativeVolumeInterpolator
  * \brief Performs conservative solution interpolation between meshes using the Alauzet 2015 method.
- * \author B. Munguía, E. van der Weide
+ * \author B. Munguía
  */
 class CConservativeVolumeInterpolator : public CVolumeInterpolator {
+  private:
+    IntersectionMeshMap overlapMeshes;  /*!< \brief Map of destination elements to intersection region meshes. */
   public:
     /*!
      * \brief Constructor of the class.
@@ -58,9 +59,11 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_container_src - Source mesh solver
      * \param[in] solver_container_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
      */
     void Interpolate(CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                     CSolver** solver_container_src, CSolver** solver_container_dst) override;
+                     CSolver** solver_container_src, CSolver** solver_container_dst,
+                     bool initial_interp) override;
 
   private:
     /*!
@@ -70,9 +73,10 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_src - Source mesh solver
      * \param[in] solver_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
      */
     void ConservativeInterpolation(const CConfig* config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                   CSolver* solver_src, CSolver* solver_dst);
+                                   CSolver* solver_src, CSolver* solver_dst, bool initial_interp);
 
     /*!
      * \brief Containment search.
@@ -80,13 +84,13 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
      * \param[out] containingElems - Elements containing destination points
      * \param[out] containingElemRanks - Ranks of elements containing destination points
-     * \param[out] pointsFailed - Nodes for which no containing element was found
+     * \param[out] uncoveredNodes - Nodes for which no containing element was found
      */
     void PointLocalization(CGeometry* geometry_src,
                            const vector<su2double>& coor_dst,
                            vector<optional<unsigned long>>& containingElems,
                            vector<int>& containingElemRanks,
-                           vector<unsigned long>& pointsFailed);
+                           vector<unsigned long>& uncoveredNodes);
 
     /*!
      * \brief Compute the mass and gradient of the solution variables.
@@ -105,7 +109,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_src - Source mesh solver
-     * \param[in] overlappingElements - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
+     * \param[in] overlapMeshes - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
      * \param[in] srcElemMass - Source element masses
      * \param[in] srcElemGrad - Source element gradients
      * \param[out] dstElemMass - Destination element masses
@@ -114,7 +118,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     void ComputeDestinationMassAndGradient(CGeometry* geometry_src,
                                            CGeometry* geometry_dst,
                                            CSolver* solver_src,
-                                           const IntersectionMeshMap& overlappingElements,
+                                           const IntersectionMeshMap& overlapMeshes,
                                            const vector<vector<su2double>>& srcElemMass,
                                            const vector<vector<su2double>>& srcElemGrad,
                                            vector<vector<su2double>>& dstElemMass,
@@ -126,13 +130,13 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
      * \param[in] containingElems - Elements containing destination points (from point localization)
-     * \param[out] overlappingElements - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
+     * \param[out] overlapMeshes - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
      */
     void ComputeOverlappingElements(CGeometry* geometry_src,
                                     CGeometry* geometry_dst,
                                     const vector<su2double> &coor_dst,
                                     const vector<optional<unsigned long>>& containingElems,
-                                    IntersectionMeshMap& overlappingElements);
+                                    IntersectionMeshMap& overlapMeshes);
 
     /*!
      * \brief Triangle-triangle intersection using Alauzet method (signed distance functions).
@@ -219,7 +223,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_src - Source mesh solver
      * \param[in] coor_dst - Destination mesh coordinates (after curvature correction if applied)
-     * \param[in] overlappingElements - Map from dst element ID to overlapping src element IDs
+     * \param[in] overlapMeshes - Map from dst element ID to overlapping src element IDs
      * \param[in] srcElemMass - Source element masses
      * \param[in] srcElemGrad - Source element gradients
      * \param[in,out] dstElemMass - Destination element masses
@@ -229,7 +233,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                          CGeometry* geometry_dst,
                                          CSolver* solver_src,
                                          const vector<su2double>& coor_dst,
-                                         const IntersectionMeshMap& overlappingElements,
+                                         const IntersectionMeshMap& overlapMeshes,
                                          const vector<vector<su2double>>& srcElemMass,
                                          const vector<vector<su2double>>& srcElemGrad,
                                          vector<vector<su2double>>& dstElemMass,
