@@ -63,7 +63,9 @@ class CVolumeInterpolator {
 
     vector<optional<unsigned long>> containingElems;  /*!< \brief Map of node index to source element containing the node. */
     vector<int> containingElemRanks;                  /*!< \brief Map of node index to rank of source element containing the node. */
-    vector<unsigned long> uncoveredNodes;             /*!< \brief List of points for which there is no containing source element. */
+    vector<unsigned long> uncontainedNodes;             /*!< \brief List of points for which there is no containing source element. */
+    vector<optional<unsigned long>> nearestNodes;    /*!< \brief List of the nearest contained node to each uncontained node. */
+    vector<unsigned long> nearestElemRanks;           /*!< \brief List of the rank of the nearest destination element to each uncontained node. */
 
     std::unique_ptr<CFEMStandardElement> stdElement_ptr; /*!< \brief Standard element object used for Gauss quadrature. */
 
@@ -202,7 +204,7 @@ class CVolumeInterpolator {
                                      CSolver* solver_src, CSolver* solver_dst) { }
 
     virtual void VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                     const vector<su2double> &coor_corrected, vector<unsigned long> &uncoveredNodes) { }
+                                     const vector<su2double> &coor_corrected, vector<unsigned long> &uncontainedNodes) { }
 
     void SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst, CSolver* solver_src,
                               CSolver* solver_dst);

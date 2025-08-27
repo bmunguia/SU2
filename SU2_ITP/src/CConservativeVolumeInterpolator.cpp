@@ -30,6 +30,7 @@
 
 #include "../include/CConservativeVolumeInterpolator.hpp"
 #include "../../Common/include/fem/fem_standard_element.hpp"
+#include "../../Common/include/adt/CADTPointsOnlyClass.hpp"
 
 CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) {}
@@ -60,8 +61,10 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
   for (auto iSol = 0u; iSol < MAX_SOLS; ++iSol) {
     auto solver_src = solver_container_src[iSol];
     auto solver_dst = solver_container_dst[iSol];
-    if (solver_src && solver_dst)
+    if (solver_src && solver_dst) {
       ConservativeInterpolation(config, geometry_src, geometry_dst, solver_src, solver_dst, initial_interp);
+      initial_interp = false;
+    }
   }
 
   /*--- Preprocess the solution to get the primitive variables ---*/
@@ -92,12 +95,13 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
     /*--------------------------------------------------------------------------*/
     /*--- Step 1: Localize destination nodes on the source mesh.             ---*/
     /*---         containingElems is a map from destination mesh nodes to    ---*/
-    /*---         containing elements on the source mesh, and uncoveredNodes ---*/
-    /*---         is all the nodes for which no containing element was found ---*/
+    /*---         containing elements on the source mesh, and                ---*/
+    /*---         uncontainedNodes is all the nodes for which no containing  ---*/
+    /*---         element was found                                          ---*/
     /*--------------------------------------------------------------------------*/
     if (rank == MASTER_NODE) cout << "Performing containment search." << endl;
     PointLocalization(geometry_src, geometry_dst, containingElems, containingElemRanks,
-                      uncoveredNodes);
+                      uncontainedNodes);
 
     /*--------------------------------------------------------------------------*/
     /*--- Step 2: Compute the intersection of elements K_dst with elements   ---*/
@@ -105,17 +109,26 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
     /*--------------------------------------------------------------------------*/
     if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
     CreateIntersectionMeshes(geometry_src, geometry_dst, containingElems, overlapMeshes);
+
+    /*--------------------------------------------------------------------------*/
+    /*--- Step 3: Generate nearest contained nodes for uncontained           ---*/
+    /*---           nodes for efficient extrapolation later.                 ---*/
+    /*--------------------------------------------------------------------------*/
+    if (!uncontainedNodes.empty()) {
+      if (rank == MASTER_NODE) cout << "Finding nearest contained nodes for uncontained nodes." << endl;
+      FindNearestContainedNodes(geometry_dst);
+    }
   }
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 3: Compute solution mass and gradient on source mesh.         ---*/
+  /*--- Step 4: Compute solution mass and gradient on source mesh.         ---*/
   /*--------------------------------------------------------------------------*/
   vector<vector<su2double>> srcElemMass;
   vector<vector<su2double>> srcElemGrad;
   ComputeSourceSolutionMass(geometry_src, solver_src, srcElemMass, srcElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 4: Compute destination mesh mass and gradient using Gauss     ---*/
+  /*--- Step 5: Compute destination mesh mass and gradient using Gauss     ---*/
   /*---         quadrature over intersection regions.                      ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing destination mesh mass and gradients." << endl;
@@ -125,37 +138,38 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                                     srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 5: Correct the gradient to enforce the maximum principle.     ---*/
+  /*--- Step 6: Correct the gradient to enforce the maximum principle.     ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
   ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, overlapMeshes,
                                   srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
-  /*--- Step 6: Perform averaging to get solution at vertices.             ---*/
+  /*--- Step 7: Perform averaging to get solution at vertices.             ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Distributing solution to destination nodes." << endl;
   DistributeSolutionToNodes(geometry_dst, solver_dst, dstElemMass, dstElemGrad);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 7: Extrapolate solution to uncovered vertices.                ---*/
-  /*--------------------------------------------------------------------------*/
-  if (!uncoveredNodes.empty()) {
-    if (rank == MASTER_NODE) cout << "Performing extrapolation to uncovered nodes." << endl;
-  }
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 8: Handle surface nodes via linear interpolation.             ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Performing surface interpolation." << endl;
   SurfaceInterpolation(geometry_src, geometry_dst, solver_src, solver_dst);
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 9: Extrapolate solution to uncontained vertices.              ---*/
+  /*--------------------------------------------------------------------------*/
+  if (!uncontainedNodes.empty()) {
+    if (rank == MASTER_NODE) cout << "Performing extrapolation to uncontained nodes." << endl;
+    ExtrapolateToUncontainedNodes(geometry_dst, solver_dst, uncontainedNodes, dstElemMass, dstElemGrad);
+  }
 }
 
 void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
                                                         CGeometry* geometry_dst,
                                                         vector<optional<unsigned long>>& containingElems,
                                                         vector<int>& containingElemRanks,
-                                                        vector<unsigned long>& uncoveredNodes) {
+                                                        vector<unsigned long>& uncontainedNodes) {
   /*--- Search for containing elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
   CADTElemClass& surfaceADT = GetSourceSurfaceADT();
@@ -163,7 +177,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   /*--- Loop over the DOFs to be interpolated ---*/
   containingElems.clear();
   containingElemRanks.clear();
-  uncoveredNodes.clear();
+  uncontainedNodes.clear();
 
   /*--- Initialize with invalid values ---*/
   containingElems.resize(nPoint_dst, nullopt);
@@ -193,8 +207,7 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
       /*--- processed later via extrapolation.                             ---*/
       /*--- If the node is a surface node, it will be linearly             ---*/
       /*--- interpolated anyway.                                           ---*/
-
-      if (!geometry_dst->nodes->GetPhysicalBoundary(l)) uncoveredNodes.push_back(l);
+      if (!geometry_dst->nodes->GetPhysicalBoundary(l)) uncontainedNodes.push_back(l);
       if (geometry_dst->nodes->GetDomain(l)) numFailed++;
 
       /*--- Find nearest volume element ---*/
@@ -843,6 +856,92 @@ void CConservativeVolumeInterpolator::MeshConvexPolygon(const vector<su2double>&
   }
 }
 
+void CConservativeVolumeInterpolator::FindNearestContainedNodes(CGeometry* geometry_dst) {
+  /*--- Clear and resize the nearestNodes vector ---*/
+  nearestNodes.clear();
+  nearestNodes.resize(uncontainedNodes.size(), nullopt);
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 1: Identify contained nodes that have at least one            ---*/
+  /*---         uncontained neighbor (the "front" of contained nodes)      ---*/
+  /*--------------------------------------------------------------------------*/
+  set<unsigned long> uncontainedSet(uncontainedNodes.begin(), uncontainedNodes.end());
+  vector<unsigned long> frontNodes;
+  vector<su2double> frontCoords;
+
+  /*--- Loop through all domain nodes to find front nodes ---*/
+  for (auto nodeID = 0u; nodeID < nPoint_dst; ++nodeID) {
+    /*--- Skip if this node is uncontained, boundary, or not domain ---*/
+    if (uncontainedSet.count(nodeID) > 0 ||
+        geometry_dst->nodes->GetPhysicalBoundary(nodeID) ||
+        !geometry_dst->nodes->GetDomain(nodeID)) {
+      continue;
+    }
+
+    /*--- Check if this contained node has any uncontained neighbors ---*/
+    bool hasUncontainedNeighbor = false;
+    for (auto iPoint = 0u; iPoint < geometry_dst->nodes->GetnPoint(nodeID); ++iPoint) {
+      unsigned long neighborID = geometry_dst->nodes->GetPoint(nodeID, iPoint);
+      if (uncontainedSet.count(neighborID) > 0) {
+        hasUncontainedNeighbor = true;
+        break;
+      }
+    }
+
+    /*--- If this is a front node, add it to the list ---*/
+    if (hasUncontainedNeighbor) {
+      frontNodes.push_back(nodeID);
+      const su2double* coord = geometry_dst->nodes->GetCoord(nodeID);
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        frontCoords.push_back(coord[iDim]);
+      }
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Found " << frontNodes.size() << " front nodes (contained nodes with uncontained neighbors)." << endl;
+  }
+
+  if (frontNodes.empty()) {
+    /*--- No front nodes found ---*/
+    if (rank == MASTER_NODE)
+      cout << "No front nodes found. All uncontained nodes will have no nearest node." << endl;
+    return;
+  }
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 2: Build ADT for the front nodes                              ---*/
+  /*--------------------------------------------------------------------------*/
+  vector<unsigned long> frontPointIDs(frontNodes.size());
+  for (auto i = 0u; i < frontNodes.size(); ++i) {
+    frontPointIDs[i] = i;
+  }
+
+  CADTPointsOnlyClass frontADT(nDim, frontNodes.size(), frontCoords.data(), frontPointIDs.data(), false);
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 3: For each uncontained node, find nearest front node         ---*/
+  /*--------------------------------------------------------------------------*/
+  for (auto i = 0u; i < uncontainedNodes.size(); ++i) {
+    unsigned long uncontainedNodeID = uncontainedNodes[i];
+    const su2double* uncontainedCoord = geometry_dst->nodes->GetCoord(uncontainedNodeID);
+
+    /*--- Find nearest front node ---*/
+    su2double dist;
+    unsigned long nearestFrontNodeIndex;
+    int rankID;  // Not used in local ADT
+    frontADT.DetermineNearestNode(uncontainedCoord, dist, nearestFrontNodeIndex, rankID);
+
+    /*--- Store the actual node ID of the nearest front node ---*/
+    nearestNodes[i] = frontNodes[nearestFrontNodeIndex];
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Generated nearest contained nodes for " << uncontainedNodes.size();
+    cout << " uncontained nodes." << endl;
+  }
+}
+
 void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometry* geometry_src,
                                                                         CGeometry* geometry_dst,
                                                                         CSolver* solver_src,
@@ -1291,4 +1390,115 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
       grad[iVar * nDim + k] /= elemVolume;
     }
   }
+}
+
+void CConservativeVolumeInterpolator::ExtrapolateToUncontainedNodes(CGeometry* geometry_dst,
+                                                                    CSolver* solver_dst,
+                                                                    const vector<unsigned long>& uncontainedNodes,
+                                                                    const vector<vector<su2double>>& dstElemMass,
+                                                                    const vector<vector<su2double>>& dstElemGrad) {
+  unsigned long numExtrapolated = 0;
+  unsigned long numFallback = 0;
+  unsigned long numFailed = 0;
+
+  /*--- Process each uncontained node ---*/
+  for (auto i = 0u; i < uncontainedNodes.size(); ++i) {
+    unsigned long nodeID = uncontainedNodes[i];
+
+    /*--- Skip boundary nodes (they should be handled by surface interpolation) ---*/
+    if (geometry_dst->nodes->GetPhysicalBoundary(nodeID)) continue;
+
+    /*--- Get nearest contained node ID ---*/
+    auto nearestNodeOpt = nearestNodes[i];
+
+    /*--- Check if we have a valid nearest node ---*/
+    if (nearestNodeOpt.has_value()) {
+      unsigned long nearestNodeID = nearestNodeOpt.value();
+      /*--- Extrapolate from the nearest contained node ---*/
+      if (ExtrapolateFromNearestNode(geometry_dst, solver_dst, nodeID, nearestNodeID,
+                                     dstElemMass, dstElemGrad)) {
+        numExtrapolated++;
+      }
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Extrapolation completed: " << numExtrapolated << " nodes from nearest nodes, ";
+    cout << numFallback << " nodes via fallback, " << numFailed << " nodes failed." << endl;
+  }
+}
+
+bool CConservativeVolumeInterpolator::ExtrapolateFromNearestNode(CGeometry* geometry_dst,
+                                                                 CSolver* solver_dst,
+                                                                 unsigned long uncontainedNodeID,
+                                                                 unsigned long nearestNodeID,
+                                                                 const vector<vector<su2double>>& dstElemMass,
+                                                                 const vector<vector<su2double>>& dstElemGrad) {
+  /*--- Get coordinates ---*/
+  const su2double* uncontainedCoord = geometry_dst->nodes->GetCoord(uncontainedNodeID);
+  const su2double* nearestCoord = geometry_dst->nodes->GetCoord(nearestNodeID);
+
+  /*--- Displacement vector ---*/
+  su2double displacement[3];
+  for (auto iDim = 0u; iDim < nDim; ++iDim)
+    displacement[iDim] = uncontainedCoord[0] - nearestCoord[0];
+
+  /*--- Get solution at nearest contained node ---*/
+  vector<su2double> nearestSolution(nVar);
+  for (auto iVar = 0u; iVar < nVar; ++iVar) {
+    nearestSolution[iVar] = solver_dst->GetNodes()->GetSolution(nearestNodeID, iVar);
+  }
+
+  /*--- Compute volume-weighted average gradient from elements containing the nearest node ---*/
+  vector<su2double> avgGradient(nVar * nDim, 0.0);
+  su2double totalWeight = 0.0;
+
+  const unsigned short nElem_node = geometry_dst->nodes->GetnElem(nearestNodeID);
+  for (auto j = 0u; j < nElem_node; ++j) {
+    unsigned long elemID = geometry_dst->nodes->GetElem(nearestNodeID, j);
+    auto* elem = geometry_dst->elem[elemID];
+
+    /*--- Skip non-triangular elements ---*/
+    if (elem->GetVTK_Type() != TRIANGLE) continue;
+
+    /*--- Check if element has valid solution (was processed in conservative interpolation) ---*/
+    bool hasValidSolution = false;
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      if (abs(dstElemMass[elemID][iVar]) > 1e-16) {
+        hasValidSolution = true;
+        break;
+      }
+    }
+    if (!hasValidSolution) continue;
+
+    /*--- Use element volume as weight ---*/
+    const su2double elemVolume = elem->GetVolume();
+    totalWeight += elemVolume;
+
+    /*--- Add weighted contribution to average gradient ---*/
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        avgGradient[iVar * nDim + iDim] += dstElemGrad[elemID][iVar * nDim + iDim] * elemVolume;
+      }
+    }
+  }
+
+  /*--- Normalize gradient ---*/
+  for (auto iVar = 0u; iVar < nVar; ++iVar) {
+    for (auto iDim = 0u; iDim < nDim; ++iDim) {
+      avgGradient[iVar * nDim + iDim] /= totalWeight;
+    }
+  }
+
+  /*--- Extrapolate solution using linear reconstruction ---*/
+  for (auto iVar = 0u; iVar < nVar; ++iVar) {
+    su2double extrapolatedValue = nearestSolution[iVar] +
+                                  avgGradient[iVar * nDim + 0] * displacement[0] +
+                                  avgGradient[iVar * nDim + 1] * displacement[1];
+
+    solver_dst->GetNodes()->SetSolution(uncontainedNodeID, iVar, extrapolatedValue);
+    solver_dst->GetNodes()->SetSolution_Old(uncontainedNodeID, iVar, extrapolatedValue);
+  }
+
+  return true;
 }

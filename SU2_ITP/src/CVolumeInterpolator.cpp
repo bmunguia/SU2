@@ -647,8 +647,8 @@ void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometr
     }
 
     if (rank == MASTER_NODE) {
-      cout << "Surface search finished. " << nExtrapolated << " points extrapolated."
-           << endl << flush;
+      cout << "Surface search finished. " << nExtrapolated;
+      cout << " surface points intrapolated." << endl << flush;
     }
 
   } else {

@@ -72,7 +72,7 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
   /*--------------------------------------------------------------------------*/
 
   if (rank == MASTER_NODE) cout << "Performing volume interpolation." << endl;
-  VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDst, uncoveredNodes);
+  VolumeInterpolation(geometry_src, solver_src, solver_dst, coorDst, uncontainedNodes);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 3: Carry out a surface interpolation, via a minimum distance  ---*/
@@ -84,13 +84,13 @@ void CLinearVolumeInterpolator::LinearInterpolation(const CConfig* config, CGeom
 }
 
 void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                                    const vector<su2double>& coor_dst, vector<unsigned long>& uncoveredNodes) {
+                                                    const vector<su2double>& coor_dst, vector<unsigned long>& uncontainedNodes) {
   /*--- Search for donor elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
   const unsigned long nDOFsDst = coor_dst.size() / nDim;
 
   /*--- Loop over the DOFs to be interpolated ---*/
-  uncoveredNodes.clear();
+  uncontainedNodes.clear();
   for (auto l = 0u; l < nDOFsDst; ++l) {
     /*--- Set a pointer to the coordinates to be searched ---*/
     const su2double* coor = coor_dst.data() + l * nDim;
@@ -122,11 +122,11 @@ void CLinearVolumeInterpolator::VolumeInterpolation(CGeometry* geometry_src, CSo
       }
     } else {
       /*--- Containment search failed - store the index ---*/
-      uncoveredNodes.push_back(l);
+      uncontainedNodes.push_back(l);
     }
   }
 
   if (rank == MASTER_NODE) {
-    cout << "Volume search finished. " << uncoveredNodes.size() << " points failed." << endl << flush;
+    cout << "Volume search finished. " << uncontainedNodes.size() << " points failed." << endl << flush;
   }
 }

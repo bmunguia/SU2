@@ -90,13 +90,13 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[out] containingElems - Elements containing destination points
      * \param[out] containingElemRanks - Ranks of elements containing destination points
-     * \param[out] uncoveredNodes - Nodes for which no containing element was found
+     * \param[out] uncontainedNodes - Nodes for which no containing element was found
      */
     void PointLocalization(CGeometry* geometry_src,
                            CGeometry* geometry_dst,
                            vector<optional<unsigned long>>& containingElems,
                            vector<int>& containingElemRanks,
-                           vector<unsigned long>& uncoveredNodes);
+                           vector<unsigned long>& uncontainedNodes);
 
     /*!
      * \brief Compute the mass and gradient of the solution variables.
@@ -292,4 +292,41 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                            const unsigned short nVar,
                                            vector<su2double>& mass,
                                            vector<su2double>& grad);
+
+    /*!
+     * \brief Generate nearest contained nodes for uncontained nodes using front-based ADT search.
+     * \param[in] geometry_dst - Destination mesh geometry
+     */
+    void FindNearestContainedNodes(CGeometry* geometry_dst);
+
+    /*!
+     * \brief Extrapolate solution to uncontained nodes using precomputed nearest contained nodes.
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_dst - Destination mesh solver
+     * \param[in] uncontainedNodes - List of nodes that need extrapolation
+     * \param[in] dstElemMass - Destination element masses
+     * \param[in] dstElemGrad - Destination element gradients
+     */
+    void ExtrapolateToUncontainedNodes(CGeometry* geometry_dst,
+                                       CSolver* solver_dst,
+                                       const vector<unsigned long>& uncontainedNodes,
+                                       const vector<vector<su2double>>& dstElemMass,
+                                       const vector<vector<su2double>>& dstElemGrad);
+
+    /*!
+     * \brief Extrapolate solution from a specific nearest contained node using linear reconstruction.
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_dst - Destination mesh solver
+     * \param[in] uncontainedNodeID - ID of the uncontained node
+     * \param[in] nearestNodeID - ID of the nearest contained node to extrapolate from
+     * \param[in] dstElemMass - Destination element masses (for computing gradients)
+     * \param[in] dstElemGrad - Destination element gradients (for computing average gradient)
+     * \return True if extrapolation was successful
+     */
+    bool ExtrapolateFromNearestNode(CGeometry* geometry_dst,
+                                    CSolver* solver_dst,
+                                    unsigned long uncontainedNodeID,
+                                    unsigned long nearestNodeID,
+                                    const vector<vector<su2double>>& dstElemMass,
+                                    const vector<vector<su2double>>& dstElemGrad);
 };
