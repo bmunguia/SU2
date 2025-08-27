@@ -9983,4 +9983,13 @@ public:
    */
   unsigned long GetMetric_Complexity(void) const { return Metric_Complexity; }
 
+  /*!
+   * \brief Check if conservative solution interpolation is being carried out
+   * \return <code>TRUE<\code> if conservative solution interpolation is taking place
+  */
+  bool GetConservativeVolumeInterpolation(void) const {
+    return (Kind_SU2 == SU2_COMPONENT::SU2_ITP || Kind_SU2 == SU2_COMPONENT::SU2_ERR) &&
+           (Kind_Volume_Interpolation == VOLUME_INTERPOLATOR::CONSERVATIVE);
+  }
+
 };

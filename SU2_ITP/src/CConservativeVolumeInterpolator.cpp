@@ -82,6 +82,17 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
                                                                 CSolver* solver_src,
                                                                 CSolver* solver_dst,
                                                                 bool initial_interp) {
+
+  /*--------------------------------------------------------------------------*/
+  /*--- TODO: - MPI parallel: need some sort of parallel tree search, or   ---*/
+  /*---         geometric partitioning of the source mesh to align with    ---*/
+  /*---         the destination mesh for overlap detection                 ---*/
+  /*---       - Periodic boundaries: I currently communicate the mass      ---*/
+  /*---         volume at periodic boundaries, but errors may accumulate   ---*/
+  /*---         for curved boundaries, where incomplete (or nonexistent)   ---*/
+  /*---         overlaps may occur; should probably use some sort of ghost ---*/
+  /*---         elements                                                   ---*/
+  /*--------------------------------------------------------------------------*/
   nVar = solver_src->GetnVar();
 
   if (initial_interp) {
@@ -148,7 +159,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--- Step 7: Perform averaging to get solution at vertices.             ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Distributing solution to destination nodes." << endl;
-  DistributeSolutionToNodes(geometry_dst, solver_dst, dstElemMass, dstElemGrad);
+  DistributeSolutionToNodes(config, geometry_dst, solver_dst, dstElemMass, dstElemGrad);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 8: Handle surface nodes via linear interpolation.             ---*/
@@ -1217,19 +1228,19 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
   }
 }
 
-void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geometry_dst,
+void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* config,
+                                                                CGeometry* geometry_dst,
                                                                 CSolver* solver_dst,
                                                                 const vector<vector<su2double>>& dstElemMass,
                                                                 const vector<vector<su2double>>& dstElemGrad) {
   /*--- Loop over all nodes and accumulate contributions from each element ---*/
-  vector<su2double> totalValue(nVar, 0.0);
   for (auto l = 0u; l < nPoint_dst; ++l) {
-    /*--- Initialize accumulation variables for this node ---*/
-    su2double totalWeight = 0.0;
-    fill(totalValue.begin(), totalValue.end(), 0.0);
-
-    /*--- Get node coordinates ---*/
+    /*--- Get pointer to node coordinates and solution mass ---*/
     const su2double* coor = geometry_dst->nodes->GetCoord(l);
+
+    /*--- Initialize mass and volume accumulation ---*/
+    for (auto iVar = 0u; iVar < nVar+1; ++iVar)
+      solver_dst->GetNodes()->SetSolution_Mass(l, iVar, 0.0);
 
     /*--- Loop over all elements that contain this node ---*/
     const unsigned short nElem_node = geometry_dst->nodes->GetnElem(l);
@@ -1257,20 +1268,29 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(CGeometry* geome
         const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
 
         /*--- Accumulate weighted contribution ---*/
-        totalValue[iVar] += vertexValue * elemVolume;
+        solver_dst->GetNodes()->AddSolution_Mass(l, iVar, vertexValue * elemVolume);
       }
 
       /*--- Accumulate weight ---*/
-      totalWeight += elemVolume;
-    }
-
-    /*--- Compute weighted average and set solution for this node ---*/
-    for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      const su2double avgValue = totalValue[iVar] / totalWeight;
-      solver_dst->GetNodes()->SetSolution(l, iVar, avgValue);
-      solver_dst->GetNodes()->SetSolution_Old(l, iVar, avgValue);
+      solver_dst->GetNodes()->AddSolution_Mass(l, nVar, elemVolume);
     }
   }
+
+  /*--- Periodic mass and volume communication ---*/
+  for (auto i = 1u; i <= config->GetnMarker_Periodic()/2; ++i) {
+    solver_dst->InitiatePeriodicComms(geometry_dst, config, i, PERIODIC_INTERP);
+    solver_dst->CompletePeriodicComms(geometry_dst, config, i, PERIODIC_INTERP);
+  }
+
+  /*--- Calculate conserved quantities from mass and volume ---*/
+  for (auto l = 0u; l < nPoint_dst; ++l) {
+    const su2double* mass = solver_dst->GetNodes()->GetSolution_Mass(l);
+    const su2double vol = mass[nVar];
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      solver_dst->GetNodes()->SetSolution(l, iVar, mass[iVar] / vol);
+    }
+  }
+  solver_dst->Set_OldSolution();
 }
 
 void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2double vertexCoords[6],

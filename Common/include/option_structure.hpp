@@ -2639,6 +2639,7 @@ enum PERIODIC_QUANTITIES {
   PERIODIC_IMPLICIT   ,  /*!< \brief Implicit update communication to ensure consistency across periodic boundaries. */
   PERIODIC_GRAD_ADAPT ,  /*!< \brief Gradient vectors for anisotropic mesh adaptation (periodic only). */
   PERIODIC_HESSIAN    ,  /*!< \brief Hessian matrices for anisotropic mesh adaptation (periodic only). */
+  PERIODIC_INTERP     ,  /*!< \brief Mass and volume communication for conservative interpolation. */
 };
 
 /*!

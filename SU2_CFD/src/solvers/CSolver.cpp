@@ -288,6 +288,10 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
       break;
+    case PERIODIC_INTERP:
+      COUNT_PER_POINT = nVar + 1;
+      MPI_TYPE        = COMM_TYPE_DOUBLE;
+      break;
     default:
       SU2_MPI::Error("Unrecognized quantity for periodic communication.",
                      CURRENT_FUNCTION);
@@ -812,6 +816,13 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
             break;
 
+          case PERIODIC_INTERP:
+            for (iVar = 0; iVar < COUNT_PER_POINT; iVar++) {
+              bufDSend[buf_offset + iVar] = base_nodes->GetSolution_Mass(iPoint, iVar);
+            }
+
+            break;
+
           case PERIODIC_SOL_LS: case PERIODIC_SOL_ULS:
           case PERIODIC_SOL_LS_R: case PERIODIC_SOL_ULS_R:
           case PERIODIC_PRIM_LS: case PERIODIC_PRIM_ULS:
@@ -1290,6 +1301,13 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
                 for (iMat = 0; iMat < nSymMat; iMat++) {
                   gradient(iPoint, iVar, iMat) += bufDRecv[buf_offset+iVar*nSymMat+iMat];
                 }
+              }
+
+              break;
+
+            case PERIODIC_INTERP:
+              for (iVar = 0; iVar < COUNT_PER_POINT; iVar++) {
+                base_nodes->AddSolution_Mass(iPoint, iVar, bufDRecv[buf_offset+iVar]);
               }
 
               break;

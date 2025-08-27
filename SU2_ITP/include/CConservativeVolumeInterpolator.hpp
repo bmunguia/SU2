@@ -250,12 +250,14 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
 
     /*!
      * \brief Calculate the solution at destination nodes from the mass and gradient.
+     * \param[in] config - Configuration object
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_dst - Destination mesh solver
      * \param[in] dstElemMass - Destination element masses
      * \param[in] dstElemGrad - Destination element gradients
      */
-    void DistributeSolutionToNodes(CGeometry* geometry_dst,
+    void DistributeSolutionToNodes(const CConfig* config,
+                                   CGeometry* geometry_dst,
                                    CSolver* solver_dst,
                                    const vector<vector<su2double>>& dstElemMass,
                                    const vector<vector<su2double>>& dstElemGrad);

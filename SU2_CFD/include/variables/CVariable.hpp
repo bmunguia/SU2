@@ -103,10 +103,12 @@ protected:
 
   VectorType SolutionExtra_BGS_k; /*!< \brief Intermediate storage, enables cross term extraction as that is also pushed to Solution. */
 
-  MatrixType Primitive_Adapt;             /*!< \brief Variables for which we need gradients for anisotropy in mesh adaptation. */
-  CVectorOfMatrix Gradient_Adapt;         /*!< \brief Gradient of sensor used for anisotropy in mesh adaptation. */
-  CVectorOfMatrix Hessian;                /*!< \brief Hessian of sensor used for anisotropy in mesh adaptation. */
-  su2matrix<double> Metric;               /*!< \brief Metric tensor used for anisotropy in mesh adaptation. */
+  MatrixType Primitive_Adapt;     /*!< \brief Variables for which we need gradients for anisotropy in mesh adaptation. */
+  CVectorOfMatrix Gradient_Adapt; /*!< \brief Gradient of sensor used for anisotropy in mesh adaptation. */
+  CVectorOfMatrix Hessian;        /*!< \brief Hessian of sensor used for anisotropy in mesh adaptation. */
+  su2matrix<double> Metric;       /*!< \brief Metric tensor used for anisotropy in mesh adaptation. */
+
+  MatrixType Solution_Mass; /*!< \brief Mass (and volume) accumulation for conservative interpolation (nVar + 1). */
 
  protected:
   unsigned long nPoint = 0;  /*!< \brief Number of points in the domain. */
@@ -2490,4 +2492,42 @@ public:
    * \param[in] iMetr  - Index value.
    */
   inline double GetMetric(unsigned long iPoint, unsigned short iMetr) const { return Metric(iPoint,iMetr); }
+
+  /*!
+   * \brief Get the solution mass for conservative interpolation.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Index of the variable.
+   * \return Value of the mass for the index <i>iVar</i>.
+   */
+  inline su2double GetSolution_Mass(unsigned long iPoint, unsigned long iVar) const { return Solution_Mass(iPoint,iVar); }
+
+  /*!
+   * \brief Get the entire solution mass of the problem.
+   * \return Reference to the mass matrix.
+   */
+  inline const MatrixType& GetSolution_Mass() const { return Solution_Mass; }
+  inline MatrixType& GetSolution_Mass() { return Solution_Mass; }
+
+  /*!
+   * \brief Get the solution mass of the problem.
+   * \param[in] iPoint - Point index.
+   * \return Pointer to the mass vector.
+   */
+  inline su2double *GetSolution_Mass(unsigned long iPoint) { return Solution_Mass[iPoint]; }
+
+    /*!
+   * \brief Set the value of the solution mass, one variable.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Index of the variable.
+   * \param[in] mass - Value of the mass for the index <i>iVar</i>.
+   */
+  inline void SetSolution_Mass(unsigned long iPoint, unsigned long iVar, su2double mass) { Solution_Mass(iPoint,iVar) = mass; }
+
+  /*!
+   * \brief Add the value of the solution mass vector to the previous mass (incremental approach).
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Index of the variable.
+   * \param[in] mass - Value of the mass for the index <i>iVar</i>.
+   */
+  inline void AddSolution_Mass(unsigned long iPoint, unsigned long iVar, su2double mass) { Solution_Mass(iPoint,iVar) += mass; }
 };
