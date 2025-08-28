@@ -1428,7 +1428,7 @@ bool CConservativeVolumeInterpolator::ExtrapolateFromNearestNode(CGeometry* geom
   /*--- Displacement vector ---*/
   su2double displacement[3];
   for (auto iDim = 0u; iDim < nDim; ++iDim)
-    displacement[iDim] = uncontainedCoord[0] - nearestCoord[0];
+    displacement[iDim] = uncontainedCoord[iDim] - nearestCoord[iDim];
 
   /*--- Get solution at nearest contained node ---*/
   vector<su2double> nearestSolution(nVar);

@@ -1027,7 +1027,8 @@ void CFVMFlowSolverBase<V, R>::SetInitialCondition(CGeometry **geometry, CSolver
   unsigned short iMesh;
 
   /*--- Check if a verification solution is to be computed. ---*/
-  if ((VerificationSolution) && (TimeIter == 0) && !restart) {
+  bool init_verification = (VerificationSolution) && (TimeIter == 0) && !restart;
+  if (init_verification) {
 
     /*--- Loop over the multigrid levels. ---*/
     for (iMesh = 0; iMesh <= config->GetnMGLevels(); iMesh++) {
@@ -1050,8 +1051,8 @@ void CFVMFlowSolverBase<V, R>::SetInitialCondition(CGeometry **geometry, CSolver
   }
 
   /*--- The value of the solution for the first iteration of the dual time ---*/
-
-  if (dual_time && ((TimeIter == config->GetRestart_Iter() && config->GetRestart_Iter() > 0) || (TimeIter == 1))) { // BCM: hack for unsteady adaptation restart
+  bool init_dualtime = (TimeIter == config->GetRestart_Iter() && config->GetRestart_Iter() > 0);
+  if (dual_time && (init_verification || init_dualtime)) { // BCM: hack for unsteady adaptation restart
     PushSolutionBackInTime(TimeIter, restart, rans, solver_container, geometry, config);
   }
 
