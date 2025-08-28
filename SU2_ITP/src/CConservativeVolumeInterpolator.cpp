@@ -505,27 +505,42 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
       const vector<su2double>& triElemVols = srcElemMesh.vols;
       unsigned int numTri = triElemCoords.size() / nCoorPerElem;
 
+      /*--- Get source element properties ---*/
+      const auto* srcElem = geometry_src->elem[srcElemID];
+      auto srcMass = srcElemMass[srcElemID];
+      auto srcGrad = srcElemGrad[srcElemID];
+
+      const su2double srcVolume = srcElem->GetVolume();
+      const su2double* G_K_src = srcElem->GetCG();
+
       for (auto iTri = 0u; iTri < numTri; ++iTri) {
-        /*--- Get source element properties ---*/
-        const auto* srcElem = geometry_src->elem[srcElemID];
-        auto srcMass = srcElemMass[srcElemID];
-        auto srcGrad = srcElemGrad[srcElemID];
+        /*--- Get triangle coordinates and area ---*/
+        const su2double* triCoor = &triElemCoords[iTri * nCoorPerElem];
+        const su2double triVol = triElemVols[iTri];
 
-        const su2double srcVolume = srcElem->GetVolume();
-
-        /*--- Stored triangle area ---*/
-        const su2double volTri = triElemVols[iTri];
-        const su2double volRatio = volTri / srcVolume;
+        /*--- Triangle centroid coordinates ---*/
+        const su2double xi = (triCoor[0] + triCoor[2] + triCoor[4]) / 3.0;
+        const su2double yi = (triCoor[1] + triCoor[3] + triCoor[5]) / 3.0;
 
         /*--- Integrate intersection volume ---*/
-        intersectionVol += volTri;
+        intersectionVol += triVol;
 
         /*--- Integrate mass and gradient ---*/
         for (auto iVar = 0u; iVar < nVar; ++iVar) {
+          const su2double u_src = srcMass[iVar] / srcVolume;
+          const su2double* grad_u = srcGrad.data() + iVar * nDim;
+
+          /*--- Displacement from source centroid to triangle centroid ---*/
+          const su2double dx = xi - G_K_src[0];
+          const su2double dy = yi - G_K_src[1];
+
+          /*--- Evaluate solution at triangle centroid ---*/
+          const su2double u = u_src + grad_u[0] * dx + grad_u[1] * dy;
+
           /*--- Add contribution to destination mass and gradient ---*/
-          dstMass[iVar] += volRatio * srcMass[iVar];
+          dstMass[iVar] += triVol * u;
           for (auto iDim = 0u; iDim < nDim; ++iDim)
-            dstGrad[iVar * nDim + iDim] += volTri * srcGrad[iVar * nDim + iDim];
+            dstGrad[iVar * nDim + iDim] += triVol * grad_u[iDim];
         }
       }
     }
