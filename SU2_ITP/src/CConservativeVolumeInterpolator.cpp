@@ -135,7 +135,7 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--------------------------------------------------------------------------*/
   /*--- Step 4: Compute solution mass and gradient on source mesh.         ---*/
   /*--------------------------------------------------------------------------*/
-  ComputeSourceSolutionMass(geometry_src, solver_src);
+  ComputeSourceMassAndGradient(geometry_src, solver_src);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 5: Compute destination mesh mass and gradient using Gauss     ---*/
@@ -425,8 +425,8 @@ void CConservativeVolumeInterpolator::FindNearestContainedNodes(CGeometry* geome
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geometry_src,
-                                                                CSolver* solver_src) {
+void CConservativeVolumeInterpolator::ComputeSourceMassAndGradient(CGeometry* geometry_src,
+                                                                   CSolver* solver_src) {
   /*--- Initialize source solution mass and gradient ---*/
   for (auto& v : srcElemMass) std::fill(v.begin(), v.end(), 0.0);
   for (auto& v : srcElemGrad) std::fill(v.begin(), v.end(), 0.0);
@@ -506,48 +506,26 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
       unsigned int numTri = triElemCoords.size() / nCoorPerElem;
 
       for (auto iTri = 0u; iTri < numTri; ++iTri) {
-        /*--- Get triangle vertices ---*/
-        const su2double* coor_tri = triElemCoords.data() + iTri * nCoorPerElem;
-        const su2double x0 = coor_tri[0], y0 = coor_tri[1];
-        const su2double x1 = coor_tri[2], y1 = coor_tri[3];
-        const su2double x2 = coor_tri[4], y2 = coor_tri[5];
-
-        /*--- Triangle area using cross product ---*/
-        const su2double cross = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
-        const su2double area = 0.5 * abs(cross);
-
-        /*--- Add to total triangle area ---*/
-        intersectionVol += area;
-
         /*--- Get source element properties ---*/
         const auto* srcElem = geometry_src->elem[srcElemID];
         auto srcMass = srcElemMass[srcElemID];
         auto srcGrad = srcElemGrad[srcElemID];
 
         const su2double srcVolume = srcElem->GetVolume();
-        const su2double* G_K_src = srcElem->GetCG();
 
-        /*--- Use 1-point Gauss quadrature (centroid rule) ---*/
-        /*--- Triangle centroid coordinates ---*/
-        const su2double xi = (x0 + x1 + x2) / 3.0;
-        const su2double yi = (y0 + y1 + y2) / 3.0;
+        /*--- Stored triangle area ---*/
+        const su2double volTri = triElemVols[iTri];
+        const su2double volRatio = volTri / srcVolume;
 
-        /*--- Integrate mass and gradient using 1-point quadrature ---*/
+        /*--- Integrate intersection volume ---*/
+        intersectionVol += volTri;
+
+        /*--- Integrate mass and gradient ---*/
         for (auto iVar = 0u; iVar < nVar; ++iVar) {
-          const su2double u_src = srcMass[iVar] / srcVolume;
-          const su2double* grad_u = srcGrad.data() + iVar * nDim;
-
-          /*--- Displacement from source centroid to triangle centroid ---*/
-          const su2double dx = xi - G_K_src[0];
-          const su2double dy = yi - G_K_src[1];
-
-          /*--- Evaluate solution at triangle centroid ---*/
-          const su2double u_quad = u_src + grad_u[0] * dx + grad_u[1] * dy;
-
           /*--- Add contribution to destination mass and gradient ---*/
-          dstMass[iVar] += area * u_quad;
+          dstMass[iVar] += volRatio * srcMass[iVar];
           for (auto iDim = 0u; iDim < nDim; ++iDim)
-            dstGrad[iVar * nDim + iDim] += area * grad_u[iDim];
+            dstGrad[iVar * nDim + iDim] += volTri * srcGrad[iVar * nDim + iDim];
         }
       }
     }

@@ -117,8 +117,8 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] geometry_src - Mesh geometry
      * \param[in] solver_src - Solver definition
      */
-    void ComputeSourceSolutionMass(CGeometry* geometry_src,
-                                   CSolver* solver_src);
+    void ComputeSourceMassAndGradient(CGeometry* geometry_src,
+                                      CSolver* solver_src);
 
     /*!
      * \brief Compute destination mesh mass and gradients using Gauss quadrature over intersection regions.
