@@ -45,6 +45,12 @@ using IntersectionMeshMap = map<unsigned long, IntersectionMesh>;
  */
 class CConservativeVolumeInterpolator : public CVolumeInterpolator {
   private:
+
+    vector<vector<su2double>> srcElemMass;  /*!< \brief Solution mass in source elements. */
+    vector<vector<su2double>> srcElemGrad;  /*!< \brief Solution gradient in source elements. */
+    vector<vector<su2double>> dstElemMass;  /*!< \brief Solution mass in destination elements. */
+    vector<vector<su2double>> dstElemGrad;  /*!< \brief Solution gradient in destination elements. */
+
     IntersectionMeshMap overlapMeshes;  /*!< \brief Map of destination elements to intersection region meshes. */
   public:
     /*!
@@ -88,59 +94,69 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \brief Containment search.
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
-     * \param[out] containingElems - Elements containing destination points
-     * \param[out] containingElemRanks - Ranks of elements containing destination points
-     * \param[out] uncontainedNodes - Nodes for which no containing element was found
      */
     void PointLocalization(CGeometry* geometry_src,
-                           CGeometry* geometry_dst,
-                           vector<optional<unsigned long>>& containingElems,
-                           vector<int>& containingElemRanks,
-                           vector<unsigned long>& uncontainedNodes);
+                           CGeometry* geometry_dst);
+
+    /*!
+     * \brief Compute overlapping elements between source and destination meshes.
+     * \param[in] geometry_src - Source mesh geometry
+     * \param[in] geometry_dst - Destination mesh geometry
+     */
+    void CreateIntersectionMeshes(CGeometry* geometry_src,
+                                  CGeometry* geometry_dst);
+
+    /*!
+     * \brief Generate nearest contained nodes for uncontained nodes using front-based ADT search.
+     * \param[in] geometry_dst - Destination mesh geometry
+     */
+    void FindNearestContainedNodes(CGeometry* geometry_dst);
 
     /*!
      * \brief Compute the mass and gradient of the solution variables.
-     * \param[in] geometry - Mesh geometry
-     * \param[in] solver - Solver definition
-     * \param[out] elemMass - Mass at each element for each solution variable
-     * \param[out] elemGrad - Gradient at each element for each solution variable
+     * \param[in] geometry_src - Mesh geometry
+     * \param[in] solver_src - Solver definition
      */
-    void ComputeSourceSolutionMass(CGeometry* geometry,
-                                   CSolver* solver,
-                                   vector<vector<su2double> >& elemMass,
-                                   vector<vector<su2double> >& elemGrad);
+    void ComputeSourceSolutionMass(CGeometry* geometry_src,
+                                   CSolver* solver_src);
 
     /*!
      * \brief Compute destination mesh mass and gradients using Gauss quadrature over intersection regions.
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_src - Source mesh solver
-     * \param[in] overlapMeshes - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
-     * \param[in] srcElemMass - Source element masses
-     * \param[in] srcElemGrad - Source element gradients
-     * \param[out] dstElemMass - Destination element masses
-     * \param[out] dstElemGrad - Destination element gradients
      */
     void ComputeDestinationMassAndGradient(CGeometry* geometry_src,
                                            CGeometry* geometry_dst,
-                                           CSolver* solver_src,
-                                           const IntersectionMeshMap& overlapMeshes,
-                                           const vector<vector<su2double>>& srcElemMass,
-                                           const vector<vector<su2double>>& srcElemGrad,
-                                           vector<vector<su2double>>& dstElemMass,
-                                           vector<vector<su2double>>& dstElemGrad);
+                                           CSolver* solver_src);
 
     /*!
-     * \brief Compute overlapping elements between source and destination meshes.
+     * \brief Apply local maximum principle correction following Alauzet's method.
      * \param[in] geometry_src - Source mesh geometry
      * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] containingElems - Elements containing destination points (from point localization)
-     * \param[out] overlapMeshes - Map from dst element ID to vector of (src element ID, triangulated mesh) pairs
+     * \param[in] solver_src - Source mesh solver
      */
-    void CreateIntersectionMeshes(CGeometry* geometry_src,
-                                  CGeometry* geometry_dst,
-                                  const vector<optional<unsigned long>>& containingElems,
-                                  IntersectionMeshMap& overlapMeshes);
+    void ApplyMaximumPrincipleCorrection(CGeometry* geometry_src,
+                                         CGeometry* geometry_dst,
+                                         CSolver* solver_src);
+
+    /*!
+     * \brief Calculate the solution at destination nodes from the mass and gradient.
+     * \param[in] config - Configuration object
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_dst - Destination mesh solver
+     */
+    void DistributeSolutionToNodes(const CConfig* config,
+                                   CGeometry* geometry_dst,
+                                   CSolver* solver_dst);
+
+    /*!
+     * \brief Extrapolate solution to uncontained nodes using precomputed nearest contained nodes.
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_dst - Destination mesh solver
+     */
+    void ExtrapolateToUncontainedNodes(CGeometry* geometry_dst,
+                                       CSolver* solver_dst);
 
     /*!
      * \brief Triangle-triangle intersection using Alauzet method (signed distance functions).
@@ -162,6 +178,37 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                       vector<su2double>& intersectionElemCoords,
                                       vector<su2double>& intersectionElemVols,
                                       set<unsigned long>& candidateElems);
+
+    /*!
+     * \brief Compute signed distance (power) of a point to a line.
+     * \param[in] point - Point coordinates (x, y)
+     * \param[in] lineStart - Line start point (x, y)
+     * \param[in] lineEnd - Line end point (x, y)
+     * \return Signed distance (positive if point is on left side of oriented line)
+     */
+    su2double ComputeSignedDistance(const su2double point[2], const su2double lineStart[2], const su2double lineEnd[2]);
+
+    /*!
+     * \brief Process degenerate edge-edge intersection cases following Alauzet's algorithm.
+     * \param[in] P_edges - Destination triangle edges (3 edges, each with 2 vertices)
+     * \param[in] Q_edges - Source triangle edges (3 edges, each with 2 vertices)
+     * \param[in] power_P - Powers of P vertices w.r.t. Q edges [3][3]
+     * \param[in] power_Q - Powers of Q vertices w.r.t. P edges [3][3]
+     * \param[in] EPS - Tolerance for zero detection
+     * \param[out] intersectionPoints - Cloud of intersection points
+     * \param[out] isDegenerateVertexP - boolean array indicating which vertices of P are degenerate
+     * \param[out] isDegenerateVertexQ - boolean array indicating which vertices of Q are degenerate
+     * \param[out] isDegenerateEdgePair - 3x3 boolean array indicating which edge pairs are degenerate [iP][jQ]
+     */
+    void ProcessDegenerateEdgeIntersections(const su2double* P_edges[3][2],
+                                            const su2double* Q_edges[3][2],
+                                            const su2double power_P[3][3],
+                                            const su2double power_Q[3][3],
+                                            const su2double EPS,
+                                            vector<su2double>& intersectionPoints,
+                                            bool isDegenerateVertexP[3],
+                                            bool isDegenerateVertexQ[3],
+                                            bool isDegenerateEdgePair[3][3]);
 
     /*!
      * \brief Add face (edge in 2D) neighbor to candidate list when face is intersected.
@@ -188,37 +235,6 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                    set<unsigned long>& candidateElems);
 
     /*!
-     * \brief Process degenerate edge-edge intersection cases following Alauzet's algorithm.
-     * \param[in] P_edges - Destination triangle edges (3 edges, each with 2 vertices)
-     * \param[in] Q_edges - Source triangle edges (3 edges, each with 2 vertices)
-     * \param[in] power_P - Powers of P vertices w.r.t. Q edges [3][3]
-     * \param[in] power_Q - Powers of Q vertices w.r.t. P edges [3][3]
-     * \param[in] EPS - Tolerance for zero detection
-     * \param[out] intersectionPoints - Cloud of intersection points
-     * \param[out] isDegenerateVertexP - boolean array indicating which vertices of P are degenerate
-     * \param[out] isDegenerateVertexQ - boolean array indicating which vertices of Q are degenerate
-     * \param[out] isDegenerateEdgePair - 3x3 boolean array indicating which edge pairs are degenerate [iP][jQ]
-     */
-    void ProcessDegenerateEdgeIntersections(const su2double* P_edges[3][2],
-                                            const su2double* Q_edges[3][2],
-                                            const su2double power_P[3][3],
-                                            const su2double power_Q[3][3],
-                                            const su2double EPS,
-                                            vector<su2double>& intersectionPoints,
-                                            bool isDegenerateVertexP[3],
-                                            bool isDegenerateVertexQ[3],
-                                            bool isDegenerateEdgePair[3][3]);
-
-    /*!
-     * \brief Compute signed distance (power) of a point to a line.
-     * \param[in] point - Point coordinates (x, y)
-     * \param[in] lineStart - Line start point (x, y)
-     * \param[in] lineEnd - Line end point (x, y)
-     * \return Signed distance (positive if point is on left side of oriented line)
-     */
-    su2double ComputeSignedDistance(const su2double point[2], const su2double lineStart[2], const su2double lineEnd[2]);
-
-    /*!
      * \brief Mesh a convex polygon into triangles following Alauzet's method.
      * \param[in] polygonPoints - Convex polygon vertices (x,y pairs in order)
      * \param[out] polygonElemCoords - Flat array of meshed intersection coordinates
@@ -228,41 +244,6 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                            vector<su2double>& polygonElemCoords,
                            vector<su2double>& polygonElemVols);
 
-    /*!
-     * \brief Apply local maximum principle correction following Alauzet's method.
-     * \param[in] geometry_src - Source mesh geometry
-     * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] solver_src - Source mesh solver
-     * \param[in] overlapMeshes - Map from dst element ID to overlapping src element IDs
-     * \param[in] srcElemMass - Source element masses
-     * \param[in] srcElemGrad - Source element gradients
-     * \param[in,out] dstElemMass - Destination element masses
-     * \param[in,out] dstElemGrad - Destination element gradients (corrected)
-     */
-    void ApplyMaximumPrincipleCorrection(CGeometry* geometry_src,
-                                         CGeometry* geometry_dst,
-                                         CSolver* solver_src,
-                                         const IntersectionMeshMap& overlapMeshes,
-                                         const vector<vector<su2double>>& srcElemMass,
-                                         const vector<vector<su2double>>& srcElemGrad,
-                                         vector<vector<su2double>>& dstElemMass,
-                                         vector<vector<su2double>>& dstElemGrad);
-
-    /*!
-     * \brief Calculate the solution at destination nodes from the mass and gradient.
-     * \param[in] config - Configuration object
-     * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] solver_dst - Destination mesh solver
-     * \param[in] dstElemMass - Destination element masses
-     * \param[in] dstElemGrad - Destination element gradients
-     */
-    void DistributeSolutionToNodes(const CConfig* config,
-                                   CGeometry* geometry_dst,
-                                   CSolver* solver_dst,
-                                   const vector<vector<su2double>>& dstElemMass,
-                                   const vector<vector<su2double>>& dstElemGrad);
-
-  private:
     /*!
      * \brief Compute solution mass and gradient in a triangular element from vertex values.
      * \param[in] vertexCoords - Triangle vertex coordinates (6 values: x0,y0,x1,y1,x2,y2)
@@ -296,39 +277,15 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                            vector<su2double>& grad);
 
     /*!
-     * \brief Generate nearest contained nodes for uncontained nodes using front-based ADT search.
-     * \param[in] geometry_dst - Destination mesh geometry
-     */
-    void FindNearestContainedNodes(CGeometry* geometry_dst);
-
-    /*!
-     * \brief Extrapolate solution to uncontained nodes using precomputed nearest contained nodes.
-     * \param[in] geometry_dst - Destination mesh geometry
-     * \param[in] solver_dst - Destination mesh solver
-     * \param[in] uncontainedNodes - List of nodes that need extrapolation
-     * \param[in] dstElemMass - Destination element masses
-     * \param[in] dstElemGrad - Destination element gradients
-     */
-    void ExtrapolateToUncontainedNodes(CGeometry* geometry_dst,
-                                       CSolver* solver_dst,
-                                       const vector<unsigned long>& uncontainedNodes,
-                                       const vector<vector<su2double>>& dstElemMass,
-                                       const vector<vector<su2double>>& dstElemGrad);
-
-    /*!
      * \brief Extrapolate solution from a specific nearest contained node using linear reconstruction.
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_dst - Destination mesh solver
      * \param[in] uncontainedNodeID - ID of the uncontained node
      * \param[in] nearestNodeID - ID of the nearest contained node to extrapolate from
-     * \param[in] dstElemMass - Destination element masses (for computing gradients)
-     * \param[in] dstElemGrad - Destination element gradients (for computing average gradient)
      * \return True if extrapolation was successful
      */
     bool ExtrapolateFromNearestNode(CGeometry* geometry_dst,
                                     CSolver* solver_dst,
                                     unsigned long uncontainedNodeID,
-                                    unsigned long nearestNodeID,
-                                    const vector<vector<su2double>>& dstElemMass,
-                                    const vector<vector<su2double>>& dstElemGrad);
+                                    unsigned long nearestNodeID);
 };

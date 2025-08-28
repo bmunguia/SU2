@@ -97,11 +97,13 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
 
   if (initial_interp) {
     /*--------------------------------------------------------------------------*/
-    /*--- Step 0: Initialize destination coordinate vector. If applying a    ---*/
-    /*---         curvature correction, this vector will be modified.        ---*/
-    /*---         Otherwise, it will just contain the original coordinates.  ---*/
+    /*--- Step 0: Initialize vectors.                                        ---*/
     /*--------------------------------------------------------------------------*/
     // InitializeCoords(geometry_dst, coorDst);
+    srcElemMass.resize(nElem_src, vector<su2double>(nVar));
+    srcElemGrad.resize(nElem_src, vector<su2double>(nVar * nDim));
+    dstElemMass.resize(nElem_dst, vector<su2double>(nVar));
+    dstElemGrad.resize(nElem_dst, vector<su2double>(nVar * nDim));
 
     /*--------------------------------------------------------------------------*/
     /*--- Step 1: Localize destination nodes on the source mesh.             ---*/
@@ -111,15 +113,14 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
     /*---         element was found                                          ---*/
     /*--------------------------------------------------------------------------*/
     if (rank == MASTER_NODE) cout << "Performing containment search." << endl;
-    PointLocalization(geometry_src, geometry_dst, containingElems, containingElemRanks,
-                      uncontainedNodes);
+    PointLocalization(geometry_src, geometry_dst);
 
     /*--------------------------------------------------------------------------*/
     /*--- Step 2: Compute the intersection of elements K_dst with elements   ---*/
     /*---         K_src it overlaps.                                         ---*/
     /*--------------------------------------------------------------------------*/
     if (rank == MASTER_NODE) cout << "Computing element intersections." << endl;
-    CreateIntersectionMeshes(geometry_src, geometry_dst, containingElems, overlapMeshes);
+    CreateIntersectionMeshes(geometry_src, geometry_dst);
 
     /*--------------------------------------------------------------------------*/
     /*--- Step 3: Generate nearest contained nodes for uncontained           ---*/
@@ -134,32 +135,26 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--------------------------------------------------------------------------*/
   /*--- Step 4: Compute solution mass and gradient on source mesh.         ---*/
   /*--------------------------------------------------------------------------*/
-  vector<vector<su2double>> srcElemMass;
-  vector<vector<su2double>> srcElemGrad;
-  ComputeSourceSolutionMass(geometry_src, solver_src, srcElemMass, srcElemGrad);
+  ComputeSourceSolutionMass(geometry_src, solver_src);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 5: Compute destination mesh mass and gradient using Gauss     ---*/
   /*---         quadrature over intersection regions.                      ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Computing destination mesh mass and gradients." << endl;
-  vector<vector<su2double>> dstElemMass;
-  vector<vector<su2double>> dstElemGrad;
-  ComputeDestinationMassAndGradient(geometry_src, geometry_dst, solver_src, overlapMeshes,
-                                    srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
+  ComputeDestinationMassAndGradient(geometry_src, geometry_dst, solver_src);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 6: Correct the gradient to enforce the maximum principle.     ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Applying local maximum principle correction." << endl;
-  ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src, overlapMeshes,
-                                  srcElemMass, srcElemGrad, dstElemMass, dstElemGrad);
+  ApplyMaximumPrincipleCorrection(geometry_src, geometry_dst, solver_src);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 7: Perform averaging to get solution at vertices.             ---*/
   /*--------------------------------------------------------------------------*/
   if (rank == MASTER_NODE) cout << "Distributing solution to destination nodes." << endl;
-  DistributeSolutionToNodes(config, geometry_dst, solver_dst, dstElemMass, dstElemGrad);
+  DistributeSolutionToNodes(config, geometry_dst, solver_dst);
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 8: Handle surface nodes via linear interpolation.             ---*/
@@ -172,15 +167,12 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
   /*--------------------------------------------------------------------------*/
   if (!uncontainedNodes.empty()) {
     if (rank == MASTER_NODE) cout << "Performing extrapolation to uncontained nodes." << endl;
-    ExtrapolateToUncontainedNodes(geometry_dst, solver_dst, uncontainedNodes, dstElemMass, dstElemGrad);
+    ExtrapolateToUncontainedNodes(geometry_dst, solver_dst);
   }
 }
 
 void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
-                                                        CGeometry* geometry_dst,
-                                                        vector<optional<unsigned long>>& containingElems,
-                                                        vector<int>& containingElemRanks,
-                                                        vector<unsigned long>& uncontainedNodes) {
+                                                        CGeometry* geometry_dst) {
   /*--- Search for containing elements for the given coordinates ---*/
   CADTElemClass& volumeADT = GetSourceVolumeADT();
   CADTElemClass& surfaceADT = GetSourceSurfaceADT();
@@ -235,49 +227,8 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
   }
 }
 
-void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geometry, CSolver* solver,
-                                                                vector<vector<su2double>>& elemMass,
-                                                                vector<vector<su2double>>& elemGrad) {
-  elemMass.resize(nElem_src, vector<su2double>(nVar, 0.0));
-  elemGrad.resize(nElem_src, vector<su2double>(nVar * nDim, 0.0));
-
-  su2double vertexCoords[6];
-
-  for (auto elemID = 0u; elemID < geometry->GetnElem(); ++elemID) {
-    auto* elem = geometry->elem[elemID];
-    const unsigned short nNodes = elem->GetnNodes();
-    const unsigned short VTK_Type = elem->GetVTK_Type();
-    const su2double elemVolume = elem->GetVolume();
-
-    /*--- Get solution at nodes ---*/
-    vector<vector<su2double>> vertexSol(nNodes, vector<su2double>(nVar, 0.0));
-
-    for (auto iNode = 0u; iNode < nNodes; ++iNode) {
-      unsigned long nodeID = elem->GetNode(iNode);
-      for (auto iVar = 0u; iVar < nVar; ++iVar) {
-        vertexSol[iNode][iVar] = solver->GetNodes()->GetSolution(nodeID, iVar);
-      }
-    }
-
-    if (VTK_Type != TRIANGLE) continue;
-
-    /*--- Get triangle vertex coordinates ---*/
-    for (auto iNode = 0u; iNode < 3; ++iNode) {
-      unsigned long nodeID = elem->GetNode(iNode);
-      vertexCoords[iNode * 2 + 0] = geometry->nodes->GetCoord(nodeID, 0);
-      vertexCoords[iNode * 2 + 1] = geometry->nodes->GetCoord(nodeID, 1);
-    }
-
-    /*--- Compute mass and gradient ---*/
-    ComputeTriangleMassAndGradient(vertexCoords, vertexSol, elemVolume, nVar,
-                                   elemMass[elemID], elemGrad[elemID]);
-  }
-}
-
 void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geometry_src,
-                                                               CGeometry* geometry_dst,
-                                                               const vector<optional<unsigned long>>& containingElems,
-                                                               IntersectionMeshMap& overlapMeshes) {
+                                                               CGeometry* geometry_dst) {
   overlapMeshes.clear();
 
   /*--- Storage for triangle vertex coordinates ---*/
@@ -385,6 +336,493 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
     cout << "Found " << totalOverlaps << " total overlapping element pairs." << endl;
     cout << "Number of destination elements with overlaps: " << overlapMeshes.size() << endl;
     cout << "Number of failed triangle intersections: " << failedIntersections << "." << endl;
+  }
+}
+
+void CConservativeVolumeInterpolator::FindNearestContainedNodes(CGeometry* geometry_dst) {
+  /*--- Clear and resize the nearestNodes vector ---*/
+  nearestNodes.clear();
+  nearestNodes.resize(uncontainedNodes.size(), nullopt);
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 1: Identify contained nodes that have at least one            ---*/
+  /*---         uncontained neighbor (the "front" of contained nodes)      ---*/
+  /*--------------------------------------------------------------------------*/
+  set<unsigned long> uncontainedSet(uncontainedNodes.begin(), uncontainedNodes.end());
+  vector<unsigned long> frontNodes;
+  vector<su2double> frontCoords;
+
+  /*--- Loop through all domain nodes to find front nodes ---*/
+  for (auto nodeID = 0u; nodeID < nPoint_dst; ++nodeID) {
+    /*--- Skip if this node is uncontained, boundary, or not domain ---*/
+    if (uncontainedSet.count(nodeID) > 0 ||
+        geometry_dst->nodes->GetPhysicalBoundary(nodeID) ||
+        !geometry_dst->nodes->GetDomain(nodeID)) {
+      continue;
+    }
+
+    /*--- Check if this contained node has any uncontained neighbors ---*/
+    bool hasUncontainedNeighbor = false;
+    for (auto iPoint = 0u; iPoint < geometry_dst->nodes->GetnPoint(nodeID); ++iPoint) {
+      unsigned long neighborID = geometry_dst->nodes->GetPoint(nodeID, iPoint);
+      if (uncontainedSet.count(neighborID) > 0) {
+        hasUncontainedNeighbor = true;
+        break;
+      }
+    }
+
+    /*--- If this is a front node, add it to the list ---*/
+    if (hasUncontainedNeighbor) {
+      frontNodes.push_back(nodeID);
+      const su2double* coord = geometry_dst->nodes->GetCoord(nodeID);
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        frontCoords.push_back(coord[iDim]);
+      }
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Found " << frontNodes.size() << " front nodes (contained nodes with uncontained neighbors)." << endl;
+  }
+
+  if (frontNodes.empty()) {
+    /*--- No front nodes found ---*/
+    if (rank == MASTER_NODE)
+      cout << "No front nodes found. All uncontained nodes will have no nearest node." << endl;
+    return;
+  }
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 2: Build ADT for the front nodes                              ---*/
+  /*--------------------------------------------------------------------------*/
+  vector<unsigned long> frontPointIDs(frontNodes.size());
+  for (auto i = 0u; i < frontNodes.size(); ++i) {
+    frontPointIDs[i] = i;
+  }
+
+  CADTPointsOnlyClass frontADT(nDim, frontNodes.size(), frontCoords.data(), frontPointIDs.data(), false);
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 3: For each uncontained node, find nearest front node         ---*/
+  /*--------------------------------------------------------------------------*/
+  for (auto i = 0u; i < uncontainedNodes.size(); ++i) {
+    unsigned long uncontainedNodeID = uncontainedNodes[i];
+    const su2double* uncontainedCoord = geometry_dst->nodes->GetCoord(uncontainedNodeID);
+
+    /*--- Find nearest front node ---*/
+    su2double dist;
+    unsigned long nearestFrontNodeIndex;
+    int rankID;  // Not used in local ADT
+    frontADT.DetermineNearestNode(uncontainedCoord, dist, nearestFrontNodeIndex, rankID);
+
+    /*--- Store the actual node ID of the nearest front node ---*/
+    nearestNodes[i] = frontNodes[nearestFrontNodeIndex];
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Generated nearest contained nodes for " << uncontainedNodes.size();
+    cout << " uncontained nodes." << endl;
+  }
+}
+
+void CConservativeVolumeInterpolator::ComputeSourceSolutionMass(CGeometry* geometry_src,
+                                                                CSolver* solver_src) {
+  /*--- Initialize source solution mass and gradient ---*/
+  for (auto& v : srcElemMass) std::fill(v.begin(), v.end(), 0.0);
+  for (auto& v : srcElemGrad) std::fill(v.begin(), v.end(), 0.0);
+
+  su2double vertexCoords[6];
+
+  for (auto elemID = 0u; elemID < geometry_src->GetnElem(); ++elemID) {
+    auto* elem = geometry_src->elem[elemID];
+    const unsigned short nNodes = elem->GetnNodes();
+    const unsigned short VTK_Type = elem->GetVTK_Type();
+    const su2double elemVolume = elem->GetVolume();
+
+    /*--- Get solution at nodes ---*/
+    vector<vector<su2double>> vertexSol(nNodes, vector<su2double>(nVar, 0.0));
+
+    for (auto iNode = 0u; iNode < nNodes; ++iNode) {
+      unsigned long nodeID = elem->GetNode(iNode);
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
+        vertexSol[iNode][iVar] = solver_src->GetNodes()->GetSolution(nodeID, iVar);
+      }
+    }
+
+    if (VTK_Type != TRIANGLE) continue;
+
+    /*--- Get triangle vertex coordinates ---*/
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
+      unsigned long nodeID = elem->GetNode(iNode);
+      vertexCoords[iNode * 2 + 0] = geometry_src->nodes->GetCoord(nodeID, 0);
+      vertexCoords[iNode * 2 + 1] = geometry_src->nodes->GetCoord(nodeID, 1);
+    }
+
+    /*--- Compute mass and gradient ---*/
+    ComputeTriangleMassAndGradient(vertexCoords, vertexSol, elemVolume, nVar,
+                                   srcElemMass[elemID], srcElemGrad[elemID]);
+  }
+}
+
+void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometry* geometry_src,
+                                                                        CGeometry* geometry_dst,
+                                                                        CSolver* solver_src) {
+  /*--- Initialize destination solution mass and gradient ---*/
+  for (auto& v : dstElemMass) std::fill(v.begin(), v.end(), 0.0);
+  for (auto& v : dstElemGrad) std::fill(v.begin(), v.end(), 0.0);
+
+
+  const unsigned short nCoorPerElem = (nDim == 2)? 6 : 12;
+
+  /*--- Loop over all destination elements that have intersections ---*/
+  su2double absDiffTol[5] = {1e-10, 1e-8, 1e-6, 1e-4, 1e-2};
+  su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
+  vector<unsigned long> countAbsDiff(5, 0);
+  vector<unsigned long> countRelDiff(5, 0);
+
+  /*--- Counters for non-matching boundary treatment ---*/
+  unsigned long totalBoundaryElems = 0;
+  unsigned long nonConservativeTreatment = 0;
+
+  for (const auto& intersection : overlapMeshes) {
+    unsigned long dstElemID = intersection.first;
+    const IntersectionMesh& srcElemMeshes = intersection.second;
+
+    /*--- Initialize destination element mass and gradient ---*/
+    const auto* dstElem = geometry_dst->elem[dstElemID];
+    auto& dstMass = dstElemMass[dstElemID];
+    auto& dstGrad = dstElemGrad[dstElemID];
+    fill(dstMass.begin(), dstMass.end(), 0.0);
+    fill(dstGrad.begin(), dstGrad.end(), 0.0);
+
+    /*--- Track total triangle area for this destination element ---*/
+    su2double intersectionVol = 0.0;
+
+    /*--- Process each intersection region T_j = intersection(K_dst, K_src_j) ---*/
+    for (const auto& srcElemMesh : srcElemMeshes) {
+      unsigned long srcElemID = srcElemMesh.srcElemID;
+      const vector<su2double>& triElemCoords = srcElemMesh.coords;
+      const vector<su2double>& triElemVols = srcElemMesh.vols;
+      unsigned int numTri = triElemCoords.size() / nCoorPerElem;
+
+      for (auto iTri = 0u; iTri < numTri; ++iTri) {
+        /*--- Get triangle vertices ---*/
+        const su2double* coor_tri = triElemCoords.data() + iTri * nCoorPerElem;
+        const su2double x0 = coor_tri[0], y0 = coor_tri[1];
+        const su2double x1 = coor_tri[2], y1 = coor_tri[3];
+        const su2double x2 = coor_tri[4], y2 = coor_tri[5];
+
+        /*--- Triangle area using cross product ---*/
+        const su2double cross = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+        const su2double area = 0.5 * abs(cross);
+
+        /*--- Add to total triangle area ---*/
+        intersectionVol += area;
+
+        /*--- Get source element properties ---*/
+        const auto* srcElem = geometry_src->elem[srcElemID];
+        auto srcMass = srcElemMass[srcElemID];
+        auto srcGrad = srcElemGrad[srcElemID];
+
+        const su2double srcVolume = srcElem->GetVolume();
+        const su2double* G_K_src = srcElem->GetCG();
+
+        /*--- Use 1-point Gauss quadrature (centroid rule) ---*/
+        /*--- Triangle centroid coordinates ---*/
+        const su2double xi = (x0 + x1 + x2) / 3.0;
+        const su2double yi = (y0 + y1 + y2) / 3.0;
+
+        /*--- Integrate mass and gradient using 1-point quadrature ---*/
+        for (auto iVar = 0u; iVar < nVar; ++iVar) {
+          const su2double u_src = srcMass[iVar] / srcVolume;
+          const su2double* grad_u = srcGrad.data() + iVar * nDim;
+
+          /*--- Displacement from source centroid to triangle centroid ---*/
+          const su2double dx = xi - G_K_src[0];
+          const su2double dy = yi - G_K_src[1];
+
+          /*--- Evaluate solution at triangle centroid ---*/
+          const su2double u_quad = u_src + grad_u[0] * dx + grad_u[1] * dy;
+
+          /*--- Add contribution to destination mass and gradient ---*/
+          dstMass[iVar] += area * u_quad;
+          for (auto iDim = 0u; iDim < nDim; ++iDim)
+            dstGrad[iVar * nDim + iDim] += area * grad_u[iDim];
+        }
+      }
+    }
+
+    /*--- Volume average integral: gra(u_dst) = int_K_dst (gra(u) dA) / |K_dst| ---*/
+    const su2double dstVolume = dstElem->GetVolume();
+
+    /*--- Normalize by intersection volume instead of destination volume ---*/
+    /*--- For matching volumes, this should have no impact               ---*/
+    /*--- For non-matching domains, this preserves P1-exactness          ---*/
+    /*--- This preserves constant/linear solutions in non-matching domains ---*/
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      /*--- For mass: divide by intersection volume to get correct barycenter value ---*/
+      dstMass[iVar] = dstMass[iVar] * dstVolume / intersectionVol;
+
+      /*--- For gradient: use intersection-weighted average ---*/
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        dstGrad[iVar * nDim + iDim] /= intersectionVol;
+      }
+    }
+
+    /*--- Compare total triangle area with destination element volume ---*/
+    const su2double absDiff = abs(dstVolume - intersectionVol);
+    const su2double relDiff = absDiff / dstVolume;
+    for (auto i = 0u; i < 5; ++i) {
+      if (absDiff > absDiffTol[i]) countAbsDiff[i]++;
+      if (relDiff > relDiffTol[i]) countRelDiff[i]++;
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Area conservation (absolute difference):" << endl;
+    for (auto i = 0u; i < 5; ++i) {
+      cout << "  Number exceeding " << scientific << setprecision(1);
+      cout << absDiffTol[i] << ": ";
+      cout << countAbsDiff[i] << endl;
+    }
+    cout << "Area conservation (relative difference):" << endl;
+    for (auto i = 0u; i < 5; ++i) {
+      cout << "  Number exceeding " << fixed << setprecision(0) << setw(3);
+      cout << relDiffTol[i] * 100 << "%: ";
+      cout << countRelDiff[i] << endl;
+    }
+  }
+}
+
+void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry* geometry_src,
+                                                                      CGeometry* geometry_dst,
+                                                                      CSolver* solver_src) {
+  const su2double EPS = 1e-16;
+
+  /*--- Loop over all destination elements that have overlaps ---*/
+  su2double u_tilde[3];
+  vector<su2double> correctedMass(1, 0.0);
+  vector<su2double> correctedGrad(1 * nDim, 0.0);
+  vector<vector<su2double>> vertexSol(3, vector<su2double>(1));
+  for (const auto& intersection : overlapMeshes) {
+    unsigned long dstElemID = intersection.first;
+    const IntersectionMesh& srcElemMeshes = intersection.second;
+
+    auto* dstElem = geometry_dst->elem[dstElemID];
+    if (dstElem->GetVTK_Type() != TRIANGLE) continue;
+
+    /*--- Get destination element vertices ---*/
+    su2double dstVertices[6];
+    for (auto iNode = 0u; iNode < 3; ++iNode) {
+      unsigned long nodeID = dstElem->GetNode(iNode);
+      dstVertices[iNode * 2 + 0] = geometry_dst->nodes->GetCoord(nodeID, 0);
+      dstVertices[iNode * 2 + 1] = geometry_dst->nodes->GetCoord(nodeID, 1);
+    }
+
+    /*--- Element volume and centroid (barycenter G_K) ---*/
+    const su2double elemVolume = dstElem->GetVolume();
+    const su2double* G_K = dstElem->GetCG();
+
+    /*--- For each variable, apply Alauzet's maximum principle correction ---*/
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      /*--------------------------------------------------------------------------*/
+      /*--- Step 1: Compute local bounds from overlapping source elements.     ---*/
+      /*--------------------------------------------------------------------------*/
+      su2double u_min = 1e20;
+      su2double u_max = -1e20;
+
+      /*--- Find all vertices Q from source elements K_src that K overlaps ---*/
+      for (const auto& srcElemMesh : srcElemMeshes) {
+        unsigned long srcElemID = srcElemMesh.srcElemID;
+        auto* srcElem = geometry_src->elem[srcElemID];
+        if (srcElem->GetVTK_Type() != TRIANGLE) continue;
+
+        /*--- Get solution values at vertices of source element ---*/
+        for (auto iNode = 0u; iNode < 3; ++iNode) {
+          unsigned long nodeID = srcElem->GetNode(iNode);
+          su2double u_vertex = solver_src->GetNodes()->GetSolution(nodeID, iVar);
+          u_min = min(u_min, u_vertex);
+          u_max = max(u_max, u_vertex);
+        }
+      }
+
+      /*--- Skip if no valid bounds found ---*/
+      if (u_min > 1e19 || u_max < -1e19) continue;
+
+      /*--------------------------------------------------------------------------*/
+      /*--- Step 2: Get current solution at destination element.               ---*/
+      /*--------------------------------------------------------------------------*/
+      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
+      const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
+
+      /*--------------------------------------------------------------------------*/
+      /*--- Step 3: Compute u_K(P_i) at each vertex using Taylor expansion.    ---*/
+      /*--------------------------------------------------------------------------*/
+      su2double u_K_P[3];  // Values at vertices P_0, P_1, P_2
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
+        /*--- Vector G_K P_i ---*/
+        const su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
+        const su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
+
+        /*--- u_K(P_i) = u_K(G_K) + gra(u_K) · G_K P_i ---*/
+        u_K_P[iNode] = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
+      }
+
+      /*--------------------------------------------------------------------------*/
+      /*--- Step 4: Check if maximum principle is violated.                    ---*/
+      /*--------------------------------------------------------------------------*/
+      bool violatesMaxPrinciple = false;
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
+        if (u_K_P[iNode] < u_min - EPS || u_K_P[iNode] > u_max + EPS) {
+          violatesMaxPrinciple = true;
+          break;
+        }
+      }
+
+      /*--- If no violation, skip correction ---*/
+      if (!violatesMaxPrinciple) continue;
+
+      /*--------------------------------------------------------------------------*/
+      /*--- Step 5: Apply Alauzet's correction algorithm.                      ---*/
+      /*--------------------------------------------------------------------------*/
+      /*--- Sort vertices by solution value: u_K(P_0) ≤ u_K(P_1) ≤ u_K(P_2) ---*/
+      vector<pair<su2double, unsigned short>> sortedValues;
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
+        sortedValues.push_back(make_pair(u_K_P[iNode], iNode));
+      }
+      sort(sortedValues.begin(), sortedValues.end());
+
+      const su2double u_P0 = sortedValues[0].first;  // Smallest value
+      const su2double u_P1 = sortedValues[1].first;  // Middle value
+      const su2double u_P2 = sortedValues[2].first;  // Largest value
+
+      /*--- Apply first correction pass ---*/
+      const su2double u_M_P2 = min(u_P2, u_max);
+      const su2double u_M_P1 = min(u_P1 + 0.5 * max(0.0, u_P2 - u_max), u_max);
+      const su2double u_M_P0 = 3.0 * u_G - u_M_P1 - u_M_P2;
+
+      /*--- Apply second correction pass ---*/
+      const su2double u_tilde_P0 = max(u_M_P0, u_min);
+      const su2double u_tilde_P1 = max(u_M_P1 - 0.5 * max(0.0, u_min - u_M_P0), u_min);
+      const su2double u_tilde_P2 = 3.0 * u_G - u_tilde_P0 - u_tilde_P1;
+
+      /*--------------------------------------------------------------------------*/
+      /*--- Step 6: Compute corrected mass and gradient from new nodal values. ---*/
+      /*--------------------------------------------------------------------------*/
+      /*--- Put corrected values back in original vertex order ---*/
+      u_tilde[sortedValues[0].second] = u_tilde_P0;
+      u_tilde[sortedValues[1].second] = u_tilde_P1;
+      u_tilde[sortedValues[2].second] = u_tilde_P2;
+
+      /*--- Prepare vertex solutions for single variable ---*/
+      for (auto iNode = 0u; iNode < 3; ++iNode) {
+        vertexSol[iNode][0] = u_tilde[iNode];
+      }
+
+      /*--- Compute corrected mass and gradient ---*/
+      ComputeTriangleMassAndGradient(dstVertices, vertexSol, elemVolume, 1,
+                                     correctedMass, correctedGrad);
+
+      /*--- Update destination element data ---*/
+      dstElemMass[dstElemID][iVar] = correctedMass[0];
+      dstElemGrad[dstElemID][iVar * nDim + 0] = correctedGrad[0];
+      dstElemGrad[dstElemID][iVar * nDim + 1] = correctedGrad[1];
+    }
+  }
+}
+
+void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* config,
+                                                                CGeometry* geometry_dst,
+                                                                CSolver* solver_dst) {
+  /*--- Loop over all nodes and accumulate contributions from each element ---*/
+  for (auto l = 0u; l < nPoint_dst; ++l) {
+    /*--- Get pointer to node coordinates and solution mass ---*/
+    const su2double* coor = geometry_dst->nodes->GetCoord(l);
+
+    /*--- Initialize mass and volume accumulation ---*/
+    for (auto iVar = 0u; iVar < nVar+1; ++iVar)
+      solver_dst->GetNodes()->SetSolution_Mass(l, iVar, 0.0);
+
+    /*--- Loop over all elements that contain this node ---*/
+    const unsigned short nElem_node = geometry_dst->nodes->GetnElem(l);
+    for (auto j = 0u; j < nElem_node; ++j) {
+      unsigned long elemID = geometry_dst->nodes->GetElem(l, j);
+      auto* elem = geometry_dst->elem[elemID];
+
+      /*--- Skip non-triangular elements ---*/
+      if (elem->GetVTK_Type() != TRIANGLE) continue;
+
+      /*--- Get element volume and centroid ---*/
+      const su2double elemVolume = elem->GetVolume();
+      const su2double* G_K = elem->GetCG();
+
+      /*--- Vector from centroid to node ---*/
+      const su2double vec[2] = {coor[0] - G_K[0], coor[1] - G_K[1]};
+
+      /*--- Loop over variables ---*/
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
+        /*--- Get element-centered solution ---*/
+        const su2double u_G = dstElemMass[elemID][iVar] / elemVolume;
+        const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
+
+        /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) · (P_i - G_K) ---*/
+        const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
+
+        /*--- Accumulate weighted contribution ---*/
+        solver_dst->GetNodes()->AddSolution_Mass(l, iVar, vertexValue * elemVolume);
+      }
+
+      /*--- Accumulate weight ---*/
+      solver_dst->GetNodes()->AddSolution_Mass(l, nVar, elemVolume);
+    }
+  }
+
+  /*--- Periodic mass and volume communication ---*/
+  for (auto i = 1u; i <= config->GetnMarker_Periodic()/2; ++i) {
+    solver_dst->InitiatePeriodicComms(geometry_dst, config, i, PERIODIC_INTERP);
+    solver_dst->CompletePeriodicComms(geometry_dst, config, i, PERIODIC_INTERP);
+  }
+
+  /*--- Calculate conserved quantities from mass and volume ---*/
+  for (auto l = 0u; l < nPoint_dst; ++l) {
+    const su2double* mass = solver_dst->GetNodes()->GetSolution_Mass(l);
+    const su2double vol = mass[nVar];
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      solver_dst->GetNodes()->SetSolution(l, iVar, mass[iVar] / vol);
+    }
+  }
+  solver_dst->Set_OldSolution();
+}
+
+void CConservativeVolumeInterpolator::ExtrapolateToUncontainedNodes(CGeometry* geometry_dst,
+                                                                    CSolver* solver_dst) {
+  unsigned long numExtrapolated = 0;
+  unsigned long numFallback = 0;
+  unsigned long numFailed = 0;
+
+  /*--- Process each uncontained node ---*/
+  for (auto i = 0u; i < uncontainedNodes.size(); ++i) {
+    unsigned long nodeID = uncontainedNodes[i];
+
+    /*--- Skip boundary nodes (they should be handled by surface interpolation) ---*/
+    if (geometry_dst->nodes->GetPhysicalBoundary(nodeID)) continue;
+
+    /*--- Get nearest contained node ID ---*/
+    auto nearestNodeOpt = nearestNodes[i];
+
+    /*--- Check if we have a valid nearest node ---*/
+    if (nearestNodeOpt.has_value()) {
+      unsigned long nearestNodeID = nearestNodeOpt.value();
+      /*--- Extrapolate from the nearest contained node ---*/
+      if (ExtrapolateFromNearestNode(geometry_dst, solver_dst, nodeID, nearestNodeID)) {
+        numExtrapolated++;
+      }
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Extrapolation completed: " << numExtrapolated << " nodes from nearest nodes, ";
+    cout << numFallback << " nodes via fallback, " << numFailed << " nodes failed." << endl;
   }
 }
 
@@ -522,6 +960,23 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   MeshConvexPolygon(pointCloud, intersectionElemCoords, intersectionElemVols);
 
   return (!intersectionElemCoords.empty());
+}
+
+su2double CConservativeVolumeInterpolator::ComputeSignedDistance(const su2double point[2],
+                                                                 const su2double lineStart[2],
+                                                                 const su2double lineEnd[2]) {
+  /*--- Unit normal of line ---*/
+  su2double Nx = lineStart[1] - lineEnd[1];
+  su2double Ny = lineEnd[0] - lineStart[0];
+  const su2double mag = sqrt(Nx * Nx + Ny * Ny);
+  Nx /= mag;
+  Ny /= mag;
+
+  /*--- Compute signed distance using dot product between [P P{i+1}] and N ---*/
+  const su2double Px = point[0] - lineStart[0];
+  const su2double Py = point[1] - lineStart[1];
+
+  return Px * Nx + Py * Ny;
 }
 
 void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(const su2double* P_edges[3][2],
@@ -709,23 +1164,6 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(const s
   } // for iP
 }
 
-su2double CConservativeVolumeInterpolator::ComputeSignedDistance(const su2double point[2],
-                                                                 const su2double lineStart[2],
-                                                                 const su2double lineEnd[2]) {
-  /*--- Unit normal of line ---*/
-  su2double Nx = lineStart[1] - lineEnd[1];
-  su2double Ny = lineEnd[0] - lineStart[0];
-  const su2double mag = sqrt(Nx * Nx + Ny * Ny);
-  Nx /= mag;
-  Ny /= mag;
-
-  /*--- Compute signed distance using dot product between [P P{i+1}] and N ---*/
-  const su2double Px = point[0] - lineStart[0];
-  const su2double Py = point[1] - lineStart[1];
-
-  return Px * Nx + Py * Ny;
-}
-
 void CConservativeVolumeInterpolator::AddFaceNeighborToCandidates(CGeometry* geometry,
                                                                   const unsigned long elemID,
                                                                   const unsigned short faceIndex,
@@ -867,432 +1305,6 @@ void CConservativeVolumeInterpolator::MeshConvexPolygon(const vector<su2double>&
   }
 }
 
-void CConservativeVolumeInterpolator::FindNearestContainedNodes(CGeometry* geometry_dst) {
-  /*--- Clear and resize the nearestNodes vector ---*/
-  nearestNodes.clear();
-  nearestNodes.resize(uncontainedNodes.size(), nullopt);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 1: Identify contained nodes that have at least one            ---*/
-  /*---         uncontained neighbor (the "front" of contained nodes)      ---*/
-  /*--------------------------------------------------------------------------*/
-  set<unsigned long> uncontainedSet(uncontainedNodes.begin(), uncontainedNodes.end());
-  vector<unsigned long> frontNodes;
-  vector<su2double> frontCoords;
-
-  /*--- Loop through all domain nodes to find front nodes ---*/
-  for (auto nodeID = 0u; nodeID < nPoint_dst; ++nodeID) {
-    /*--- Skip if this node is uncontained, boundary, or not domain ---*/
-    if (uncontainedSet.count(nodeID) > 0 ||
-        geometry_dst->nodes->GetPhysicalBoundary(nodeID) ||
-        !geometry_dst->nodes->GetDomain(nodeID)) {
-      continue;
-    }
-
-    /*--- Check if this contained node has any uncontained neighbors ---*/
-    bool hasUncontainedNeighbor = false;
-    for (auto iPoint = 0u; iPoint < geometry_dst->nodes->GetnPoint(nodeID); ++iPoint) {
-      unsigned long neighborID = geometry_dst->nodes->GetPoint(nodeID, iPoint);
-      if (uncontainedSet.count(neighborID) > 0) {
-        hasUncontainedNeighbor = true;
-        break;
-      }
-    }
-
-    /*--- If this is a front node, add it to the list ---*/
-    if (hasUncontainedNeighbor) {
-      frontNodes.push_back(nodeID);
-      const su2double* coord = geometry_dst->nodes->GetCoord(nodeID);
-      for (auto iDim = 0u; iDim < nDim; ++iDim) {
-        frontCoords.push_back(coord[iDim]);
-      }
-    }
-  }
-
-  if (rank == MASTER_NODE) {
-    cout << "Found " << frontNodes.size() << " front nodes (contained nodes with uncontained neighbors)." << endl;
-  }
-
-  if (frontNodes.empty()) {
-    /*--- No front nodes found ---*/
-    if (rank == MASTER_NODE)
-      cout << "No front nodes found. All uncontained nodes will have no nearest node." << endl;
-    return;
-  }
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 2: Build ADT for the front nodes                              ---*/
-  /*--------------------------------------------------------------------------*/
-  vector<unsigned long> frontPointIDs(frontNodes.size());
-  for (auto i = 0u; i < frontNodes.size(); ++i) {
-    frontPointIDs[i] = i;
-  }
-
-  CADTPointsOnlyClass frontADT(nDim, frontNodes.size(), frontCoords.data(), frontPointIDs.data(), false);
-
-  /*--------------------------------------------------------------------------*/
-  /*--- Step 3: For each uncontained node, find nearest front node         ---*/
-  /*--------------------------------------------------------------------------*/
-  for (auto i = 0u; i < uncontainedNodes.size(); ++i) {
-    unsigned long uncontainedNodeID = uncontainedNodes[i];
-    const su2double* uncontainedCoord = geometry_dst->nodes->GetCoord(uncontainedNodeID);
-
-    /*--- Find nearest front node ---*/
-    su2double dist;
-    unsigned long nearestFrontNodeIndex;
-    int rankID;  // Not used in local ADT
-    frontADT.DetermineNearestNode(uncontainedCoord, dist, nearestFrontNodeIndex, rankID);
-
-    /*--- Store the actual node ID of the nearest front node ---*/
-    nearestNodes[i] = frontNodes[nearestFrontNodeIndex];
-  }
-
-  if (rank == MASTER_NODE) {
-    cout << "Generated nearest contained nodes for " << uncontainedNodes.size();
-    cout << " uncontained nodes." << endl;
-  }
-}
-
-void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometry* geometry_src,
-                                                                        CGeometry* geometry_dst,
-                                                                        CSolver* solver_src,
-                                                                        const IntersectionMeshMap& overlapMeshes,
-                                                                        const vector<vector<su2double>>& srcElemMass,
-                                                                        const vector<vector<su2double>>& srcElemGrad,
-                                                                        vector<vector<su2double>>& dstElemMass,
-                                                                        vector<vector<su2double>>& dstElemGrad) {
-  dstElemMass.resize(nElem_dst, vector<su2double>(nVar, 0.0));
-  dstElemGrad.resize(nElem_dst, vector<su2double>(nVar * nDim, 0.0));
-
-  const unsigned short nCoorPerElem = (nDim == 2)? 6 : 12;
-
-  /*--- Loop over all destination elements that have intersections ---*/
-  su2double absDiffTol[5] = {1e-10, 1e-8, 1e-6, 1e-4, 1e-2};
-  su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
-  vector<unsigned long> countAbsDiff(5, 0);
-  vector<unsigned long> countRelDiff(5, 0);
-
-  /*--- Counters for non-matching boundary treatment ---*/
-  unsigned long totalBoundaryElems = 0;
-  unsigned long nonConservativeTreatment = 0;
-
-  for (const auto& intersection : overlapMeshes) {
-    unsigned long dstElemID = intersection.first;
-    const IntersectionMesh& srcElemMeshes = intersection.second;
-
-    /*--- Initialize destination element mass and gradient ---*/
-    const auto* dstElem = geometry_dst->elem[dstElemID];
-    auto& dstMass = dstElemMass[dstElemID];
-    auto& dstGrad = dstElemGrad[dstElemID];
-    fill(dstMass.begin(), dstMass.end(), 0.0);
-    fill(dstGrad.begin(), dstGrad.end(), 0.0);
-
-    /*--- Track total triangle area for this destination element ---*/
-    su2double intersectionVol = 0.0;
-
-    /*--- Process each intersection region T_j = intersection(K_dst, K_src_j) ---*/
-    for (const auto& srcElemMesh : srcElemMeshes) {
-      unsigned long srcElemID = srcElemMesh.srcElemID;
-      const vector<su2double>& triElemCoords = srcElemMesh.coords;
-      const vector<su2double>& triElemVols = srcElemMesh.vols;
-      unsigned int numTri = triElemCoords.size() / nCoorPerElem;
-
-      for (auto iTri = 0u; iTri < numTri; ++iTri) {
-        /*--- Get triangle vertices ---*/
-        const su2double* coor_tri = triElemCoords.data() + iTri * nCoorPerElem;
-        const su2double x0 = coor_tri[0], y0 = coor_tri[1];
-        const su2double x1 = coor_tri[2], y1 = coor_tri[3];
-        const su2double x2 = coor_tri[4], y2 = coor_tri[5];
-
-        /*--- Triangle area using cross product ---*/
-        const su2double cross = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
-        const su2double area = 0.5 * abs(cross);
-
-        /*--- Add to total triangle area ---*/
-        intersectionVol += area;
-
-        /*--- Get source element properties ---*/
-        const auto* srcElem = geometry_src->elem[srcElemID];
-        auto srcMass = srcElemMass[srcElemID];
-        auto srcGrad = srcElemGrad[srcElemID];
-
-        const su2double srcVolume = srcElem->GetVolume();
-        const su2double* G_K_src = srcElem->GetCG();
-
-        /*--- Use 1-point Gauss quadrature (centroid rule) ---*/
-        /*--- Triangle centroid coordinates ---*/
-        const su2double xi = (x0 + x1 + x2) / 3.0;
-        const su2double yi = (y0 + y1 + y2) / 3.0;
-
-        /*--- Integrate mass and gradient using 1-point quadrature ---*/
-        for (auto iVar = 0u; iVar < nVar; ++iVar) {
-          const su2double u_src = srcMass[iVar] / srcVolume;
-          const su2double* grad_u = srcGrad.data() + iVar * nDim;
-
-          /*--- Displacement from source centroid to triangle centroid ---*/
-          const su2double dx = xi - G_K_src[0];
-          const su2double dy = yi - G_K_src[1];
-
-          /*--- Evaluate solution at triangle centroid ---*/
-          const su2double u_quad = u_src + grad_u[0] * dx + grad_u[1] * dy;
-
-          /*--- Add contribution to destination mass and gradient ---*/
-          dstMass[iVar] += area * u_quad;
-          for (auto iDim = 0u; iDim < nDim; ++iDim)
-            dstGrad[iVar * nDim + iDim] += area * grad_u[iDim];
-        }
-      }
-    }
-
-    /*--- Volume average integral: gra(u_dst) = int_K_dst (gra(u) dA) / |K_dst| ---*/
-    const su2double dstVolume = dstElem->GetVolume();
-
-    /*--- Normalize by intersection volume instead of destination volume ---*/
-    /*--- For matching volumes, this should have no impact               ---*/
-    /*--- For non-matching domains, this preserves P1-exactness          ---*/
-    /*--- This preserves constant/linear solutions in non-matching domains ---*/
-    for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      /*--- For mass: divide by intersection volume to get correct barycenter value ---*/
-      dstMass[iVar] = dstMass[iVar] * dstVolume / intersectionVol;
-
-      /*--- For gradient: use intersection-weighted average ---*/
-      for (auto iDim = 0u; iDim < nDim; ++iDim) {
-        dstGrad[iVar * nDim + iDim] /= intersectionVol;
-      }
-    }
-
-    /*--- Compare total triangle area with destination element volume ---*/
-    const su2double absDiff = abs(dstVolume - intersectionVol);
-    const su2double relDiff = absDiff / dstVolume;
-    for (auto i = 0u; i < 5; ++i) {
-      if (absDiff > absDiffTol[i]) countAbsDiff[i]++;
-      if (relDiff > relDiffTol[i]) countRelDiff[i]++;
-    }
-  }
-
-  if (rank == MASTER_NODE) {
-    cout << "Area conservation (absolute difference):" << endl;
-    for (auto i = 0u; i < 5; ++i) {
-      cout << "  Number exceeding " << scientific << setprecision(1);
-      cout << absDiffTol[i] << ": ";
-      cout << countAbsDiff[i] << endl;
-    }
-    cout << "Area conservation (relative difference):" << endl;
-    for (auto i = 0u; i < 5; ++i) {
-      cout << "  Number exceeding " << fixed << setprecision(0) << setw(3);
-      cout << relDiffTol[i] * 100 << "%: ";
-      cout << countRelDiff[i] << endl;
-    }
-  }
-}
-
-void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry* geometry_src,
-                                                                      CGeometry* geometry_dst,
-                                                                      CSolver* solver_src,
-                                                                      const IntersectionMeshMap& overlapMeshes,
-                                                                      const vector<vector<su2double>>& srcElemMass,
-                                                                      const vector<vector<su2double>>& srcElemGrad,
-                                                                      vector<vector<su2double>>& dstElemMass,
-                                                                      vector<vector<su2double>>& dstElemGrad) {
-  const su2double EPS = 1e-16;
-
-  /*--- Loop over all destination elements that have overlaps ---*/
-  su2double u_tilde[3];
-  vector<su2double> correctedMass(1, 0.0);
-  vector<su2double> correctedGrad(1 * nDim, 0.0);
-  vector<vector<su2double>> vertexSol(3, vector<su2double>(1));
-  for (const auto& intersection : overlapMeshes) {
-    unsigned long dstElemID = intersection.first;
-    const IntersectionMesh& srcElemMeshes = intersection.second;
-
-    auto* dstElem = geometry_dst->elem[dstElemID];
-    if (dstElem->GetVTK_Type() != TRIANGLE) continue;
-
-    /*--- Get destination element vertices ---*/
-    su2double dstVertices[6];
-    for (auto iNode = 0u; iNode < 3; ++iNode) {
-      unsigned long nodeID = dstElem->GetNode(iNode);
-      dstVertices[iNode * 2 + 0] = geometry_dst->nodes->GetCoord(nodeID, 0);
-      dstVertices[iNode * 2 + 1] = geometry_dst->nodes->GetCoord(nodeID, 1);
-    }
-
-    /*--- Element volume and centroid (barycenter G_K) ---*/
-    const su2double elemVolume = dstElem->GetVolume();
-    const su2double* G_K = dstElem->GetCG();
-
-    /*--- For each variable, apply Alauzet's maximum principle correction ---*/
-    for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      /*--------------------------------------------------------------------------*/
-      /*--- Step 1: Compute local bounds from overlapping source elements.     ---*/
-      /*--------------------------------------------------------------------------*/
-      su2double u_min = 1e20;
-      su2double u_max = -1e20;
-
-      /*--- Find all vertices Q from source elements K_src that K overlaps ---*/
-      for (const auto& srcElemMesh : srcElemMeshes) {
-        unsigned long srcElemID = srcElemMesh.srcElemID;
-        auto* srcElem = geometry_src->elem[srcElemID];
-        if (srcElem->GetVTK_Type() != TRIANGLE) continue;
-
-        /*--- Get solution values at vertices of source element ---*/
-        for (auto iNode = 0u; iNode < 3; ++iNode) {
-          unsigned long nodeID = srcElem->GetNode(iNode);
-          su2double u_vertex = solver_src->GetNodes()->GetSolution(nodeID, iVar);
-          u_min = min(u_min, u_vertex);
-          u_max = max(u_max, u_vertex);
-        }
-      }
-
-      /*--- Skip if no valid bounds found ---*/
-      if (u_min > 1e19 || u_max < -1e19) continue;
-
-      /*--------------------------------------------------------------------------*/
-      /*--- Step 2: Get current solution at destination element.               ---*/
-      /*--------------------------------------------------------------------------*/
-      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
-      const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
-
-      /*--------------------------------------------------------------------------*/
-      /*--- Step 3: Compute u_K(P_i) at each vertex using Taylor expansion.    ---*/
-      /*--------------------------------------------------------------------------*/
-      su2double u_K_P[3];  // Values at vertices P_0, P_1, P_2
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
-        /*--- Vector G_K P_i ---*/
-        const su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
-        const su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
-
-        /*--- u_K(P_i) = u_K(G_K) + gra(u_K) · G_K P_i ---*/
-        u_K_P[iNode] = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
-      }
-
-      /*--------------------------------------------------------------------------*/
-      /*--- Step 4: Check if maximum principle is violated.                    ---*/
-      /*--------------------------------------------------------------------------*/
-      bool violatesMaxPrinciple = false;
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
-        if (u_K_P[iNode] < u_min - EPS || u_K_P[iNode] > u_max + EPS) {
-          violatesMaxPrinciple = true;
-          break;
-        }
-      }
-
-      /*--- If no violation, skip correction ---*/
-      if (!violatesMaxPrinciple) continue;
-
-      /*--------------------------------------------------------------------------*/
-      /*--- Step 5: Apply Alauzet's correction algorithm.                      ---*/
-      /*--------------------------------------------------------------------------*/
-      /*--- Sort vertices by solution value: u_K(P_0) ≤ u_K(P_1) ≤ u_K(P_2) ---*/
-      vector<pair<su2double, unsigned short>> sortedValues;
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
-        sortedValues.push_back(make_pair(u_K_P[iNode], iNode));
-      }
-      sort(sortedValues.begin(), sortedValues.end());
-
-      const su2double u_P0 = sortedValues[0].first;  // Smallest value
-      const su2double u_P1 = sortedValues[1].first;  // Middle value
-      const su2double u_P2 = sortedValues[2].first;  // Largest value
-
-      /*--- Apply first correction pass ---*/
-      const su2double u_M_P2 = min(u_P2, u_max);
-      const su2double u_M_P1 = min(u_P1 + 0.5 * max(0.0, u_P2 - u_max), u_max);
-      const su2double u_M_P0 = 3.0 * u_G - u_M_P1 - u_M_P2;
-
-      /*--- Apply second correction pass ---*/
-      const su2double u_tilde_P0 = max(u_M_P0, u_min);
-      const su2double u_tilde_P1 = max(u_M_P1 - 0.5 * max(0.0, u_min - u_M_P0), u_min);
-      const su2double u_tilde_P2 = 3.0 * u_G - u_tilde_P0 - u_tilde_P1;
-
-      /*--------------------------------------------------------------------------*/
-      /*--- Step 6: Compute corrected mass and gradient from new nodal values. ---*/
-      /*--------------------------------------------------------------------------*/
-      /*--- Put corrected values back in original vertex order ---*/
-      u_tilde[sortedValues[0].second] = u_tilde_P0;
-      u_tilde[sortedValues[1].second] = u_tilde_P1;
-      u_tilde[sortedValues[2].second] = u_tilde_P2;
-
-      /*--- Prepare vertex solutions for single variable ---*/
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
-        vertexSol[iNode][0] = u_tilde[iNode];
-      }
-
-      /*--- Compute corrected mass and gradient ---*/
-      ComputeTriangleMassAndGradient(dstVertices, vertexSol, elemVolume, 1,
-                                     correctedMass, correctedGrad);
-
-      /*--- Update destination element data ---*/
-      dstElemMass[dstElemID][iVar] = correctedMass[0];
-      dstElemGrad[dstElemID][iVar * nDim + 0] = correctedGrad[0];
-      dstElemGrad[dstElemID][iVar * nDim + 1] = correctedGrad[1];
-    }
-  }
-}
-
-void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* config,
-                                                                CGeometry* geometry_dst,
-                                                                CSolver* solver_dst,
-                                                                const vector<vector<su2double>>& dstElemMass,
-                                                                const vector<vector<su2double>>& dstElemGrad) {
-  /*--- Loop over all nodes and accumulate contributions from each element ---*/
-  for (auto l = 0u; l < nPoint_dst; ++l) {
-    /*--- Get pointer to node coordinates and solution mass ---*/
-    const su2double* coor = geometry_dst->nodes->GetCoord(l);
-
-    /*--- Initialize mass and volume accumulation ---*/
-    for (auto iVar = 0u; iVar < nVar+1; ++iVar)
-      solver_dst->GetNodes()->SetSolution_Mass(l, iVar, 0.0);
-
-    /*--- Loop over all elements that contain this node ---*/
-    const unsigned short nElem_node = geometry_dst->nodes->GetnElem(l);
-    for (auto j = 0u; j < nElem_node; ++j) {
-      unsigned long elemID = geometry_dst->nodes->GetElem(l, j);
-      auto* elem = geometry_dst->elem[elemID];
-
-      /*--- Skip non-triangular elements ---*/
-      if (elem->GetVTK_Type() != TRIANGLE) continue;
-
-      /*--- Get element volume and centroid ---*/
-      const su2double elemVolume = elem->GetVolume();
-      const su2double* G_K = elem->GetCG();
-
-      /*--- Vector from centroid to node ---*/
-      const su2double vec[2] = {coor[0] - G_K[0], coor[1] - G_K[1]};
-
-      /*--- Loop over variables ---*/
-      for (auto iVar = 0u; iVar < nVar; ++iVar) {
-        /*--- Get element-centered solution ---*/
-        const su2double u_G = dstElemMass[elemID][iVar] / elemVolume;
-        const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
-
-        /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) · (P_i - G_K) ---*/
-        const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
-
-        /*--- Accumulate weighted contribution ---*/
-        solver_dst->GetNodes()->AddSolution_Mass(l, iVar, vertexValue * elemVolume);
-      }
-
-      /*--- Accumulate weight ---*/
-      solver_dst->GetNodes()->AddSolution_Mass(l, nVar, elemVolume);
-    }
-  }
-
-  /*--- Periodic mass and volume communication ---*/
-  for (auto i = 1u; i <= config->GetnMarker_Periodic()/2; ++i) {
-    solver_dst->InitiatePeriodicComms(geometry_dst, config, i, PERIODIC_INTERP);
-    solver_dst->CompletePeriodicComms(geometry_dst, config, i, PERIODIC_INTERP);
-  }
-
-  /*--- Calculate conserved quantities from mass and volume ---*/
-  for (auto l = 0u; l < nPoint_dst; ++l) {
-    const su2double* mass = solver_dst->GetNodes()->GetSolution_Mass(l);
-    const su2double vol = mass[nVar];
-    for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      solver_dst->GetNodes()->SetSolution(l, iVar, mass[iVar] / vol);
-    }
-  }
-  solver_dst->Set_OldSolution();
-}
-
 void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2double vertexCoords[6],
                                                                      const vector<vector<su2double>>& vertexSol,
                                                                      const su2double elemVolume,
@@ -1412,48 +1424,10 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
   }
 }
 
-void CConservativeVolumeInterpolator::ExtrapolateToUncontainedNodes(CGeometry* geometry_dst,
-                                                                    CSolver* solver_dst,
-                                                                    const vector<unsigned long>& uncontainedNodes,
-                                                                    const vector<vector<su2double>>& dstElemMass,
-                                                                    const vector<vector<su2double>>& dstElemGrad) {
-  unsigned long numExtrapolated = 0;
-  unsigned long numFallback = 0;
-  unsigned long numFailed = 0;
-
-  /*--- Process each uncontained node ---*/
-  for (auto i = 0u; i < uncontainedNodes.size(); ++i) {
-    unsigned long nodeID = uncontainedNodes[i];
-
-    /*--- Skip boundary nodes (they should be handled by surface interpolation) ---*/
-    if (geometry_dst->nodes->GetPhysicalBoundary(nodeID)) continue;
-
-    /*--- Get nearest contained node ID ---*/
-    auto nearestNodeOpt = nearestNodes[i];
-
-    /*--- Check if we have a valid nearest node ---*/
-    if (nearestNodeOpt.has_value()) {
-      unsigned long nearestNodeID = nearestNodeOpt.value();
-      /*--- Extrapolate from the nearest contained node ---*/
-      if (ExtrapolateFromNearestNode(geometry_dst, solver_dst, nodeID, nearestNodeID,
-                                     dstElemMass, dstElemGrad)) {
-        numExtrapolated++;
-      }
-    }
-  }
-
-  if (rank == MASTER_NODE) {
-    cout << "Extrapolation completed: " << numExtrapolated << " nodes from nearest nodes, ";
-    cout << numFallback << " nodes via fallback, " << numFailed << " nodes failed." << endl;
-  }
-}
-
 bool CConservativeVolumeInterpolator::ExtrapolateFromNearestNode(CGeometry* geometry_dst,
                                                                  CSolver* solver_dst,
                                                                  unsigned long uncontainedNodeID,
-                                                                 unsigned long nearestNodeID,
-                                                                 const vector<vector<su2double>>& dstElemMass,
-                                                                 const vector<vector<su2double>>& dstElemGrad) {
+                                                                 unsigned long nearestNodeID) {
   /*--- Get coordinates ---*/
   const su2double* uncontainedCoord = geometry_dst->nodes->GetCoord(uncontainedNodeID);
   const su2double* nearestCoord = geometry_dst->nodes->GetCoord(nearestNodeID);
