@@ -60,18 +60,18 @@ namespace metric {
                     unsigned short nDim) {
       switch(nDim) {
         case 2: {
-          metric_field(iPoint,0) = mat[0][0]*scale;
-          metric_field(iPoint,1) = mat[0][1]*scale;
-          metric_field(iPoint,2) = mat[1][1]*scale;
+          metric_field(iPoint,0) = mat[0][0] * scale;
+          metric_field(iPoint,1) = mat[0][1] * scale;
+          metric_field(iPoint,2) = mat[1][1] * scale;
           break;
         }
         case 3: {
-          metric_field(iPoint,0) = mat[0][0]*scale;
-          metric_field(iPoint,1) = mat[0][1]*scale;
-          metric_field(iPoint,2) = mat[0][2]*scale;
-          metric_field(iPoint,3) = mat[1][1]*scale;
-          metric_field(iPoint,4) = mat[1][2]*scale;
-          metric_field(iPoint,5) = mat[2][2]*scale;
+          metric_field(iPoint,0) = mat[0][0] * scale;
+          metric_field(iPoint,1) = mat[0][1] * scale;
+          metric_field(iPoint,2) = mat[0][2] * scale;
+          metric_field(iPoint,3) = mat[1][1] * scale;
+          metric_field(iPoint,4) = mat[1][2] * scale;
+          metric_field(iPoint,5) = mat[2][2] * scale;
           break;
         }
       }
@@ -103,18 +103,18 @@ namespace metric {
                     unsigned short nDim) {
       switch(nDim) {
         case 2: {
-          metric_field(iPoint,iSensor,0) = mat[0][0]*scale;
-          metric_field(iPoint,iSensor,1) = mat[0][1]*scale;
-          metric_field(iPoint,iSensor,2) = mat[1][1]*scale;
+          metric_field(iPoint,iSensor,0) = mat[0][0] * scale;
+          metric_field(iPoint,iSensor,1) = mat[0][1] * scale;
+          metric_field(iPoint,iSensor,2) = mat[1][1] * scale;
           break;
         }
         case 3: {
-          metric_field(iPoint,iSensor,0) = mat[0][0]*scale;
-          metric_field(iPoint,iSensor,1) = mat[0][1]*scale;
-          metric_field(iPoint,iSensor,2) = mat[0][2]*scale;
-          metric_field(iPoint,iSensor,3) = mat[1][1]*scale;
-          metric_field(iPoint,iSensor,4) = mat[1][2]*scale;
-          metric_field(iPoint,iSensor,5) = mat[2][2]*scale;
+          metric_field(iPoint,iSensor,0) = mat[0][0] * scale;
+          metric_field(iPoint,iSensor,1) = mat[0][1] * scale;
+          metric_field(iPoint,iSensor,2) = mat[0][2] * scale;
+          metric_field(iPoint,iSensor,3) = mat[1][1] * scale;
+          metric_field(iPoint,iSensor,4) = mat[1][2] * scale;
+          metric_field(iPoint,iSensor,5) = mat[2][2] * scale;
           break;
         }
       }
@@ -142,18 +142,18 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
   ScalarType A[MAXNDIM][MAXNDIM], EigVec[MAXNDIM][MAXNDIM], EigVal[MAXNDIM], work[MAXNDIM];
 
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-    //--- Get full metric tensor
+    /*--- Get full metric tensor ---*/
     Metric::get(metric, iPoint, iSensor, A, nDim);
 
-    //--- Compute eigenvalues and eigenvectors
+    /*--- Compute eigenvalues and eigenvectors ---*/
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
 
-    //--- If NaN detected, set values to zero.
-    //--- Otherwise, store recombined matrix.
+    /*--- If NaN detected, set values to zero ---*/
+    /*--- Otherwise, store recombined matrix  ---*/
     bool check_hess = true;
     for (auto iDim = 0; iDim < nDim; iDim++) {
-      if (EigVal[iDim] != EigVal[iDim] || fabs(EigVal[iDim]) < 1.0e-16) {
-        EigVal[iDim] = 1.0e-16;
+      if (EigVal[iDim] != EigVal[iDim] || fabs(EigVal[iDim]) < 1e-16) {
+        EigVal[iDim] = 1e-16;
         check_hess = false;
       }
       EigVal[iDim] = fabs(EigVal[iDim]);
@@ -161,7 +161,7 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
 
     CBlasStructure::EigenRecomposition(A, EigVec, EigVal, nDim);
 
-    //--- Store upper half of metric tensor
+    /*--- Store upper half of metric tensor ---*/
     Metric::set(metric, iPoint, iSensor, A, 1.0, nDim);
   }
 }
@@ -183,52 +183,67 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
 
   const bool goal = (config.GetGoal_Oriented_Metric());
 
-  ScalarType localScale = 0.;
-  ScalarType globalScale = 0.;
+  ScalarType localScale = 0.0;
+  ScalarType globalScale = 0.0;
 
   const ScalarType p = config.GetMetric_Norm();
-  const ScalarType eigmax = 1./(pow(SU2_TYPE::GetValue(config.GetMetric_Hmin()),2.));
-  const ScalarType eigmin = 1./(pow(SU2_TYPE::GetValue(config.GetMetric_Hmax()),2.));
-  const ScalarType armax2 = pow(SU2_TYPE::GetValue(config.GetMetric_ARmax()), 2.);
-  const ScalarType outComplex = ScalarType(config.GetMetric_Complexity());  // Constraint mesh complexity
+  const ScalarType N = ScalarType(config.GetMetric_Complexity());
+
+  const ScalarType hmin = SU2_TYPE::GetValue(config.GetMetric_Hmin());
+  const ScalarType hmax = SU2_TYPE::GetValue(config.GetMetric_Hmax());
+  const ScalarType eigmax = 1.0 / pow(hmin, 2.0);
+  const ScalarType eigmin = 1.0 / pow(hmax, 2.0);
+  const ScalarType armax2 = pow(SU2_TYPE::GetValue(config.GetMetric_ARmax()), 2.0);
 
   ScalarType A[MAXNDIM][MAXNDIM], EigVec[MAXNDIM][MAXNDIM], EigVal[MAXNDIM], work[MAXNDIM];
 
-  //--- set tolerance and obtain global scaling
+  /*--- Set tolerance and obtain global scaling ---*/
+  const ScalarType globalNormExp = p / (2.0 * p + nDim);
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     auto nodes = geometry.nodes;
 
+    /*--- Decompose metric ---*/
     Metric::get(metric, iPoint, iSensor, A, nDim);
-
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
-    if (nDim == 2) EigVal[2] = 1.;
+    if (nDim == 2) EigVal[2] = 1.0;
 
+    /*--- Integrate determinant ---*/
+    const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
     const ScalarType Vol = SU2_TYPE::GetValue(nodes->GetVolume(iPoint));
-
-    localScale += pow(abs(EigVal[0]*EigVal[1]*EigVal[2]),p/(2.*p+nDim))*Vol;
+    localScale += pow(abs(det), globalNormExp) * Vol;
   }
 
   CBaseMPIWrapper::Allreduce(&localScale, &globalScale, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
 
-  //--- normalize to achieve Lp metric for constraint complexity, then truncate size
+  /*--- Normalize to get optimal Lp metric for target complexity, then truncate size ---*/
+  const ScalarType complexityRatio = pow(N / globalScale, 2.0 / nDim);
+  const ScalarType localNormExp = -1.0 / (2.0 * p + nDim);
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     auto nodes = geometry.nodes;
 
+    /*--- Decompose metric ---*/
     Metric::get(metric, iPoint, iSensor, A, nDim);
-
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
-    if (nDim == 2) EigVal[2] = 1.;
+    if (nDim == 2) EigVal[2] = 1.0;
 
-    const ScalarType factor = pow(outComplex/globalScale, 2./nDim) * pow(abs(EigVal[0]*EigVal[1]*EigVal[2]), -1./(2.*p+nDim));
+    /*--- Normalize eigenvalues ---*/
+    const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
+    const ScalarType factor = complexityRatio * pow(abs(det), localNormExp);
 
-    for (auto iDim = 0u; iDim < nDim; ++iDim) EigVal[iDim] = min(max(abs(factor*EigVal[iDim]),eigmin),eigmax);
+    /*--- Clip by user-specified size constraints ---*/
+    for (auto iDim = 0u; iDim < nDim; ++iDim)
+      EigVal[iDim] = min(max(abs(factor*EigVal[iDim]), eigmin), eigmax);
 
+    /*--- Clip by user-specified aspect ratio ---*/
     unsigned short iMax = 0;
-    for (auto iDim = 1; iDim < nDim; ++iDim) iMax = (EigVal[iDim] > EigVal[iMax])? iDim : iMax;
-    for (auto iDim = 0u; iDim < nDim; ++iDim) EigVal[iDim] = max(EigVal[iDim], EigVal[iMax]/armax2);
+    for (auto iDim = 1; iDim < nDim; ++iDim)
+      iMax = (EigVal[iDim] > EigVal[iMax])? iDim : iMax;
 
+    for (auto iDim = 0u; iDim < nDim; ++iDim)
+      EigVal[iDim] = max(EigVal[iDim], EigVal[iMax]/armax2);
+
+    /*--- Recompose and store metric ---*/
     CBlasStructure::EigenRecomposition(A, EigVec, EigVal, nDim);
-
     Metric::set(metric, iPoint, iSensor, A, 1.0, nDim);
   }
 }
