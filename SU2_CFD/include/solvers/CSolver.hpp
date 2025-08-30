@@ -4384,12 +4384,11 @@ inline void CustomSourceResidual(CGeometry *geometry, CSolver **solver_container
    * \param[in] solver - Physical definition of the problem.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
-   * \param[in] iPoint - Index of current node.
-   * \param[in] weights - Weights of each Hessian in the metric.
+   * \param[in] iSensor - Index of the sensor to work on.
    * \param[in] restartMetric - Whether this is the initial sub-interval metric computation for an unsteady restart.
    */
-  void AddMetric(CSolver **solver, const CGeometry *geometry, const CConfig *config,
-                 unsigned long iPoint, vector<vector<double> > &weights, bool restartMetric);
+  void AddMetrics(CSolver **solver, const CGeometry *geometry, const CConfig *config,
+                  const unsigned short iSensor, bool restartMetric);
 
 protected:
   /*!

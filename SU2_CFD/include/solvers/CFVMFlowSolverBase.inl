@@ -1639,7 +1639,7 @@ void CFVMFlowSolverBase<V, FlowRegime>::SetResidual_DualTime(CGeometry *geometry
        time discretization scheme (1st- or 2nd-order).---*/
 
       for (iVar = 0; iVar < nVar; iVar++) {
-        if (first_order)
+        if (first_order || config->GetTimeIter() == 0)
           LinSysRes(iPoint,iVar) += (U_time_nP1[iVar] - U_time_n[iVar])*Volume_nP1 / TimeStep;
         if (second_order)
           LinSysRes(iPoint,iVar) += ( 3.0*U_time_nP1[iVar] - 4.0*U_time_n[iVar]
@@ -1648,7 +1648,7 @@ void CFVMFlowSolverBase<V, FlowRegime>::SetResidual_DualTime(CGeometry *geometry
 
       /*--- Compute the Jacobian contribution due to the dual time source term. ---*/
       if (implicit) {
-        if (first_order) Jacobian.AddVal2Diag(iPoint, Volume_nP1/TimeStep);
+        if (first_order || config->GetTimeIter() == 0) Jacobian.AddVal2Diag(iPoint, Volume_nP1/TimeStep);
         if (second_order) Jacobian.AddVal2Diag(iPoint, (Volume_nP1*3.0)/(2.0*TimeStep));
       }
     }

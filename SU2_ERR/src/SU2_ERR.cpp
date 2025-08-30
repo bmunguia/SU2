@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
           }
 
           if (rank == MASTER_NODE) {
-            string sensor_string = GetSensorString(config_src[ZONE_0]);
+            string sensor_string = config_src[ZONE_0]->GetMetric_SensorString(0);
             cout << sensor_string << "L" << config_ref[iZone]->GetMetric_Norm() << "-norm field error: " << sensor_error << endl;
           }
         }
@@ -329,7 +329,7 @@ int main(int argc, char* argv[]) {
       }
 
       if (rank == MASTER_NODE) {
-        string sensor_string = GetSensorString(config_src[ZONE_0]);
+        string sensor_string = config_src[ZONE_0]->GetMetric_SensorString(0);
         cout << sensor_string << "L" << config_ref[iZone]->GetMetric_Norm() << "-norm field error: " << sensor_error << endl;
       }
     }
@@ -359,7 +359,7 @@ int main(int argc, char* argv[]) {
     }
 
     /*--- TODO: allow for multiple sensors ---*/
-    string sensor_string = GetSensorString(config_src[ZONE_0]);
+    string sensor_string = config_src[ZONE_0]->GetMetric_SensorString(0);
     Error_file << "\"Time Iter\",\"" << sensor_string << "\"";
     if (tabTecplot)
       Error_file << "\nZONE T= \"Error estimates\"" << endl;
@@ -526,31 +526,10 @@ int main(int argc, char* argv[]) {
   return EXIT_SUCCESS;
 }
 
-string GetSensorString(const CConfig* config) {
-  /*--- Get corresponding field string from metric sensor ---*/
-  /*--- TODO: allow for multiple sensors ---*/
-  string sensor_name;
-  switch (config->GetMetric_Sensor(0)) {
-    case METRIC_SENSOR::MACH:
-      sensor_name = "Mach";
-      break;
-    case METRIC_SENSOR::PRESSURE:
-      sensor_name = "Pressure";
-      break;
-    case METRIC_SENSOR::TEMPERATURE:
-      sensor_name = "Temperature";
-      break;
-    default:
-      SU2_MPI::Error("Unsupported metric sensor.", CURRENT_FUNCTION);
-  }
-
-  return sensor_name;
-}
-
 int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
   /*--- Get corresponding field string from metric sensor ---*/
   /*--- TODO: allow for multiple sensors ---*/
-  string sensor_name = GetSensorString(config);
+  string sensor_name = config->GetMetric_SensorString(0);
 
   /*--- Find index in solution fields ---*/
   auto strip_quotes = [](const string& s) -> string {

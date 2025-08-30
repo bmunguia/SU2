@@ -9950,6 +9950,28 @@ public:
   METRIC_SENSOR GetMetric_Sensor(unsigned short iSens) const { return Metric_Sensor[iSens]; }
 
   /*!
+   * \brief Get corresponding string from metric sensor type
+   */
+  string GetMetric_SensorString(unsigned short iSens) const {
+    string sensor_name;
+    switch (Metric_Sensor[iSens]) {
+      case METRIC_SENSOR::MACH:
+        sensor_name = "Mach";
+        break;
+      case METRIC_SENSOR::PRESSURE:
+        sensor_name = "Pressure";
+        break;
+      case METRIC_SENSOR::TEMPERATURE:
+        sensor_name = "Temperature";
+        break;
+      default:
+        SU2_MPI::Error("Unsupported metric sensor.", CURRENT_FUNCTION);
+    }
+
+    return sensor_name;
+  }
+
+  /*!
    * \brief Get number of adaptation sensors
    */
   unsigned short GetnMetric_Sensor(void) const { return nMetric_Sensor; }

@@ -34,15 +34,6 @@
 #include "../../SU2_ITP/include/CLinearVolumeInterpolator.hpp"
 
 /*!
- * \brief Get the string corresponding to the metric sensor.
- *
- * \param[in] config - Definition of the particular problem.
- * \return String representing the kind of metric sensor.
- * \throws SU2_MPI::Error if the sensor field is not supported
- */
-string GetSensorString(const CConfig* config);
-
-/*!
  * \brief Get the index of the solution field corresponding to the metric sensor.
  *
  * \param[in] config - Definition of the particular problem.

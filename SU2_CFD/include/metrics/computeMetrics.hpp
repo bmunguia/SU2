@@ -129,7 +129,7 @@ namespace detail {
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
  * \param[in] iSensor - Index of the sensor to work on.
- * \param[inout] metric - Metric container.
+ * \param[in,out] metric - Metric container.
  */
 template<size_t nDim, class ScalarType, class Metric, class MetricType>
 void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
@@ -167,38 +167,29 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
 }
 
 /*!
- * \brief Perform an Lp-norm normalization of the metric.
+ * \brief Integrate the Hessian field for the Lp-norm normalization of the metric.
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
  * \param[in] iSensor - Index of the sensor to work on.
- * \param[inout] metric - Metric container.
- */
+ * \param[in] metric - Metric container.
+ * \return Integral of the metric tensor determinant.
+*/
 template<size_t nDim, class ScalarType, class Metric, class MetricType>
-void normalizeMetrics(CGeometry& geometry, const CConfig& config,
-                     unsigned short iSensor, MetricType& metric) {
+ScalarType integrateMetrics(CGeometry& geometry, const CConfig& config,
+                            unsigned short iSensor, MetricType& metric) {
 
   const unsigned long nPointDomain = geometry.GetnPointDomain();
-
   static constexpr size_t MAXNDIM = 3;
 
-  const bool goal = (config.GetGoal_Oriented_Metric());
-
-  ScalarType localScale = 0.0;
-  ScalarType globalScale = 0.0;
-
+  /*--- Constants defining normalization ---*/
   const ScalarType p = config.GetMetric_Norm();
   const ScalarType N = ScalarType(config.GetMetric_Complexity());
-
-  const ScalarType hmin = SU2_TYPE::GetValue(config.GetMetric_Hmin());
-  const ScalarType hmax = SU2_TYPE::GetValue(config.GetMetric_Hmax());
-  const ScalarType eigmax = 1.0 / pow(hmin, 2.0);
-  const ScalarType eigmin = 1.0 / pow(hmax, 2.0);
-  const ScalarType armax2 = pow(SU2_TYPE::GetValue(config.GetMetric_ARmax()), 2.0);
+  const ScalarType normExp = p / (2.0 * p + nDim);
 
   ScalarType A[MAXNDIM][MAXNDIM], EigVec[MAXNDIM][MAXNDIM], EigVal[MAXNDIM], work[MAXNDIM];
 
-  /*--- Set tolerance and obtain global scaling ---*/
-  const ScalarType globalNormExp = p / (2.0 * p + nDim);
+  ScalarType localIntegral = 0.0;
+  ScalarType globalIntegral = 0.0;
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     auto nodes = geometry.nodes;
 
@@ -210,14 +201,47 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
     /*--- Integrate determinant ---*/
     const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
     const ScalarType Vol = SU2_TYPE::GetValue(nodes->GetVolume(iPoint));
-    localScale += pow(abs(det), globalNormExp) * Vol;
+    localIntegral += pow(abs(det), normExp) * Vol;
   }
 
-  CBaseMPIWrapper::Allreduce(&localScale, &globalScale, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+  CBaseMPIWrapper::Allreduce(&localIntegral, &globalIntegral, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
 
-  /*--- Normalize to get optimal Lp metric for target complexity, then truncate size ---*/
-  const ScalarType complexityRatio = pow(N / globalScale, 2.0 / nDim);
-  const ScalarType localNormExp = -1.0 / (2.0 * p + nDim);
+  return globalIntegral;
+}
+
+/*!
+ * \brief Perform an Lp-norm normalization of the metric.
+ * \param[in] geometry - Geometrical definition of the problem.
+ * \param[in] config - Definition of the particular problem.
+ * \param[in] iSensor - Index of the sensor to work on.
+ * \param[in] integral - Integral of the metric tensor determinant.
+ * \param[in,out] metric - Metric container.
+ */
+template<size_t nDim, class ScalarType, class Metric, class MetricType>
+void normalizeMetrics(CGeometry& geometry, const CConfig& config,
+                      unsigned short iSensor, ScalarType integral,
+                      MetricType& metric) {
+
+  const unsigned long nPointDomain = geometry.GetnPointDomain();
+  static constexpr size_t MAXNDIM = 3;
+
+  const bool goal = (config.GetGoal_Oriented_Metric());
+
+  /*--- Constants defining normalization ---*/
+  const ScalarType p = config.GetMetric_Norm();
+  const ScalarType N = ScalarType(config.GetMetric_Complexity());
+  const ScalarType globalFactor = pow(N / integral, 2.0 / nDim);
+  const ScalarType normExp = -1.0 / (2.0 * p + nDim);
+
+  /*--- Size constraints ---*/
+  const ScalarType hmin = SU2_TYPE::GetValue(config.GetMetric_Hmin());
+  const ScalarType hmax = SU2_TYPE::GetValue(config.GetMetric_Hmax());
+  const ScalarType eigmax = 1.0 / pow(hmin, 2.0);
+  const ScalarType eigmin = 1.0 / pow(hmax, 2.0);
+  const ScalarType armax2 = pow(SU2_TYPE::GetValue(config.GetMetric_ARmax()), 2.0);
+
+  ScalarType A[MAXNDIM][MAXNDIM], EigVec[MAXNDIM][MAXNDIM], EigVal[MAXNDIM], work[MAXNDIM];
+
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     auto nodes = geometry.nodes;
 
@@ -228,11 +252,13 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
 
     /*--- Normalize eigenvalues ---*/
     const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
-    const ScalarType factor = complexityRatio * pow(abs(det), localNormExp);
+    const ScalarType factor = globalFactor * pow(abs(det), normExp);
+    for (auto iDim = 0u; iDim < nDim; ++iDim)
+      EigVal[iDim] = factor * EigVal[iDim];
 
     /*--- Clip by user-specified size constraints ---*/
     for (auto iDim = 0u; iDim < nDim; ++iDim)
-      EigVal[iDim] = min(max(abs(factor*EigVal[iDim]), eigmin), eigmax);
+      EigVal[iDim] = min(max(abs(EigVal[iDim]), eigmin), eigmax);
 
     /*--- Clip by user-specified aspect ratio ---*/
     unsigned short iMax = 0;
@@ -255,7 +281,7 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
  * \param[in] iSensor - Index of the sensor to work on.
- * \param[inout] metric - Metric container.
+ * \param[in,out] metric - Metric container.
  */
 template<class ScalarType, class Metric, class MetricType>
 void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
@@ -274,21 +300,50 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
 }
 
 /*!
+ * \brief Integrate the Hessian field for the Lp-norm normalization of the metric.
+ * \param[in] geometry - Geometrical definition of the problem.
+ * \param[in] config - Definition of the particular problem.
+ * \param[in] iSensor - Index of the sensor to work on.
+ * \param[in] metric - Metric container.
+ * \return Integral of the metric tensor determinant.
+*/
+template<class ScalarType, class Metric, class MetricType>
+ScalarType integrateMetrics(CGeometry& geometry, const CConfig& config,
+                            unsigned short iSensor, MetricType& metric) {
+  su2double integral;
+  switch (geometry.GetnDim()) {
+    case 2:
+      integral = detail::integrateMetrics<2, ScalarType, Metric>(geometry, config, iSensor, metric);
+      break;
+    case 3:
+      integral = detail::integrateMetrics<3, ScalarType, Metric>(geometry, config, iSensor, metric);
+      break;
+    default:
+      SU2_MPI::Error("Too many dimensions for metric integration.", CURRENT_FUNCTION);
+      break;
+  }
+
+  return integral;
+}
+
+/*!
  * \brief Perform an Lp-norm normalization of the metric.
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
  * \param[in] iSensor - Index of the sensor to work on.
- * \param[inout] metric - Metric container.
+ * \param[in] integral - Integral of the metric tensor determinant.
+ * \param[in,out] metric - Metric container.
  */
 template<class ScalarType, class Metric, class MetricType>
 void normalizeMetrics(CGeometry& geometry, const CConfig& config,
-                     unsigned short iSensor, MetricType& metric) {
+                     unsigned short iSensor, ScalarType integral,
+                     MetricType& metric) {
   switch (geometry.GetnDim()) {
     case 2:
-      detail::normalizeMetrics<2, ScalarType, Metric>(geometry, config, iSensor, metric);
+      detail::normalizeMetrics<2, ScalarType, Metric>(geometry, config, iSensor, integral, metric);
       break;
     case 3:
-      detail::normalizeMetrics<3, ScalarType, Metric>(geometry, config, iSensor, metric);
+      detail::normalizeMetrics<3, ScalarType, Metric>(geometry, config, iSensor, integral, metric);
       break;
     default:
       SU2_MPI::Error("Too many dimensions for metric normalization.", CURRENT_FUNCTION);

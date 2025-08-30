@@ -4499,7 +4499,11 @@ void CSolver::SavelibROM(CGeometry *geometry, CConfig *config, bool converged) {
 }
 
 void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config, bool restartMetric) {
-
+  /*--- TODO: - goal-oriented metric ---*/
+  /*---       - metric intersection  ---*/
+  // unsigned long nVarTot = solver[FLOW_SOL]->GetnVar();
+  // if(goal && turb) nVarTot += solver[TURB_SOL]->GetnVar();
+  // vector<vector<double> > weights(3, vector<double>(nVarTot));
   const unsigned long nPointDomain = geometry->GetnPointDomain();
 
   const bool visc = (config->GetViscous());
@@ -4508,62 +4512,53 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
   const bool goal = (config->GetGoal_Oriented_Metric());
   const bool normalize = (config->GetNormalize_Metric());
 
-  /*--- Vector to store weights from various error contributions ---*/
-  unsigned long nVarTot = solver[FLOW_SOL]->GetnVar();
-  if(goal && turb) nVarTot += solver[TURB_SOL]->GetnVar();
-  vector<vector<double> > weights(3, vector<double>(nVarTot));
-
   unsigned short nSensor = config->GetnMetric_Sensor();
 
-  /*--- Compute Hessian weights for goal-oriented metric ---*/
-  for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-    for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
-      if (goal) {
-        //--- TODO: implement sum of weighted Hessians for goal-oriented metric
-      }
-    }
+  const unsigned long time_iter = config->GetTimeIter();
+  const bool steady = (config->GetTime_Marching() == TIME_MARCHING::STEADY);
+  const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||
+                             (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) ||
+                             (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING);
+  const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1) || (steady);
 
-    //--- TODO: apply boundary correction?
-    // CorrectBoundMetric(geometry, config);
-  }
-
-  /*--- Compute Lp-normalization of the metric tensor field ---*/
+  /*--- Integrate and normalize the metric tensor field ---*/
   for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
     SU2_OMP_MASTER
     if (goal) {
-      auto& metrics = base_nodes->GetMetric();
-      setPositiveDefiniteMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
-      if (normalize) normalizeMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+      SU2_MPI::Error("Goal-oriented metric not currently implemented.", CURRENT_FUNCTION);
+      // auto& metrics = base_nodes->GetMetric();
+      // setPositiveDefiniteMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+      // if (normalize) {
+      //   normalizeMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+      // }
     }
     else {
       auto& metrics = base_nodes->GetHessian();
       setPositiveDefiniteMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
-      if (normalize) normalizeMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
+      AddMetrics(solver, geometry, config, iSensor, restartMetric);
+      su2double integral = 0.0;
+      if (is_last_iter)
+        integral = integrateMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
+      if (steady || (normalize && is_last_iter))
+        normalizeMetrics<su2double, metric::feature>(*geometry, *config, iSensor, integral, metrics);
+      if (is_last_iter)
+        if (rank == MASTER_NODE) {
+          cout << "Global metric normalization integral for sensor ";
+          cout << config->GetMetric_SensorString(iSensor) << ": " << integral << endl;
+        }
     }
     END_SU2_OMP_MASTER
     SU2_OMP_BARRIER
   }
-
-  /*--- Intersect and store feature-based metrics ---*/
-  if (!goal) {
-    auto varFlo = solver[FLOW_SOL]->GetNodes();
-    const unsigned short nMet = 3*(nDim-1);
-    if (nSensor > 1) {
-      for (auto jSensor = 1u; jSensor < nSensor; ++jSensor) {
-        //--- TODO: metric intersection of multiple features
-      }
-    }
-    for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-      AddMetric(solver, geometry, config, iPoint, weights, restartMetric);
-    }
-  }
 }
 
-void CSolver::AddMetric(CSolver **solver, const CGeometry*geometry, const CConfig *config,
-                        unsigned long iPoint, vector<vector<double> > &weights, bool restartMetric) {
-
+void CSolver::AddMetrics(CSolver **solver, const CGeometry*geometry, const CConfig *config,
+                         const unsigned short iSensor, bool restartMetric) {
+  /*--- TODO: - goal-oriented metric ---*/
+  /*---       - metric intersection  ---*/
   auto varFlo = solver[FLOW_SOL]->GetNodes();
 
+  const unsigned long nPointDomain = geometry->GetnPointDomain();
   const unsigned short nSymMat = 3*(nDim-1);
   const unsigned short nVarFlo = solver[FLOW_SOL]->GetnVar();
   const unsigned short nSensor = config->GetnMetric_Sensor();
@@ -4578,12 +4573,9 @@ void CSolver::AddMetric(CSolver **solver, const CGeometry*geometry, const CConfi
   const bool is_first_iter = (time_iter == 0) || (restartMetric);
   const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1);
 
-  if (goal) {
-    //--- TODO: sum weighted Hessians
-  }
-  else {
+  for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     for (auto iMat = 0; iMat < nSymMat; ++iMat) {
-      double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, 0, iMat));
+      double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, iSensor, iMat));
       if (time_stepping) {
         /*--- Integrate the unsteady metric ---*/
         const double coeff = (is_first_iter || is_last_iter)? 0.5 : 1.0;
