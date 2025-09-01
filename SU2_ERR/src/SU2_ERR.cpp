@@ -65,14 +65,12 @@ int main(int argc, char* argv[]) {
     strcpy(config_file_name, "default.cfg");
   }
 
-  CConfig* config = nullptr;
-  config = new CConfig(config_file_name, SU2_COMPONENT::SU2_ERR);
+  /*--- Initialize the main configuration ---*/
+  driver_config = new CConfig(config_file_name, SU2_COMPONENT::SU2_ERR);
 
-  const auto nZone = config->GetnZone();
+  const auto nZone = driver_config->GetnZone();
 
   /*--- Definition of the containers per zones ---*/
-
-  driver_config = nullptr;
   config_src = new CConfig*[nZone]();
   config_dst = new CConfig*[nZone]();
   config_ref = new CConfig*[nZone]();
@@ -89,14 +87,11 @@ int main(int argc, char* argv[]) {
     nInst[iZone] = 1;
   }
 
-  /*--- Initialize the configuration of the driver ---*/
-  driver_config = new CConfig(config_file_name, SU2_COMPONENT::SU2_ERR, false);
-
   /*--- Initialize a char to store the zone filename ---*/
   char zone_file_name[MAX_STRING_SIZE];
 
   /*--- Store a boolean for multizone problems ---*/
-  const bool multizone = config->GetMultizone_Problem();
+  const bool multizone = driver_config->GetMultizone_Problem();
 
   /*--- Initialize the interpolator ---*/
   for (iZone = 0; iZone < nZone; iZone++) {
@@ -373,9 +368,6 @@ int main(int argc, char* argv[]) {
     Error_file.close();
   }
 
-  delete config;
-  config = nullptr;
-
   if (rank == MASTER_NODE)
     cout << endl << "------------------------- Finalize Solver -------------------------" << endl;
 
@@ -478,6 +470,11 @@ int main(int argc, char* argv[]) {
     delete[] config_ref;
   }
   if (rank == MASTER_NODE) cout << "Deleted CConfig containers." << endl;
+
+  if (driver_config != nullptr) {
+    delete driver_config;
+  }
+  if (rank == MASTER_NODE) cout << "Deleted driver CConfig class." << endl;
 
   if (output != nullptr) {
     for (iZone = 0; iZone < nZone; iZone++) {

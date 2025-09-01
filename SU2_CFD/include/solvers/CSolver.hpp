@@ -425,6 +425,11 @@ public:
   inline unsigned short GetnOutputVariables(void) const { return nOutputVariables; }
 
   /*!
+  * \brief Get the number of symmetric matrix componenents for Hessian and metric tensor.
+  */
+  inline unsigned short GetnSymMat(void) const { return nSymMat; }
+
+  /*!
    * \brief A virtual member.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] solver_container - Container vector with all the solutions.

@@ -348,6 +348,8 @@ subdir('SU2_DEF/src')
 subdir('SU2_DOT/src')
 # compile SU2_GEO executable
 subdir('SU2_GEO/src')
+# compile SU2_MET executable
+subdir('SU2_MET/src')
 # compile SU2_ITP executable
 subdir('SU2_ITP/src')
 # compile SU2_ERR executable

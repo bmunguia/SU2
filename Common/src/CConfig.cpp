@@ -3358,6 +3358,7 @@ void CConfig::SetHeader(SU2_COMPONENT val_software) const{
     case SU2_COMPONENT::SU2_ERR: cout << "|   |___/\\___//___|   Suite (Error Estimation Code)                     |\n"; break;
     case SU2_COMPONENT::SU2_GEO: cout << "|   |___/\\___//___|   Suite (Geometry Definition Code)                  |\n"; break;
     case SU2_COMPONENT::SU2_ITP: cout << "|   |___/\\___//___|   Suite (Solution Interpolation Code)               |\n"; break;
+    case SU2_COMPONENT::SU2_MET: cout << "|   |___/\\___//___|   Suite (Metric Calculation Code)                   |\n"; break;
     case SU2_COMPONENT::SU2_SOL: cout << "|   |___/\\___//___|   Suite (Solution Exporting Code)                   |\n"; break;
     }
     cout << "|                                                                       |\n";

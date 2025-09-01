@@ -70,6 +70,7 @@ enum class SU2_COMPONENT {
   SU2_ERR, /*!< \brief Running the SU2_ERR software. */
   SU2_GEO, /*!< \brief Running the SU2_GEO software. */
   SU2_ITP, /*!< \brief Running the SU2_ITP software. */
+  SU2_MET, /*!< \brief Running the SU2_MET software. */
   SU2_SOL  /*!< \brief Running the SU2_SOL software. */
 };
 

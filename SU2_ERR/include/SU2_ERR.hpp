@@ -27,9 +27,6 @@
 
 #pragma once
 
-#include <cmath>
-#include <memory>
-
 #include "../../SU2_ITP/include/CConservativeVolumeInterpolator.hpp"
 #include "../../SU2_ITP/include/CLinearVolumeInterpolator.hpp"
 
