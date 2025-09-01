@@ -31,8 +31,6 @@
 #include <memory>
 #include <optional>
 
-#include "../../Common/include/parallelization/mpi_structure.hpp"
-
 #include "../../SU2_CFD/include/solvers/CBaselineSolver.hpp"
 #include "../../SU2_CFD/include/solvers/CBaselineSolver_FEM.hpp"
 #include "../../SU2_CFD/include/solvers/CSolverFactory.hpp"
@@ -40,7 +38,6 @@
 #include "../../SU2_CFD/include/output/COutputFactory.hpp"
 #include "../../Common/include/geometry/CPhysicalGeometry.hpp"
 #include "../../Common/include/adt/CADTElemClass.hpp"
-#include "../../Common/include/CConfig.hpp"
 
 /*!
  * \class CVolumeInterpolator

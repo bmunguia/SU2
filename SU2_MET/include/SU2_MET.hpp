@@ -28,10 +28,10 @@
 #pragma once
 
 #include <cmath>
+#include <fstream>
 #include <memory>
 #include <optional>
-
-#include "../../Common/include/parallelization/mpi_structure.hpp"
+#include <sstream>
 
 #include "../../SU2_CFD/include/solvers/CBaselineSolver.hpp"
 #include "../../SU2_CFD/include/solvers/CBaselineSolver_FEM.hpp"
@@ -39,8 +39,7 @@
 #include "../../SU2_CFD/include/output/CBaselineOutput.hpp"
 #include "../../SU2_CFD/include/output/COutputFactory.hpp"
 #include "../../Common/include/geometry/CPhysicalGeometry.hpp"
-#include "../../Common/include/adt/CADTElemClass.hpp"
-#include "../../Common/include/CConfig.hpp"
+#include "../../SU2_CFD/include/metrics/computeMetrics.hpp"
 
 void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name,
                       char* config_file_name, SU2_COMPONENT val_software, int iZone, int nZone,
@@ -75,5 +74,6 @@ vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver);
  *
  * \param[in] config - Definition of the particular problem.
  * \param[in] solver - Container with the solution.
+ * \param[in] geometry - Geometrical definition of the problem.
  */
-void NormalizeMetricField(const CConfig* config, const CSolver* solver);
+void NormalizeMetricField(const CConfig* config, const CSolver* solver, CGeometry* geometry);

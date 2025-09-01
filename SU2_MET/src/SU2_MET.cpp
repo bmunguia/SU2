@@ -192,6 +192,10 @@ int main(int argc, char* argv[]) {
             }
             cout << " ) in solution." << endl;
           }
+
+          /*--- Normalize metric field if requested ---*/
+          NormalizeMetricField(config[iZone], solver[iZone][INST_0][FLOW_SOL],
+                               geometry[iZone][INST_0]);
         }
 
         if (rank == MASTER_NODE) cout << "Writing the volume solution for time step " << TimeIter << "." << endl;
@@ -227,16 +231,9 @@ int main(int argc, char* argv[]) {
       /*--- Load the solution on the source mesh ---*/
       LoadRestarts(config[iZone], geometry[iZone], solver[iZone], iZone, INST_0, 0, true);
 
-      /*--- Get the correct field indices ---*/
-      vector<int> iFields = GetMetricFieldIndices(config[iZone], solver[iZone][INST_0][FLOW_SOL]);
-      if (rank == MASTER_NODE) {
-        cout << "Metric tensor found at indices ( ";
-        for (auto i = 0u; i < solver[iZone][INST_0][FLOW_SOL]->GetnSymMat(); ++i) {
-           cout << iFields[i];
-           if (i < solver[iZone][INST_0][FLOW_SOL]->GetnSymMat() - 1) cout << ", ";
-         }
-         cout << " ) in solution." << endl;
-      }
+      /*--- Normalize metric field if requested ---*/
+      NormalizeMetricField(config[iZone], solver[iZone][INST_0][FLOW_SOL],
+                           geometry[iZone][INST_0]);
     }
     for (iZone = 0; iZone < nZone; iZone++) {
       WriteFiles(config[iZone], geometry[iZone][INST_0], solver[iZone][INST_0],
@@ -541,6 +538,110 @@ vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver) 
   return indices;
 }
 
-void NormalizeMetricField(const CConfig* config, const CSolver* solver) {
+void NormalizeMetricField(const CConfig* config, const CSolver* solver, CGeometry* geometry) {
+  const int rank = SU2_MPI::GetRank();
 
+  const unsigned long nPoint = geometry->GetnPoint();
+  const unsigned short nDim = geometry->GetnDim();
+  const unsigned short nSymMat = solver->GetnSymMat();
+
+  /*--- Check if normalization is enabled ---*/
+  if (!config->GetNormalize_Metric()) {
+    return;
+  }
+
+  /*--- Get metric field indices ---*/
+  vector<int> iFields = GetMetricFieldIndices(config, solver);
+  if (iFields.empty()) {
+    SU2_MPI::Error("No metric fields found for normalization.", CURRENT_FUNCTION);
+    return;
+  } else if (iFields.size() != nSymMat) {
+    if (rank == MASTER_NODE)
+    SU2_MPI::Error(string("Incorrect number of tensor components. Should be ") +
+                   to_string(nSymMat) + string("for ")  + to_string(nDim) + string("D."),
+                   CURRENT_FUNCTION);
+    return;
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Metric tensor found at indices ( ";
+    for (auto i = 0u; i < nSymMat; ++i) {
+        cout << iFields[i];
+        if (i < nSymMat - 1) cout << ", ";
+      }
+      cout << " ) in solution." << endl;
+  }
+
+  /*--- Try to read integral file ---*/
+  string integral_filename = config->GetMetric_Integral_FileName();
+
+  ifstream integral_file(integral_filename);
+  if (!integral_file.good()) {
+    if (rank == MASTER_NODE) {
+      cout << "Warning: Cannot open metric integral file '" << integral_filename
+           << "'. Skipping normalization." << endl;
+    }
+    return;
+  }
+
+  /*--- Read and sum all integral values (space-time integral) ---*/
+  su2double integral_value = 0.0;
+  bool found_value = false;
+  string line;
+
+  while (getline(integral_file, line)) {
+    istringstream iss(line);
+    su2double value;
+
+    /*--- Try to read as a single value first (steady case) ---*/
+    if (iss >> value) {
+      integral_value += value;
+      found_value = true;
+
+      /*--- Check if there's a second value (unsteady case with TimeIter) ---*/
+      su2double second_value;
+      if (iss >> second_value) {
+        /*--- If there are two values, the second is the integral value ---*/
+        integral_value = integral_value - value + second_value;
+      }
+    }
+  }
+
+  integral_file.close();
+
+  if (!found_value || integral_value <= 0.0) {
+    if (rank == MASTER_NODE) {
+      cout << "Warning: Invalid integral value (" << integral_value
+           << ") found. Skipping normalization." << endl;
+    }
+    return;
+  }
+
+  /*--- Create a metric container for the normalization ---*/
+  su2matrix<su2double> metric_field(nPoint, nSymMat);
+
+  /*--- Extract metric tensor from solution fields ---*/
+  for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+    for (unsigned short iSymMat = 0; iSymMat < nSymMat; iSymMat++) {
+      metric_field(iPoint, iSymMat) = solver->GetNodes()->GetSolution(iPoint, iFields[iSymMat]);
+    }
+  }
+
+  /*--- Apply normalization using the metric::goal interface ---*/
+  /*--- Since we have the metric fields directly, we use them as a metric field ---*/
+  const unsigned short iSensor = 0;
+  normalizeMetrics<su2double, metric::goal>(
+    *geometry, *config, iSensor, integral_value, metric_field);
+
+  /*--- Write the normalized metric back to the solution fields ---*/
+  for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+    for (unsigned short iSymMat = 0; iSymMat < nSymMat; iSymMat++) {
+      const_cast<CSolver*>(solver)->GetNodes()->SetSolution(iPoint, iFields[iSymMat],
+                                                            metric_field(iPoint, iSymMat));
+    }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Metric field normalization completed using integral value: " << integral_value << endl;
+  }
 }
