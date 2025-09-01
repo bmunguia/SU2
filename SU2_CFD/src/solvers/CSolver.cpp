@@ -4522,6 +4522,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
   const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1) || (steady);
 
   /*--- Integrate and normalize the metric tensor field ---*/
+  vector<su2double> integrals;
   for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
     SU2_OMP_MASTER
     if (goal) {
@@ -4541,14 +4542,61 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
         integral = integrateMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
       if (steady || (normalize && is_last_iter))
         normalizeMetrics<su2double, metric::feature>(*geometry, *config, iSensor, integral, metrics);
-      if (is_last_iter)
+      if (is_last_iter) {
+        integrals.push_back(integral);
         if (rank == MASTER_NODE) {
           cout << "Global metric normalization integral for sensor ";
           cout << config->GetMetric_SensorString(iSensor) << ": " << integral << endl;
         }
+      }
     }
     END_SU2_OMP_MASTER
     SU2_OMP_BARRIER
+  }
+
+  if (config->GetKind_SU2() == SU2_COMPONENT::SU2_CFD && is_last_iter && rank == MASTER_NODE) {
+    /*--- Write the integral in an external file ---*/
+    ofstream Integral_file;
+    const bool tabTecplot = config->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT;
+
+    string filename = config->GetMetric_Integral_FileName();
+    unsigned short lastindex = filename.find_last_of('.');
+    filename = filename.substr(0, lastindex);
+    if (tabTecplot)
+      filename += ".dat";
+    else
+      filename += ".csv";
+
+    /*--- TODO: allow for multiple sensors ---*/
+    unsigned short iSensor = 0;
+
+    /*--- Check if file exists to determine write vs append mode ---*/
+    const bool file_exists = std::filesystem::exists(filename);
+
+    /*--- Open in appropriate mode ---*/
+    if (file_exists) {
+      Integral_file.open(filename.c_str(), ios::app);
+    } else {
+      Integral_file.open(filename.c_str(), ios::out);
+
+      /*--- Write header only for new files ---*/
+      if (tabTecplot) {
+        Integral_file << "TITLE = \"SU2_CFD Metric Integral Evaluation\"" << endl;
+        Integral_file << "VARIABLES = ";
+      }
+
+      string sensor_string = config->GetMetric_SensorString(iSensor);
+      Integral_file << "\"Time Iter\",\"" << sensor_string << " Metric Integral\"";
+      if (tabTecplot)
+        Integral_file << "\nZONE T= \"Metric integrals\"" << endl;
+      else
+        Integral_file << endl;
+    }
+
+    /*--- Write data (both new and existing files) ---*/
+    Integral_file << time_iter << ", " << integrals[iSensor] << endl;
+
+    Integral_file.close();
   }
 }
 

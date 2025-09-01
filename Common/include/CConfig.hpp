@@ -824,6 +824,7 @@ private:
   ObjFunc_Grad_FileName,         /*!< \brief Gradient of the objective function. */
   ObjFunc_Value_FileName,        /*!< \brief Objective function. */
   Sensor_Error_FileName,         /*!< \brief Interpolation error of mesh adaptation sensor */
+  Metric_Integral_FileName,      /*!< \brief Integral of metric tensor for mesh adaptation sensor */
   SurfCoeff_FileName,            /*!< \brief Output file with the flow variables on the surface. */
   SurfAdjCoeff_FileName,         /*!< \brief Output file with the adjoint variables on the surface. */
   SurfSens_FileName,             /*!< \brief Output file for the sensitivity on the surface (discrete adjoint). */
@@ -5694,6 +5695,12 @@ public:
    * \return Name of the file with the interpolation error.
    */
   string GetSensor_Error_FileName(void) const { return Sensor_Error_FileName; }
+
+  /*!
+   * \brief Get the name of the file with the integral of the metric tensor.
+   * \return Name of the file with the integral of the metric tensor.
+   */
+  string GetMetric_Integral_FileName(void) const { return Metric_Integral_FileName; }
 
   /*!
    * \brief Get the name of the file with the surface information for the flow problem.

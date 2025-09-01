@@ -533,5 +533,14 @@ vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver) 
     }
   }
 
+  if (indices.size() == 0) {
+    SU2_MPI::Error("Metric tensor not found in solution.", CURRENT_FUNCTION);
+    return indices;
+  }
+
   return indices;
+}
+
+void NormalizeMetricField(const CConfig* config, const CSolver* solver) {
+
 }

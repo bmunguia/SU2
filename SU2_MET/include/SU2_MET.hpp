@@ -61,11 +61,19 @@ void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container
                 COutput* output, unsigned long TimeIter);
 
 /*!
- * \brief Get the index of the metric tensor field for the current solver.
+ * \brief Get the index of the metric tensor field for the current solver time step.
  *
  * \param[in] config - Definition of the particular problem.
  * \param[in] solver - Container with the solution.
- * \return Index of the field in the solution fields vector corresponding to the metric sensor.
+ * \return Indices of the fields in the solution fields vector corresponding to the metric tensor.
  * \throws SU2_MPI::Error if the sensor field is not found in the solution fields.
  */
 vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver);
+
+/*!
+ * \brief Normalize the metric tensor field for the current solver time step.
+ *
+ * \param[in] config - Definition of the particular problem.
+ * \param[in] solver - Container with the solution.
+ */
+void NormalizeMetricField(const CConfig* config, const CSolver* solver);
