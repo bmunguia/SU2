@@ -3031,6 +3031,8 @@ void CConfig::SetConfig_Options() {
   addUnsignedShortOption("METRIC_NORM", Metric_Norm, 2);
   /*!\brief METRIC_COMPLEXITY \n DESCRIPTION: Constraint mesh complexity */
   addUnsignedLongOption("METRIC_COMPLEXITY", Metric_Complexity, 10000);
+  /*!\brief ADAPT_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
+  addUnsignedShortOption("ADAPT_TIME_SUBINTERVAL", nAdapt_Time_Subinterval, 1);
 
   /*!\brief METRIC_HMAX \n DESCRIPTION: Constraint maximum cell size */
   addDoubleOption("METRIC_HMAX", Metric_Hmax, 10.0);
@@ -3049,8 +3051,6 @@ void CConfig::SetConfig_Options() {
 
   /*!\brief ADAPT_ITER \n DESCRIPTION: Mesh adaptation iterations */
   addPythonOption("ADAPT_ITER");
-  /*!\brief ADAPT_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
-  addPythonOption("ADAPT_TIME_SUBINTERVAL");
   /*!\brief METRIC_COMPLEXITY_LIST \n DESCRIPTION: List of constraint mesh complexities for mesh convergence study */
   addPythonOption("METRIC_COMPLEXITY_LIST");
 
@@ -5732,6 +5732,10 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     if (Kind_Hessian_Method != GREEN_GAUSS) {
       SU2_MPI::Error("NUM_METHOD_HESS must be GREEN_GAUSS.", CURRENT_FUNCTION);
     }
+
+    /*--- Make sure only using single adaptation sub-interval for steady problems ---*/
+    if(TimeMarching == TIME_MARCHING::STEADY)
+      nAdapt_Time_Subinterval = 1;
   }
 
 }
@@ -7913,6 +7917,10 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         }
         if (Normalize_Metric) {
           cout << "Target complexity: " << Metric_Complexity << endl;
+          if (TimeMarching != TIME_MARCHING::STEADY) {
+            cout << "  Unsteady adaptation sub-intervals: " << nAdapt_Time_Subinterval << endl;
+            cout << "  Target space-time complexity: " << Metric_Complexity * nAdapt_Time_Subinterval << endl;
+          }
           cout << "Lp norm: " << Metric_Norm << endl;
           cout << "Min. edge length: " << Metric_Hmin << endl;
           cout << "Max. edge length: " << Metric_Hmax << endl;

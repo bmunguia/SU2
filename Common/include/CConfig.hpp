@@ -1252,16 +1252,17 @@ private:
   FluidFlamelet_ParsedOptions flamelet_ParsedOptions; /*!< \brief Additional flamelet solver options */
 
     /*--- Mesh adaptation options ---*/
-  bool Compute_Metric;                 /*!< \brief Determines if error estimation is taking place */
-  bool Normalize_Metric;               /*!< \brief Determines if metric tensor normalization is taking place */
-  unsigned short Kind_Hessian_Method;  /*!< \brief Numerical method for computation of Hessians. */
-  unsigned short nMetric_Sensor;       /*!< \brief Number of sensors to use for adaptation. */
-  METRIC_SENSOR* Metric_Sensor;        /*!< \brief Sensors to use for adaptation. */
-  unsigned short Metric_Norm;          /*!< \brief Lp-norm for mesh adaptation */
-  unsigned long Metric_Complexity;     /*!< \brief Constraint mesh complexity */
-  su2double Metric_Hmax,               /*!< \brief Maximum cell size */
-            Metric_Hmin,               /*!< \brief Minimum cell size */
-            Metric_ARmax;              /*!< \brief Maximum cell aspect ratio */
+  bool Compute_Metric;                     /*!< \brief Determines if error estimation is taking place */
+  bool Normalize_Metric;                   /*!< \brief Determines if metric tensor normalization is taking place */
+  unsigned short Kind_Hessian_Method;      /*!< \brief Numerical method for computation of Hessians. */
+  unsigned short nMetric_Sensor;           /*!< \brief Number of sensors to use for adaptation. */
+  METRIC_SENSOR* Metric_Sensor;            /*!< \brief Sensors to use for adaptation. */
+  unsigned short Metric_Norm;              /*!< \brief Lp-norm for mesh adaptation */
+  unsigned long Metric_Complexity;         /*!< \brief Constraint mesh complexity */
+  unsigned short nAdapt_Time_Subinterval;  /*!< \brief Number of unsteady time sub-intervals for adaptation. */
+  su2double Metric_Hmax,                   /*!< \brief Maximum cell size */
+            Metric_Hmin,                   /*!< \brief Minimum cell size */
+            Metric_ARmax;                  /*!< \brief Maximum cell aspect ratio */
 
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
@@ -10011,6 +10012,12 @@ public:
    * \return Mesh complexity
    */
   unsigned long GetMetric_Complexity(void) const { return Metric_Complexity; }
+
+  /*!
+   * \brief Get number of unsteady adaptation sub-intervals
+   * \return Number of unsteady adaptation sub-intervals
+   */
+  unsigned long GetnAdapt_Time_Subinterval(void) const { return nAdapt_Time_Subinterval; }
 
   /*!
    * \brief Check if conservative solution interpolation is being carried out

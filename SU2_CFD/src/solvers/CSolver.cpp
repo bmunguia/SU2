@@ -4528,20 +4528,23 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
     if (goal) {
       SU2_MPI::Error("Goal-oriented metric not currently implemented.", CURRENT_FUNCTION);
       // auto& metrics = base_nodes->GetMetric();
-      // setPositiveDefiniteMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+      // setPositiveDefiniteMetrics<double, tensor::metric>(*geometry, *config, iSensor, metrics);
       // if (normalize) {
-      //   normalizeMetrics<double, metric::goal>(*geometry, *config, iSensor, metrics);
+      //   normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, metrics);
       // }
     }
     else {
-      auto& metrics = base_nodes->GetHessian();
-      setPositiveDefiniteMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
+      auto& hessians = base_nodes->GetHessian();
+      setPositiveDefiniteMetrics<su2double, tensor::hessian>(*geometry, *config, iSensor, hessians);
       AddMetrics(solver, geometry, config, iSensor, restartMetric);
+
+      /*--- Integrate and normalize if needed ---*/
+      auto& metrics = base_nodes->GetMetric();
       su2double integral = 0.0;
       if (is_last_iter)
-        integral = integrateMetrics<su2double, metric::feature>(*geometry, *config, iSensor, metrics);
+        integral = integrateMetrics<su2double, tensor::metric>(*geometry, *config, iSensor, metrics);
       if (steady || (normalize && is_last_iter))
-        normalizeMetrics<su2double, metric::feature>(*geometry, *config, iSensor, integral, metrics);
+        normalizeMetrics<su2double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
       if (is_last_iter) {
         integrals.push_back(integral);
         if (rank == MASTER_NODE) {
@@ -4594,7 +4597,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
     }
 
     /*--- Write data (both new and existing files) ---*/
-    Integral_file << time_iter << ", " << integrals[iSensor] << endl;
+    Integral_file << time_iter << ", " << setprecision(15) << scientific << integrals[iSensor] << endl;
 
     Integral_file.close();
   }

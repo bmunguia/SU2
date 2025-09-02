@@ -647,9 +647,9 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
     }
   }
 
-  /*--- Apply normalization using the metric::goal interface ---*/
+  /*--- Apply normalization using the tensor::metric interface ---*/
   const unsigned short iSensor = 0;
-  normalizeMetrics<su2double, metric::goal>(
+  normalizeMetrics<su2double, tensor::metric>(
     *geometry, *config, iSensor, integral_value, metric_field);
 
   /*--- Write the normalized metric back to the solution fields ---*/
