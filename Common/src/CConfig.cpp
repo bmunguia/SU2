@@ -2215,7 +2215,7 @@ void CConfig::SetConfig_Options() {
   /*!\brief SENSOR_ERROR_FILENAME
    *  \n DESCRIPTION: Output interpolation error in mesh adaptation sensor  \ingroup Config*/
   addStringOption("SENSOR_ERROR_FILENAME", Sensor_Error_FileName, string("sensor_error.dat"));
-  /*!\brief SENSOR_ERROR_FILENAME
+  /*!\brief METRIC_INTEGRAL_FILENAME
    *  \n DESCRIPTION: Output integral of metric tensor field for mesh adaptation sensor  \ingroup Config*/
   addStringOption("METRIC_INTEGRAL_FILENAME", Metric_Integral_FileName, string("metric_integral.dat"));
   /*!\brief SURFACE_FLOW_FILENAME

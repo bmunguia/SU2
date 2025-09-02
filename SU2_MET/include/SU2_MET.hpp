@@ -76,4 +76,4 @@ vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver);
  * \param[in] solver - Container with the solution.
  * \param[in] geometry - Geometrical definition of the problem.
  */
-void NormalizeMetricField(const CConfig* config, const CSolver* solver, CGeometry* geometry);
+void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geometry);

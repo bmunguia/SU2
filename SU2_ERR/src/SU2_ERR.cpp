@@ -536,7 +536,8 @@ int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
     return s;
   };
 
-  const auto& fields = solver->GetSolutionFields();
+  vector<string> fields = solver->GetSolutionFields();
+  fields.erase(fields.begin()); // remove Point_ID
   for (size_t i = 0; i < fields.size(); ++i) {
     if (strip_quotes(fields[i]) == sensor_name) {
       return static_cast<int>(i);
