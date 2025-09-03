@@ -657,7 +657,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
         const su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
         const su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
 
-        /*--- u_K(P_i) = u_K(G_K) + gra(u_K) · G_K P_i ---*/
+        /*--- u_K(P_i) = u_K(G_K) + gra(u_K)  dot  G_K P_i ---*/
         u_K_P[iNode] = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
       }
 
@@ -758,7 +758,7 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* c
         const su2double u_G = dstElemMass[elemID][iVar] / elemVolume;
         const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
 
-        /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u) · (P_i - G_K) ---*/
+        /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u)  dot  (P_i - G_K) ---*/
         const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
 
         /*--- Accumulate weighted contribution ---*/

@@ -77,3 +77,11 @@ vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver);
  * \param[in] geometry - Geometrical definition of the problem.
  */
 void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geometry);
+
+/*!
+ * \brief Calculate the geometric surface metric.
+ *
+ * \param[in] config - Definition of the particular problem.
+ * \param[in] geometry - Geometrical definition of the problem.
+ */
+void SurfaceMetricField(const CConfig* config, CGeometry* geometry);
