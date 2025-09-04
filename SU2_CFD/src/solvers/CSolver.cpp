@@ -4534,17 +4534,22 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
       // }
     }
     else {
+      /*--- Make the Hessian eigenvalues positive definite, and add to the metric tensor ---*/
       auto& hessians = base_nodes->GetHessian();
       setPositiveDefiniteMetrics<su2double, tensor::hessian>(*geometry, *config, iSensor, hessians);
       AddMetrics(solver, geometry, config, iSensor, restartMetric);
 
-      /*--- Integrate and normalize if needed ---*/
+      /*--- Integrate metric field on the last iteration (the end of the simulation if steady) ---*/
       auto& metrics = base_nodes->GetMetric();
       su2double integral = 0.0;
       if (is_last_iter)
         integral = integrateMetrics<su2double, tensor::metric>(*geometry, *config, iSensor, metrics);
+
+      /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
       if (steady || (normalize && is_last_iter))
         normalizeMetrics<su2double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
+
+      /*--- Store the integral to be written ---*/
       if (is_last_iter) {
         integrals.push_back(integral);
         if (rank == MASTER_NODE) {

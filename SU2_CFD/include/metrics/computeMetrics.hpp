@@ -126,6 +126,23 @@ namespace tensor {
 namespace detail {
 
 /*!
+ * \brief Compute determinant of eigenvalues for different dimensions.
+ * \param[in] EigVal - Array of eigenvalues.
+ * \return Determinant value.
+ */
+template<size_t nDim, class ScalarType>
+ScalarType computeDeterminant(const ScalarType* EigVal) {
+  if constexpr (nDim == 2) {
+    return EigVal[0] * EigVal[1];
+  } else if constexpr (nDim == 3) {
+    return EigVal[0] * EigVal[1] * EigVal[2];
+  } else {
+    static_assert(nDim == 2 || nDim == 3, "Only 2D and 3D supported");
+    return ScalarType(0.0);
+  }
+}
+
+/*!
  * \brief Make the eigenvalues of the metrics positive.
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
@@ -195,7 +212,7 @@ ScalarType integrateMetrics(CGeometry& geometry, const CConfig& config,
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
 
     /*--- Integrate determinant ---*/
-    const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
+    const ScalarType det = computeDeterminant<nDim>(EigVal);
     const ScalarType Vol = SU2_TYPE::GetValue(nodes->GetVolume(iPoint));
     localIntegral += pow(abs(det), normExp) * Vol;
   }
@@ -245,7 +262,7 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
 
     /*--- Normalize eigenvalues ---*/
-    const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
+    const ScalarType det = computeDeterminant<nDim>(EigVal);
     const ScalarType factor = globalFactor * pow(abs(det), normExp);
     for (auto iDim = 0u; iDim < nDim; ++iDim)
       EigVal[iDim] = factor * EigVal[iDim];
