@@ -477,7 +477,7 @@ void InitializeSolver(CConfig* config, CGeometry* geometry, CSolver**& solver_co
 
 void InitializeOutput(CConfig* config, CGeometry* geometry, CSolver** solver_container, COutput*& output,
                                            int iZone, int iInst, int nZone) {
-  output = new CBaselineOutput(config, geometry->GetnDim(), solver_container[FLOW_SOL]);
+  output = new CMetricOutput(config, geometry->GetnDim(), solver_container[FLOW_SOL]);
   output->PreprocessVolumeOutput(config);
   output->PreprocessHistoryOutput(config, false);
 }
@@ -518,19 +518,11 @@ void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container
 }
 
 vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver) {
-  vector<int> indices;
-  auto strip_quotes = [](const string& s) -> string {
-    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
-      return s.substr(1, s.size() - 2);
-    }
-    return s;
-  };
-
-  vector<string> fields = solver->GetSolutionFields();
+  vector<int> indices;vector<string> fields = solver->GetSolutionFields();
   fields.erase(fields.begin()); // remove Point_ID
   for (size_t i = 0; i < fields.size(); ++i) {
-    string field_name = strip_quotes(fields[i]);
-    if (field_name.substr(0, 7) == "Metric_") {
+    string field_name = fields[i].substr(1, fields[i].size() - 2);
+    if (field_name.rfind("Metric_", 0) == 0) {
       indices.push_back(static_cast<int>(i));
     }
   }
@@ -682,14 +674,18 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
 }
 
 void SurfaceMetricField(const CConfig* config, CGeometry* geometry) {
+  if (!config->GetCompute_Metric_Geo()) return;
+
+  const int rank = SU2_MPI::GetRank();
+
   const unsigned long nPointDomain = geometry->GetnPointDomain();
   const unsigned short nDim = geometry->GetnDim();
   const unsigned short nSymMat = 3 * (nDim - 1);
 
   /*--- Create a metric container  ---*/
-  su2matrix<su2double> metric_field(nPointDomain, nSymMat);
+  auto& metric_field = geometry->nodes->GetMetric();
   geometricSurfaceMetrics<su2double, tensor::metric>(
-    *geometry, *config, 10.0, metric_field
+    *geometry, *config, metric_field
   );
 
   if (rank == MASTER_NODE)

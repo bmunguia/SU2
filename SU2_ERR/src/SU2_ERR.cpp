@@ -529,17 +529,11 @@ int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
   string sensor_name = config->GetMetric_SensorString(0);
 
   /*--- Find index in solution fields ---*/
-  auto strip_quotes = [](const string& s) -> string {
-    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
-      return s.substr(1, s.size() - 2);
-    }
-    return s;
-  };
-
   vector<string> fields = solver->GetSolutionFields();
   fields.erase(fields.begin()); // remove Point_ID
   for (size_t i = 0; i < fields.size(); ++i) {
-    if (strip_quotes(fields[i]) == sensor_name) {
+    string field_name = fields[i].substr(1, fields[i].size() - 2);
+    if (field_name.rfind(sensor_name, 0) == 0) {
       return static_cast<int>(i);
     }
   }

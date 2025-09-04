@@ -2201,6 +2201,8 @@ void CConfig::SetConfig_Options() {
   addStringOption("RESTART_FILENAME", Restart_FileName, string("restart.dat"));
   /*!\brief RESTART_ADJ_FILENAME  \n DESCRIPTION: Output file restart adjoint. Objective function abbreviation will be appended. \ingroup Config*/
   addStringOption("RESTART_ADJ_FILENAME", Restart_AdjFileName, string("restart_adj.dat"));
+  /*!\brief METRIC_GEO_FILENAME \n DESCRIPTION: Output file restart flow \ingroup Config*/
+  addStringOption("METRIC_GEO_FILENAME", Metric_GeoFileName, string("metric_geo"));
   /*!\brief VOLUME_FLOW_FILENAME  \n DESCRIPTION: Output file flow (w/o extension) variables \ingroup Config */
   addStringOption("VOLUME_FILENAME", Volume_FileName, string("vol_solution"));
   /*!\brief VOLUME_ADJ_FILENAME
@@ -3019,6 +3021,8 @@ void CConfig::SetConfig_Options() {
 
   /*!\brief COMPUTE_METRIC \n DESCRIPTION: Compute an error estimate */
   addBoolOption("COMPUTE_METRIC", Compute_Metric, false);
+  /*!\brief COMPUTE_METRIC_GEO \n DESCRIPTION: Compute the metric tensor corresponding to the surface curvature */
+  addBoolOption("COMPUTE_METRIC_GEO", Compute_Metric_Geo, false);
   /*!\brief NORMALIZE_METRIC \n DESCRIPTION: Normalize the metric tensor */
   addBoolOption("NORMALIZE_METRIC", Normalize_Metric, false);
   /*!\brief NUM_METHOD_HESS
@@ -3040,6 +3044,8 @@ void CConfig::SetConfig_Options() {
   addDoubleOption("METRIC_HMIN", Metric_Hmin, 1.0E-8);
   /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
   addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E6);
+  /*!\brief METRIC_GEO_DEV \n DESCRIPTION: Deviation from tangent plane (degrees) for surface metric */
+  addDoubleOption("METRIC_GEODEV", Metric_GeoDev, 10.0);
   /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
   addPythonOption("METRIC_HGRAD");
 

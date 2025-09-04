@@ -4131,6 +4131,20 @@ void CFlowOutput::AddMeshAdaptationOutputs(const CConfig* config) {
     }
     AddVolumeOutput("VOLUME", "Volume", "MESH_ADAPT", "Dual-cell volume");
   }
+
+  if(config->GetCompute_Metric_Geo()) {
+    // Common metric components for both 2D and 3D
+    AddVolumeOutput("METRIC_GEO_XX", "Metric_xx", "MESH_ADAPT_GEO", "x-x-component of the surface metric");
+    AddVolumeOutput("METRIC_GEO_XY", "Metric_xy", "MESH_ADAPT_GEO", "x-y-component of the surface metric");
+    AddVolumeOutput("METRIC_GEO_YY", "Metric_yy", "MESH_ADAPT_GEO", "y-y-component of the surface metric");
+
+    // Additional components for 3D
+    if (nDim == 3) {
+      AddVolumeOutput("METRIC_GEO_XZ", "Metric_xz", "MESH_ADAPT_GEO", "x-z-component of the surface metric");
+      AddVolumeOutput("METRIC_GEO_YZ", "Metric_yz", "MESH_ADAPT_GEO", "y-z-component of the surface metric");
+      AddVolumeOutput("METRIC_GEO_ZZ", "Metric_zz", "MESH_ADAPT_GEO", "z-z-component of the surface metric");
+    }
+  }
 }
 
 void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver* const* solver, const CGeometry* geometry,
@@ -4151,5 +4165,19 @@ void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver
       SetVolumeOutputValue("METRIC_ZZ", iPoint, Node_Flow->GetMetric(iPoint, 5));
     }
     SetVolumeOutputValue("VOLUME", iPoint, Node_Geo->GetVolume(iPoint) + Node_Geo->GetPeriodicVolume(iPoint));
+  }
+
+  if(config->GetCompute_Metric_Geo()) {
+    // Common metric components for both 2D and 3D
+    SetVolumeOutputValue("METRIC_GEO_XX", iPoint, Node_Geo->GetMetric(iPoint, 0));
+    SetVolumeOutputValue("METRIC_GEO_XY", iPoint, Node_Geo->GetMetric(iPoint, 1));
+    SetVolumeOutputValue("METRIC_GEO_YY", iPoint, Node_Geo->GetMetric(iPoint, 2));
+
+    // Additional components for 3D
+    if (nDim == 3) {
+      SetVolumeOutputValue("METRIC_GEO_XZ", iPoint, Node_Geo->GetMetric(iPoint, 3));
+      SetVolumeOutputValue("METRIC_GEO_YZ", iPoint, Node_Geo->GetMetric(iPoint, 4));
+      SetVolumeOutputValue("METRIC_GEO_ZZ", iPoint, Node_Geo->GetMetric(iPoint, 5));
+    }
   }
 }

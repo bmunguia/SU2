@@ -1,7 +1,7 @@
 /*!
- * \file CBaselineOutput.hpp
- * \brief  Headers of the baseline output.
- * \author T. Albring
+ * \file CMetricOutput.hpp
+ * \brief  Headers of the metric field output.
+ * \author B. Munguía
  * \version 8.2.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
@@ -27,28 +27,25 @@
 
 #pragma once
 
-#include "COutput.hpp"
+#include "CBaselineOutput.hpp"
 
-/*! \class CBaselineOutput
- *  \brief Output class for baseline solver output.
- *  \author R. Sanchez, T. Albring.
- *  \date June 5, 2018.
+/*! \class CMetricOutput
+ *  \brief Output class for metric field output.
+ *  \author B. Munguía
  */
-class CBaselineOutput : public COutput {
-protected:
-  std::vector<string> fields;
+class CMetricOutput : public CBaselineOutput {
 public:
 
   /*!
    * \brief Constructor of the class
    * \param[in] config - Definition of the particular problem.
    */
-  CBaselineOutput(CConfig *config, unsigned short nDim, CSolver *solver);
+  CMetricOutput(CConfig *config, unsigned short nDim, CSolver *solver);
 
   /*!
    * \brief Destructor of the class.
    */
-  ~CBaselineOutput(void) override;
+  ~CMetricOutput(void) override;
 
   /*!
    * \brief Set the available volume output fields

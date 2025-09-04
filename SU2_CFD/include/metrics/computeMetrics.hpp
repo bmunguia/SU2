@@ -193,7 +193,6 @@ ScalarType integrateMetrics(CGeometry& geometry, const CConfig& config,
     /*--- Decompose metric ---*/
     Tensor::get(metric, iPoint, iSensor, A, nDim);
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
-    if constexpr (nDim == 2) EigVal[2] = 1.0;
 
     /*--- Integrate determinant ---*/
     const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
@@ -244,7 +243,6 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
     /*--- Decompose metric ---*/
     Tensor::get(metric, iPoint, iSensor, A, nDim);
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
-    if constexpr (nDim == 2) EigVal[2] = 1.0;
 
     /*--- Normalize eigenvalues ---*/
     const ScalarType det = EigVal[0] * EigVal[1] * EigVal[2];
@@ -274,12 +272,11 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
  * \brief Compute a metric tensor based on surface geometry.
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
- * \param[in] geodev - Maximum allowable deviation from the tangent plane (in degrees).
  * \param[out] metric - The computed geometric metric tensor field.
  */
 template<size_t nDim, class ScalarType, class Tensor, class MetricType>
 void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
-                             ScalarType geodev, MetricType& metric) {
+                             MetricType& metric) {
 
   const unsigned long nPointDomain = geometry.GetnPointDomain();
 
@@ -290,18 +287,19 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
   const ScalarType eigmin = 1.0 / pow(hmax, 2.0);
 
   /*--- Constraint on deviation from tangent plane ---*/
+  const ScalarType geodev = SU2_TYPE::GetValue(config.GetMetric_GeoDev());
   const ScalarType alpha = geodev * M_PI / 180.0;
 
   /*--- Working arrays ---*/
   ScalarType M[nDim][nDim], R[nDim][nDim], EigVal[nDim], work[nDim];
 
   /*--- Initialize isotropic metric ---*/
-  for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-    for(size_t i = 0; i < nDim; ++i) {
-      for(size_t j = 0; j < nDim; ++j) {
-        M[i][j] = (i == j) ? eigmin : 0.0;
-      }
+  for(size_t i = 0; i < nDim; ++i) {
+    for(size_t j = 0; j < nDim; ++j) {
+      M[i][j] = (i == j) ? eigmin : 0.0;
     }
+  }
+  for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     Tensor::set(metric, iPoint, 0, M, 1.0, nDim);
   }
 
@@ -843,18 +841,17 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
  * \brief Compute a metric tensor based on surface geometry.
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
- * \param[in] geodev - Maximum allowable deviation from the tangent plane (in degrees).
  * \param[out] metric - The computed geometric metric tensor field.
  */
 template<class ScalarType, class Tensor, class MetricType>
 void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
-                             ScalarType geodev, MetricType& metric) {
+                             MetricType& metric) {
   switch (geometry.GetnDim()) {
     case 2:
-      detail::geometricSurfaceMetrics<2, ScalarType, Tensor>(geometry, config, geodev, metric);
+      detail::geometricSurfaceMetrics<2, ScalarType, Tensor>(geometry, config, metric);
       break;
     case 3:
-      detail::geometricSurfaceMetrics<3, ScalarType, Tensor>(geometry, config, geodev, metric);
+      detail::geometricSurfaceMetrics<3, ScalarType, Tensor>(geometry, config, metric);
       break;
     default:
       SU2_MPI::Error("Too many dimensions for geometric metric computation.", CURRENT_FUNCTION);

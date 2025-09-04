@@ -820,6 +820,7 @@ private:
   Breakdown_FileName,            /*!< \brief Breakdown output file. */
   Restart_FileName,              /*!< \brief Restart file for flow variables. */
   Restart_AdjFileName,           /*!< \brief Restart file for adjoint variables, drag functional. */
+  Metric_GeoFileName,            /*!< \brief Restart file containing the surface geometry metric field. */
   Adj_FileName,                  /*!< \brief Output file with the adjoint variables. */
   ObjFunc_Grad_FileName,         /*!< \brief Gradient of the objective function. */
   ObjFunc_Value_FileName,        /*!< \brief Objective function. */
@@ -1253,6 +1254,7 @@ private:
 
     /*--- Mesh adaptation options ---*/
   bool Compute_Metric;                     /*!< \brief Determines if error estimation is taking place */
+  bool Compute_Metric_Geo;                 /*!< \brief Determines if surface geometry metric calculation is taking place */
   bool Normalize_Metric;                   /*!< \brief Determines if metric tensor normalization is taking place */
   unsigned short Kind_Hessian_Method;      /*!< \brief Numerical method for computation of Hessians. */
   unsigned short nMetric_Sensor;           /*!< \brief Number of sensors to use for adaptation. */
@@ -1262,7 +1264,8 @@ private:
   unsigned short nAdapt_Time_Subinterval;  /*!< \brief Number of unsteady time sub-intervals for adaptation. */
   su2double Metric_Hmax,                   /*!< \brief Maximum cell size */
             Metric_Hmin,                   /*!< \brief Minimum cell size */
-            Metric_ARmax;                  /*!< \brief Maximum cell aspect ratio */
+            Metric_ARmax,                  /*!< \brief Maximum cell aspect ratio */
+            Metric_GeoDev;                 /*!< \brief Deviation (degrees) from tangent plane for surface metric */
 
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
@@ -5674,6 +5677,12 @@ public:
   string GetRestart_AdjFileName(void) const { return Restart_AdjFileName; }
 
   /*!
+   * \brief Get the name of the restart file for the surface geometry metric field.
+   * \return Name of the restart file for the surface geometry metric field.
+   */
+  string GetMetric_GeoFileName(void) const { return Metric_GeoFileName; }
+
+  /*!
    * \brief Get the name of the file with the adjoint variables.
    * \return Name of the file with the adjoint variables.
    */
@@ -9935,6 +9944,12 @@ public:
   bool GetCompute_Metric(void) const { return Compute_Metric; }
 
   /*!
+   * \brief Check if surface geometry metric calculation is being carried out
+   * \return <code>TRUE<\code> if surface geometry metric calculation is taking place
+  */
+  bool GetCompute_Metric_Geo(void) const { return Compute_Metric_Geo; }
+
+  /*!
    * \brief Check if metric tensor normalization is being carried out
    * \return <code>TRUE<\code> if metric normalization is taking place
   */
@@ -10006,6 +10021,12 @@ public:
    * \return Maximum cell aspect ratio
    */
   su2double GetMetric_ARmax(void) const { return Metric_ARmax; }
+
+  /*!
+   * \brief Get deviation from tangent plane (degrees) for surface metric
+   * \return Deviation from tangent plane (degrees) for surface metric
+   */
+  su2double GetMetric_GeoDev(void) const { return Metric_GeoDev; }
 
   /*!
    * \brief Get constraint complexity

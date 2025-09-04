@@ -2169,6 +2169,7 @@ enum class OUTPUT_TYPE {
   STL_BINARY,              /*!< \brief STL binary format for surface solution output. Not implemented yet. */
   GMF_MESH,                /*!< \brief Gamma Mesh Format (GMF) mesh output. */
   GMF_SOL,                 /*!< \brief Gamma Mesh Format (GMF) solution output. */
+  METRIC_GEO,              /*!< \brief Solution file containing the surface metric. */
 };
 static const MapType<std::string, OUTPUT_TYPE> Output_Map = {
   MakePair("TECPLOT_ASCII", OUTPUT_TYPE::TECPLOT_ASCII)
@@ -2193,6 +2194,7 @@ static const MapType<std::string, OUTPUT_TYPE> Output_Map = {
   MakePair("STL_BINARY", OUTPUT_TYPE::STL_BINARY)
   MakePair("GMF_MESH", OUTPUT_TYPE::GMF_MESH)
   MakePair("GMF_SOL", OUTPUT_TYPE::GMF_SOL)
+  MakePair("METRIC_GEO", OUTPUT_TYPE::METRIC_GEO)
 };
 
 /*!

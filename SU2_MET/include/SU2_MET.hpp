@@ -36,8 +36,7 @@
 #include "../../SU2_CFD/include/solvers/CBaselineSolver.hpp"
 #include "../../SU2_CFD/include/solvers/CBaselineSolver_FEM.hpp"
 #include "../../SU2_CFD/include/solvers/CSolverFactory.hpp"
-#include "../../SU2_CFD/include/output/CBaselineOutput.hpp"
-#include "../../SU2_CFD/include/output/COutputFactory.hpp"
+#include "../../SU2_CFD/include/output/CMetricOutput.hpp"
 #include "../../Common/include/geometry/CPhysicalGeometry.hpp"
 #include "../../SU2_CFD/include/metrics/computeMetrics.hpp"
 

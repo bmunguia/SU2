@@ -126,6 +126,10 @@ void CPoint::FullAllocation(unsigned short imesh, const CConfig* config) {
 
   RoughnessHeight.resize(npoint) = su2double(0.0);
   SharpEdge_Distance.resize(npoint) = su2double(0.0);
+
+  if (config->GetCompute_Metric_Geo()) {
+    Metric.resize(npoint, 3*(nDim - 1)) = su2double(0.0);
+  }
 }
 
 void CPoint::SetElems(const vector<vector<long> >& elemsMatrix) { Elem = CCompressedSparsePatternL(elemsMatrix); }

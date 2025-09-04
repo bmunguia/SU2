@@ -83,6 +83,7 @@ COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
   surfaceFilename = "surface";
   volumeFilename  = "volume";
   restartFilename = "restart";
+  metricGeoFilename = "metric_geo";
 
   /*--- Retrieve the history filename ---*/
 
@@ -182,6 +183,7 @@ COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
   volumeDataSorter = nullptr;
   volumeDataSorterCompact = nullptr;
   surfaceDataSorter = nullptr;
+  metricGeoDataSorter = nullptr;
 
   headerNeeded = false;
 
@@ -199,6 +201,7 @@ COutput::~COutput() {
   delete volumeDataSorter;
   delete volumeDataSorterCompact;
   delete surfaceDataSorter;
+  delete metricGeoDataSorter;
 
 }
 
@@ -371,6 +374,9 @@ void COutput::AllocateDataSorters(CConfig *config, CGeometry *geometry){
     if (config->GetWrt_Restart_Compact() && volumeDataSorterCompact == nullptr)
       volumeDataSorterCompact = new CFVMDataSorter(config, geometry, requiredVolumeFieldNames);
 
+    if (config->GetCompute_Metric_Geo() && metricGeoDataSorter == nullptr)
+      metricGeoDataSorter = new CFVMDataSorter(config, geometry, requiredMetricGeoFieldNames);
+
     if (surfaceDataSorter == nullptr)
       surfaceDataSorter = new CSurfaceFVMDataSorter(config, geometry,
                                                   dynamic_cast<CFVMDataSorter*>(volumeDataSorter),
@@ -393,6 +399,7 @@ void COutput::LoadData(CGeometry *geometry, CConfig *config, CSolver** solver_co
 
   volumeDataSorter->SortOutputData();
   if (volumeDataSorterCompact != nullptr) volumeDataSorterCompact->SortOutputData();
+  if (metricGeoDataSorter != nullptr) metricGeoDataSorter->SortOutputData();
 
 }
 
@@ -822,6 +829,25 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
 
       break;
 
+    case OUTPUT_TYPE::METRIC_GEO:
+      if (config->GetCompute_Metric_Geo()) {
+        /*--- For now, write all volume info to a restart file ---*/
+        extension = CSU2FileWriter::fileExt;
+
+        if (fileName.empty())
+          fileName = config->GetFilename(metricGeoFilename, "", curTimeIter);
+
+        if (!config->GetWrt_Restart_Overwrite())
+          filename_iter = config->GetFilename_Iter(fileName, curInnerIter, curOuterIter);
+
+        /*--- Only write coordinates and geometric metric fields ---*/
+        metricGeoDataSorter->SetRequiredFieldNames(requiredMetricGeoFieldNames);
+
+        LogOutputFiles("SU2 surface geometry metric");
+        fileWriter = new CSU2FileWriter(metricGeoDataSorter);
+      }
+      break;
+
     default:
       break;
   }
@@ -900,6 +926,7 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
 
     volumeDataSorter->SortOutputData();
     if (volumeDataSorterCompact != nullptr) volumeDataSorterCompact->SortOutputData();
+    if (metricGeoDataSorter != nullptr) metricGeoDataSorter->SortOutputData();
 
     if (rank == MASTER_NODE && !isFileWrite) {
       fileWritingTable->SetAlign(PrintingToolbox::CTablePrinter::CENTER);
@@ -1586,10 +1613,13 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
   }
 
   /*--- Add the solution if it was not requested for backwards compatibility, unless the COMPACT keyword was used to request exclusively the specified fields. ---*/
+  /*--- Also unless we're writing the metric tensor ---*/
   auto itSol = std::find(requestedVolumeFields.begin(), requestedVolumeFields.end(), "SOLUTION");
   if (itSol == requestedVolumeFields.end()) {
     auto itCompact = std::find(requestedVolumeFields.begin(), requestedVolumeFields.end(), "COMPACT");
-    if (itCompact == requestedVolumeFields.end()) {
+    auto itMet = std::find(requestedVolumeFields.begin(), requestedVolumeFields.end(), "MESH_ADAPT");
+    auto itMetGeo = std::find(requestedVolumeFields.begin(), requestedVolumeFields.end(), "MESH_ADAPT_GEO");
+    if (itCompact == requestedVolumeFields.end() && itMet == requestedVolumeFields.end() && itMetGeo == requestedVolumeFields.end()) {
       requestedVolumeFields.emplace_back("SOLUTION");
       nRequestedVolumeFields++;
      }
@@ -1603,7 +1633,7 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
    * object gets an offset so that we know where to find the data in the Local_Data() array.
    * Note that the default offset is -1. An index !=-1 defines this field as part of the output. ---*/
 
-  unsigned short nVolumeFields = 0, nVolumeFieldsCompact = 0;
+  unsigned short nVolumeFields = 0, nVolumeFieldsCompact = 0, nVolumeFieldsMetricGeo = 0;
 
   for (size_t iField_Output = 0; iField_Output < volumeOutput_List.size(); iField_Output++) {
 
@@ -1618,6 +1648,15 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
         if ((RequiredField == Field.outputGroup || RequiredField == fieldReference) && Field.offsetCompact == -1) {
           Field.offsetCompact = nVolumeFieldsCompact++;
           requiredVolumeFieldNames.push_back(Field.fieldName);
+        }
+      }
+
+      /*--- Loop through the minimum required fields for metrics. ---*/
+
+      for (const auto& RequiredField : metricGeoVolumeFields) {
+        if ((RequiredField == Field.outputGroup || RequiredField == fieldReference) && Field.offsetMetricGeo == -1) {
+          Field.offsetMetricGeo = nVolumeFieldsMetricGeo++;
+          requiredMetricGeoFieldNames.push_back(Field.fieldName);
         }
       }
 
@@ -1682,6 +1721,7 @@ void COutput::LoadDataIntoSorter(CConfig* config, CGeometry* geometry, CSolver**
   cachePosition = 0;
   fieldIndexCache.clear();
   fieldIndexCacheCompact.clear();
+  fieldIndexCacheMetricGeo.clear();
   curGetFieldIndex = 0;
   fieldGetIndexCache.clear();
 
@@ -1717,6 +1757,7 @@ void COutput::LoadDataIntoSorter(CConfig* config, CGeometry* geometry, CSolver**
     cachePosition = 0;
     fieldIndexCache.clear();
     fieldIndexCacheCompact.clear();
+    fieldIndexCacheMetricGeo.clear();
     curGetFieldIndex = 0;
     fieldGetIndexCache.clear();
 
@@ -1761,12 +1802,19 @@ void COutput::SetVolumeOutputValue(const string& name, unsigned long iPoint, su2
       if (volumeDataSorterCompact != nullptr && OffsetCompact != -1) {
         volumeDataSorterCompact->SetUnsortedData(iPoint, OffsetCompact, value);
       }
+      /*--- Note that the surface metric fields are a subset of the full fields. ---*/
+      const short OffsetMetricGeo = it->second.offsetMetricGeo;
+      fieldIndexCacheMetricGeo.push_back(OffsetMetricGeo);
+      if (metricGeoDataSorter != nullptr && OffsetMetricGeo != -1) {
+        metricGeoDataSorter->SetUnsortedData(iPoint, OffsetMetricGeo, value);
+      }
     } else {
       SU2_MPI::Error("Cannot find output field with name " + name, CURRENT_FUNCTION);
     }
   } else {
     /*--- Use the offset caches for the access. ---*/
     const short Offset = fieldIndexCache[cachePosition];
+    const short OffsetMetricGeo = fieldIndexCacheMetricGeo[cachePosition];
     const short OffsetCompact = fieldIndexCacheCompact[cachePosition++];
     if (cachePosition == fieldIndexCache.size()) {
       cachePosition = 0;
@@ -1776,6 +1824,9 @@ void COutput::SetVolumeOutputValue(const string& name, unsigned long iPoint, su2
     }
     if (volumeDataSorterCompact != nullptr && OffsetCompact != -1) {
       volumeDataSorterCompact->SetUnsortedData(iPoint, OffsetCompact, value);
+    }
+    if (metricGeoDataSorter != nullptr && OffsetMetricGeo != -1) {
+      metricGeoDataSorter->SetUnsortedData(iPoint, OffsetMetricGeo, value);
     }
   }
 
@@ -1829,6 +1880,7 @@ void COutput::SetAvgVolumeOutputValue(const string& name, unsigned long iPoint, 
       /*--- This function is used for time-averaged fields and we know
        * those are not part of the compact restart fields. ---*/
       fieldIndexCacheCompact.push_back(-1);
+      fieldIndexCacheMetricGeo.push_back(-1);
       if (Offset != -1) {
         const su2double old_value = volumeDataSorter->GetUnsortedData(iPoint, Offset);
         const su2double new_value = value * scaling + old_value * (1.0 - scaling);
