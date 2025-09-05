@@ -2826,12 +2826,14 @@ static const MapType<std::string, ENUM_SOBOLEV_MODUS> Sobolev_Modus_Map = {
  * \brief Types of sensors for anisotropic metric
  */
 enum class METRIC_SENSOR {
-  MACH = 0,         /*!< \brief Mach feature-based metric. */
-  PRESSURE = 1,     /*!< \brief Pressure feature-based metric. */
-  TEMPERATURE = 2,  /*!< \brief Temperature feature-based metric. */
-  GOAL = 3,         /*!< \brief Goal-oriented metric. */
+  DENSITY,      /*!< \brief Density feature-based metric. */
+  MACH,         /*!< \brief Mach feature-based metric. */
+  PRESSURE,     /*!< \brief Pressure feature-based metric. */
+  TEMPERATURE,  /*!< \brief Temperature feature-based metric. */
+  GOAL,         /*!< \brief Goal-oriented metric. */
 };
 static const MapType<std::string, METRIC_SENSOR> Metric_Sensor_Map = {
+  MakePair("DENSITY", METRIC_SENSOR::DENSITY)
   MakePair("MACH", METRIC_SENSOR::MACH)
   MakePair("PRESSURE", METRIC_SENSOR::PRESSURE)
   MakePair("TEMPERATURE", METRIC_SENSOR::TEMPERATURE)

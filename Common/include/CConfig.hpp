@@ -9978,6 +9978,9 @@ public:
   string GetMetric_SensorString(unsigned short iSens) const {
     string sensor_name;
     switch (Metric_Sensor[iSens]) {
+      case METRIC_SENSOR::DENSITY:
+        sensor_name = "Density";
+        break;
       case METRIC_SENSOR::MACH:
         sensor_name = "Mach";
         break;

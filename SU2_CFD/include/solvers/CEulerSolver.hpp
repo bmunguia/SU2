@@ -303,6 +303,9 @@ protected:
       for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
         for (auto iSensor = 0; iSensor < nAdapSensor; iSensor++) {
           switch (config->GetMetric_Sensor(iSensor)) {
+            case METRIC_SENSOR::DENSITY:
+              aux = nodes->GetDensity(iPoint);
+              break;
             case METRIC_SENSOR::MACH:
               aux = nodes->GetVelocity2(iPoint) / nodes->GetSoundSpeed(iPoint);
               break;
@@ -313,7 +316,7 @@ protected:
               aux = nodes->GetTemperature(iPoint);
               break;
             default:
-              aux = nodes->GetVelocity2(iPoint) / nodes->GetSoundSpeed(iPoint);
+              aux = nodes->GetDensity(iPoint);
               break;
           }
           nodes->SetPrimitive_Adapt(iPoint, iSensor, aux);

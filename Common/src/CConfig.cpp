@@ -7899,20 +7899,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
         cout << "Adaptation sensor(s): ";
         for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
-          switch(Metric_Sensor[iSensor]) {
-            case METRIC_SENSOR::MACH:
-              cout << "Mach";
-              break;
-            case METRIC_SENSOR::PRESSURE:
-              cout << "Pressure";
-              break;
-            case METRIC_SENSOR::TEMPERATURE:
-              cout << "Temperature";
-              break;
-            case METRIC_SENSOR::GOAL:
-              cout << "Goal-oriented";
-              break;
-          }
+          cout << GetMetric_SensorString(iSensor);
           if (iSensor < nMetric_Sensor - 1 ) cout << ", ";
         }
         cout << endl;
