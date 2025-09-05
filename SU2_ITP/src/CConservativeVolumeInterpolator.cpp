@@ -104,6 +104,8 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
     srcElemGrad.resize(nElem_src, vector<su2double>(nVar * nDim));
     dstElemMass.resize(nElem_dst, vector<su2double>(nVar));
     dstElemGrad.resize(nElem_dst, vector<su2double>(nVar * nDim));
+    srcElemContributedVol.resize(nElem_src);
+    srcElemContributedMass.resize(nElem_src, vector<su2double>(nVar));
 
     /*--------------------------------------------------------------------------*/
     /*--- Step 1: Localize destination nodes on the source mesh.             ---*/
@@ -229,7 +231,11 @@ void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
 
 void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geometry_src,
                                                                CGeometry* geometry_dst) {
+  /*--- Clear existing overlap meshes ---*/
   overlapMeshes.clear();
+
+  /*--- Initialize volume contributions for conservation statistics ---*/
+  std::fill(srcElemContributedVol.begin(), srcElemContributedVol.end(), 0.0);
 
   /*--- Storage for triangle vertex coordinates ---*/
   su2double srcTri[6], dstTri[6];
@@ -239,6 +245,12 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
   vector<su2double> intersectionElemCoords;
   vector<su2double> intersectionElemVols;
   set<unsigned long> detectedCandidates;
+
+  /*--- Area conservation tracking ---*/
+  su2double absDiffTol[5] = {1e-10, 1e-8, 1e-6, 1e-4, 1e-2};
+  su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
+  vector<unsigned long> countAbsDiffVolSrc(5, 0);
+  vector<unsigned long> countRelDiffVolSrc(5, 0);
 
   /*--- Only handle triangular elements for now ---*/
   if (nDim != 2) {
@@ -252,7 +264,7 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
   /*--- Loop over all destination elements ---*/
   unsigned long totalOverlaps = 0;
   unsigned long failedIntersections = 0;
-  for (auto dstElemID = 0u; dstElemID < geometry_dst->GetnElem(); ++dstElemID) {
+  for (auto dstElemID = 0u; dstElemID < nElem_dst; ++dstElemID) {
     auto* dstElem = geometry_dst->elem[dstElemID];
 
     /*--- Skip non-triangular elements ---*/
@@ -317,6 +329,11 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
                                        detectedCandidates)) {
         overlapMeshes[dstElemID].push_back({srcElemID, intersectionElemCoords, intersectionElemVols});
         totalOverlaps++;
+
+        /*--- Sum up intersection volumes for this source element ---*/
+        for (const auto& vol : intersectionElemVols) {
+          srcElemContributedVol[srcElemID] += vol;
+        }
       } else {
         /*--- Triangle intersection failed ---*/
         failedIntersections++;
@@ -330,12 +347,49 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
         }
       }
     }
+
+    /*--- Track destination element area conservation ---*/
+    su2double intersectionVol = 0.0;
+    for (const auto& srcElemMesh : overlapMeshes[dstElemID]) {
+      for (const auto& vol : srcElemMesh.vols) {
+        intersectionVol += vol;
+      }
+    }
+  }
+
+  /*--- Compare source element volumes with contributed volumes ---*/
+  for (auto srcElemID = 0u; srcElemID < nElem_src; ++srcElemID) {
+    const su2double contributedVol = srcElemContributedVol[srcElemID];
+
+    const auto* srcElem = geometry_src->elem[srcElemID];
+    const su2double srcVolume = srcElem->GetVolume();
+
+    /*--- Area conservation for source elements ---*/
+    const su2double absDiffSrc = abs(srcVolume - contributedVol);
+    const su2double relDiffSrc = absDiffSrc / srcVolume;
+    for (auto i = 0u; i < 5; ++i) {
+      if (absDiffSrc > absDiffTol[i]) countAbsDiffVolSrc[i]++;
+      if (relDiffSrc > relDiffTol[i]) countRelDiffVolSrc[i]++;
+    }
   }
 
   if (rank == MASTER_NODE) {
     cout << "Found " << totalOverlaps << " total overlapping element pairs." << endl;
     cout << "Number of destination elements with overlaps: " << overlapMeshes.size() << endl;
     cout << "Number of failed triangle intersections: " << failedIntersections << "." << endl;
+
+    cout << "Source element area conservation (abs. diff.):" << endl;
+    for (auto i = 0u; i < 5; ++i) {
+      cout << "  Number exceeding " << scientific << setprecision(1);
+      cout << absDiffTol[i] << ": ";
+      cout << countAbsDiffVolSrc[i] << endl;
+    }
+    cout << "Source element area conservation (rel. diff.):" << endl;
+    for (auto i = 0u; i < 5; ++i) {
+      cout << "  Number exceeding " << fixed << setprecision(0) << setw(3);
+      cout << relDiffTol[i] * 100 << "%: ";
+      cout << countRelDiffVolSrc[i] << endl;
+    }
   }
 }
 
@@ -471,14 +525,16 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   for (auto& v : dstElemMass) std::fill(v.begin(), v.end(), 0.0);
   for (auto& v : dstElemGrad) std::fill(v.begin(), v.end(), 0.0);
 
+  /*--- Initialize mass contributions for conservation statistics ---*/
+  for (auto& v : srcElemContributedMass) std::fill(v.begin(), v.end(), 0.0);
 
   const unsigned short nCoorPerElem = (nDim == 2)? 6 : 12;
 
   /*--- Loop over all destination elements that have intersections ---*/
   su2double absDiffTol[5] = {1e-10, 1e-8, 1e-6, 1e-4, 1e-2};
   su2double relDiffTol[5] = {2e-2, 5e-2, 1e-1, 2e-1, 5e-1};
-  vector<unsigned long> countAbsDiff(5, 0);
-  vector<unsigned long> countRelDiff(5, 0);
+  vector<vector<unsigned long>> countAbsDiffMassSrc(nVar, vector<unsigned long>(5, 0));
+  vector<vector<unsigned long>> countRelDiffMassSrc(nVar, vector<unsigned long>(5, 0));
 
   /*--- Counters for non-matching boundary treatment ---*/
   unsigned long totalBoundaryElems = 0;
@@ -541,6 +597,9 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
           dstMass[iVar] += triVol * u;
           for (auto iDim = 0u; iDim < nDim; ++iDim)
             dstGrad[iVar * nDim + iDim] += triVol * grad_u[iDim];
+
+          /*--- Track source element mass contributions ---*/
+          srcElemContributedMass[srcElemID][iVar] += triVol * u;
         }
       }
     }
@@ -561,28 +620,39 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
         dstGrad[iVar * nDim + iDim] /= intersectionVol;
       }
     }
+  }
 
-    /*--- Compare total triangle area with destination element volume ---*/
-    const su2double absDiff = abs(dstVolume - intersectionVol);
-    const su2double relDiff = absDiff / dstVolume;
-    for (auto i = 0u; i < 5; ++i) {
-      if (absDiff > absDiffTol[i]) countAbsDiff[i]++;
-      if (relDiff > relDiffTol[i]) countRelDiff[i]++;
+  /*--- Compare source element masses with contributed masses ---*/
+  for (auto srcElemID = 0u; srcElemID < nElem_src; ++srcElemID) {
+    const auto& contributedMass = srcElemContributedMass[srcElemID];
+    const auto& srcMass = srcElemMass[srcElemID];
+
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      const su2double absDiffMass = abs(srcMass[iVar] - contributedMass[iVar]);
+      const su2double relDiffMass = (abs(srcMass[iVar]) > 1e-12) ? absDiffMass / abs(srcMass[iVar]) : 0.0;
+
+      for (auto i = 0u; i < 5; ++i) {
+        if (absDiffMass > absDiffTol[i]) countAbsDiffMassSrc[iVar][i]++;
+        if (relDiffMass > relDiffTol[i]) countRelDiffMassSrc[iVar][i]++;
+      }
     }
   }
 
   if (rank == MASTER_NODE) {
-    cout << "Area conservation (absolute difference):" << endl;
-    for (auto i = 0u; i < 5; ++i) {
-      cout << "  Number exceeding " << scientific << setprecision(1);
-      cout << absDiffTol[i] << ": ";
-      cout << countAbsDiff[i] << endl;
-    }
-    cout << "Area conservation (relative difference):" << endl;
-    for (auto i = 0u; i < 5; ++i) {
-      cout << "  Number exceeding " << fixed << setprecision(0) << setw(3);
-      cout << relDiffTol[i] * 100 << "%: ";
-      cout << countRelDiff[i] << endl;
+    cout << "Mass conservation for source elements:" << endl;
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      cout << "  U[" << iVar << "] (absolute difference):" << endl;
+      for (auto i = 0u; i < 5; ++i) {
+        cout << "    Number exceeding " << scientific << setprecision(1);
+        cout << absDiffTol[i] << ": ";
+        cout << countAbsDiffMassSrc[iVar][i] << endl;
+      }
+      cout << "  U[" << iVar << "] (relative difference):" << endl;
+      for (auto i = 0u; i < 5; ++i) {
+        cout << "    Number exceeding " << fixed << setprecision(0) << setw(3);
+        cout << relDiffTol[i] * 100 << "%: ";
+        cout << countRelDiffMassSrc[iVar][i] << endl;
+      }
     }
   }
 }

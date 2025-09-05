@@ -52,6 +52,9 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
     vector<vector<su2double>> dstElemGrad;  /*!< \brief Solution gradient in destination elements. */
 
     IntersectionMeshMap overlapMeshes;  /*!< \brief Map of destination elements to intersection region meshes. */
+
+    vector<su2double> srcElemContributedVol;           /*!< \brief Volume contributed by source elements, used to check conservation. */
+    vector<vector<su2double>> srcElemContributedMass;  /*!< \brief Mass contributed by source elements, used to check conservation. */
   public:
     /*!
      * \brief Constructor of the class.
