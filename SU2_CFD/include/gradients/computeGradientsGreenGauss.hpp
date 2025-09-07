@@ -263,8 +263,8 @@ void computeHessiansGreenGauss(CSolver* solver, MPI_QUANTITIES kindMpiComm, PERI
           for (size_t iVar = varBegin; iVar < varEnd; iVar++) {
             su2double flux = gradient(iPoint, iVar, jDim) / volume;
             for (size_t iDim = 0; iDim < nDim; ++iDim) {
-              size_t ind = (iDim <= jDim) ? iDim*nDim - ((iDim - 1)*iDim)/2 + jDim - iDim
-                                          : jDim*nDim - ((jDim - 1)*jDim)/2 + iDim - jDim;
+              size_t ind = (iDim <= jDim) ? iDim * nDim - ((iDim - 1) * iDim)/2 + jDim - iDim
+                                          : jDim * nDim - ((jDim - 1) * jDim)/2 + iDim - jDim;
               diagScale = (iDim == jDim)? 1.0 : 0.5;
               hessian(iPoint, iVar, ind) -= diagScale * flux * area[iDim];
             } // iDims

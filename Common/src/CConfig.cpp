@@ -5735,8 +5735,8 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     }
 
     /*--- Only GG Hessians for now ---*/
-    if (Kind_Hessian_Method != GREEN_GAUSS) {
-      SU2_MPI::Error("NUM_METHOD_HESS must be GREEN_GAUSS.", CURRENT_FUNCTION);
+    if (Kind_Hessian_Method != GREEN_GAUSS && Kind_Hessian_Method != L2_PROJECTION) {
+      SU2_MPI::Error("NUM_METHOD_HESS must be GREEN_GAUSS or L2_PROJECTION.", CURRENT_FUNCTION);
     }
 
     /*--- Make sure only using single adaptation sub-interval for steady problems ---*/
@@ -7905,8 +7905,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         cout << endl;
         switch (Kind_Hessian_Method) {
           case GREEN_GAUSS: cout << "Hessian for adaptive metric: Green-Gauss." << endl; break;
-          case LEAST_SQUARES: cout << "Hessian for adaptive metric: unweighted Least-Squares." << endl; break;
-          case WEIGHTED_LEAST_SQUARES: cout << "Hessian for adaptive metric: inverse-distance weighted Least-Squares." << endl; break;
+          case L2_PROJECTION: cout << "Hessian for adaptive metric: L2-projection." << endl; break;
         }
         if (Normalize_Metric) {
           cout << "Target complexity: " << Metric_Complexity << endl;

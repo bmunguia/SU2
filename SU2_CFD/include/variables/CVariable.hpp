@@ -106,7 +106,7 @@ protected:
   MatrixType Primitive_Adapt;     /*!< \brief Variables for which we need gradients for anisotropy in mesh adaptation. */
   CVectorOfMatrix Gradient_Adapt; /*!< \brief Gradient of sensor used for anisotropy in mesh adaptation. */
   CVectorOfMatrix Hessian;        /*!< \brief Hessian of sensor used for anisotropy in mesh adaptation. */
-  su2matrix<double> Metric;       /*!< \brief Metric tensor used for anisotropy in mesh adaptation. */
+  MatrixType Metric;              /*!< \brief Metric tensor used for anisotropy in mesh adaptation. */
 
   MatrixType Solution_Mass; /*!< \brief Mass (and volume) accumulation for conservative interpolation (nVar + 1). */
 

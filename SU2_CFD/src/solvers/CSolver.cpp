@@ -29,6 +29,7 @@
 #include "../../include/solvers/CSolver.hpp"
 #include "../../include/gradients/computeGradientsGreenGauss.hpp"
 #include "../../include/gradients/computeGradientsLeastSquares.hpp"
+#include "../../include/gradients/computeGradientsL2Projection.hpp"
 #include "../../include/limiters/computeLimiters.hpp"
 #include "../../include/metrics/computeMetrics.hpp"
 #include "../../../Common/include/toolboxes/MMS/CIncTGVSolution.hpp"
@@ -2288,6 +2289,22 @@ void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short id
 
   computeHessiansGreenGauss(this, MPI_QUANTITIES::HESSIAN, PERIODIC_HESSIAN,
                             *geometry, *config, gradient, 0, nHess, idxVel, hessian);
+}
+
+void CSolver::SetHessian_L2Projection(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
+  /*--- Calculate the gradient ---*/
+  const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetPrimitive_Adapt();
+  auto& gradient = base_nodes->GetGradient_Adapt();
+  auto nHess = config->GetGoal_Oriented_Metric()? nVar : config->GetnMetric_Sensor();
+
+  computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
+                               *geometry, *config, solution, 0, nHess, idxVel, gradient);
+
+  /*--- Calculate the Hessian ---*/
+  auto& hessian = base_nodes->GetHessian();
+
+  computeHessiansL2Projection(this, MPI_QUANTITIES::HESSIAN, PERIODIC_HESSIAN,
+                              *geometry, *config, gradient, 0, nHess, idxVel, hessian);
 }
 
 void CSolver::SetUndivided_Laplacian(CGeometry *geometry, const CConfig *config) {

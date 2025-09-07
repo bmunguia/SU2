@@ -28,6 +28,7 @@
 
 #include "../gradients/computeGradientsGreenGauss.hpp"
 #include "../gradients/computeGradientsLeastSquares.hpp"
+#include "../gradients/computeGradientsL2Projection.hpp"
 #include "../limiters/computeLimiters.hpp"
 #include "../numerics_simd/CNumericsSIMD.hpp"
 #include "CFVMFlowSolverBase.hpp"
