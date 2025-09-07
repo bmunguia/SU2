@@ -1,5 +1,5 @@
 /*!
- * \file CMetricOutput.cpp
+ * \file CMetricBaselineOutput.cpp
  * \brief Main subroutines for metric field output
  * \author B. Munguía
  * \version 8.2.0 "Harrier"
@@ -27,12 +27,12 @@
 
 
 
-#include "../../include/output/CMetricOutput.hpp"
+#include "../../include/output/CMetricBaselineOutput.hpp"
 
 #include "../../../Common/include/geometry/CGeometry.hpp"
 #include "../../include/solvers/CSolver.hpp"
 
-CMetricOutput::CMetricOutput(CConfig *config, unsigned short nDim, CSolver* solver) : CBaselineOutput(config, nDim, solver) {
+CMetricBaselineOutput::CMetricBaselineOutput(CConfig *config, unsigned short nDim, CSolver* solver) : CBaselineOutput(config, nDim, solver) {
 
   /*--- Set the requested volume fields to all fields in the solver ---*/
 
@@ -74,9 +74,9 @@ CMetricOutput::CMetricOutput(CConfig *config, unsigned short nDim, CSolver* solv
 
 }
 
-CMetricOutput::~CMetricOutput() = default;
+CMetricBaselineOutput::~CMetricBaselineOutput() = default;
 
-void CMetricOutput::SetVolumeOutputFields(CConfig *config){
+void CMetricBaselineOutput::SetVolumeOutputFields(CConfig *config){
 
   unsigned short iField = 0;
 
@@ -95,7 +95,7 @@ void CMetricOutput::SetVolumeOutputFields(CConfig *config){
 
 }
 
-void CMetricOutput::LoadVolumeData(CConfig *config, CGeometry *geometry, CSolver **solver, unsigned long iPoint){
+void CMetricBaselineOutput::LoadVolumeData(CConfig *config, CGeometry *geometry, CSolver **solver, unsigned long iPoint){
 
   unsigned short iField = 0;
 

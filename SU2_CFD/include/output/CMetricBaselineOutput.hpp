@@ -1,5 +1,5 @@
 /*!
- * \file CMetricOutput.hpp
+ * \file CMetricBaselineOutput.hpp
  * \brief  Headers of the metric field output.
  * \author B. Munguía
  * \version 8.2.0 "Harrier"
@@ -29,23 +29,23 @@
 
 #include "CBaselineOutput.hpp"
 
-/*! \class CMetricOutput
+/*! \class CMetricBaselineOutput
  *  \brief Output class for metric field output.
  *  \author B. Munguía
  */
-class CMetricOutput : public CBaselineOutput {
+class CMetricBaselineOutput : public CBaselineOutput {
 public:
 
   /*!
    * \brief Constructor of the class
    * \param[in] config - Definition of the particular problem.
    */
-  CMetricOutput(CConfig *config, unsigned short nDim, CSolver *solver);
+  CMetricBaselineOutput(CConfig *config, unsigned short nDim, CSolver *solver);
 
   /*!
    * \brief Destructor of the class.
    */
-  ~CMetricOutput(void) override;
+  ~CMetricBaselineOutput(void) override;
 
   /*!
    * \brief Set the available volume output fields

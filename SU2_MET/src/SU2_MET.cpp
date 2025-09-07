@@ -477,7 +477,7 @@ void InitializeSolver(CConfig* config, CGeometry* geometry, CSolver**& solver_co
 
 void InitializeOutput(CConfig* config, CGeometry* geometry, CSolver** solver_container, COutput*& output,
                                            int iZone, int iInst, int nZone) {
-  output = new CMetricOutput(config, geometry->GetnDim(), solver_container[FLOW_SOL]);
+  output = new CMetricBaselineOutput(config, geometry->GetnDim(), solver_container[FLOW_SOL]);
   output->PreprocessVolumeOutput(config);
   output->PreprocessHistoryOutput(config, false);
 }
