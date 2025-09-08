@@ -1383,9 +1383,13 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2do
   const su2double x1 = vertexCoords[2], y1 = vertexCoords[3];
   const su2double x2 = vertexCoords[4], y2 = vertexCoords[5];
 
-  /*--- Calculate determinant and area ---*/
-  const su2double det = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
-  const su2double area = 0.5 * abs(det);
+  /*--- Inward normals (pointing toward opposite vertex) ---*/
+  su2double n0[2] = {y1 - y2, x2 - x1};
+  su2double n1[2] = {y2 - y0, x0 - x2};
+  su2double n2[2] = {y0 - y1, x1 - x0};
+
+  const su2double mass_factor = elemVolume / 3.0;
+  const su2double grad_factor = 0.5 / elemVolume;
 
   /*--- Loop over variables ---*/
   for (auto iVar = 0u; iVar < nVar; ++iVar) {
@@ -1395,14 +1399,12 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2do
     const su2double u2 = vertexSol[2][iVar];
 
     /*--- Compute mass: area * average value ---*/
-    mass[iVar] = area * (u0 + u1 + u2) / 3.0;
+    mass[iVar] = mass_factor * (u0 + u1 + u2);
 
-    /*--- Compute gradient analytically ---*/
-    const su2double grad_x = ((u1 - u0) * (y2 - y0) - (u2 - u0) * (y1 - y0)) / det;
-    const su2double grad_y = ((u2 - u0) * (x1 - x0) - (u1 - u0) * (x2 - x0)) / det;
+    /*--- Compute gradient in element: same method as L2-projection ---*/
 
-    grad[iVar * nDim + 0] = grad_x;
-    grad[iVar * nDim + 1] = grad_y;
+    grad[iVar * nDim + 0] = grad_factor * (u0 * n0[0] + u1 * n1[0] + u2 * n2[0]);
+    grad[iVar * nDim + 1] = grad_factor * (u0 * n0[1] + u1 * n1[1] + u2 * n2[1]);
   }
 }
 

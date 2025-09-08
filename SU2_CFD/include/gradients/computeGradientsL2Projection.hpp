@@ -137,14 +137,19 @@ void computeGradientsL2Projection(CSolver* solver,
   const size_t nFace = (nDim == 2) ? 3 : 4;
   const size_t nNode = (nDim == 2) ? 3 : 4;
 
+  /*-----------------------------------------------------------------*/
+  /*--- For tris, Σ(u_i * n_i) = 2*|K|*∇u|_K                      ---*/
+  /*--- For tets, Σ(u_i * n_i) = 6*|K|*∇u|_K                      ---*/
+  /*--- n_i is the inward normal of the edge opposite node i. The ---*/
+  /*--- factor accounts for this and the number of points in the  ---*/
+  /*--- element, thus 6 for tris and 24 for tets to get ∇u|_K.    ---*/
+  /*-----------------------------------------------------------------*/
+  const su2double factor = (nDim == 2) ? 1.0 / 6.0 : 1.0 / 24.0;
+
   su2double normal[nDim] = {};
 
-  const su2double factor = (nDim == 2) ? 1.0/6.0 : 1.0/24.0;
-
   /*--- For each (non-halo) volume integrate over its faces (edges). ---*/
-
-  for (size_t iPoint = 0; iPoint < nPointDomain; ++iPoint)
-  {
+  for (size_t iPoint = 0; iPoint < nPointDomain; ++iPoint) {
     for (size_t iVar = varBegin; iVar < varEnd; ++iVar)
       for (size_t iDim = 0; iDim < nDim; ++iDim)
         gradient(iPoint, iVar, iDim) = 0.0;
@@ -152,18 +157,17 @@ void computeGradientsL2Projection(CSolver* solver,
 
   /*--- For each volume integrate over its faces (edges). ---*/
   auto nodes = geometry.nodes;
-  for (size_t iElem = 0; iElem < nElem; ++iElem)
-  {
+  for (size_t iElem = 0; iElem < nElem; ++iElem) {
     auto elem = geometry.elem[iElem];
 
     /*--- Add the contribution from each node of the volume. ---*/
     for (size_t iNode = 0; iNode < nNode; ++iNode) {
       const size_t iPoint = elem->GetNode(iNode);
 
-      /*--- Inward normal of opposite face ---*/
+      /*--- Inward normal of opposite face. ---*/
       GetInwardNormal<nDim>(elem, nodes, iNode, normal);
 
-      /*--- Gradient contribution of the node ---*/
+      /*--- Gradient contribution of the node. ---*/
       for (size_t jNode = 0; jNode < nNode; ++jNode) {
         const size_t jPoint = elem->GetNode(jNode);
         if (!nodes->GetDomain(jPoint)) continue;
@@ -182,14 +186,13 @@ void computeGradientsL2Projection(CSolver* solver,
 
   correctGradientsSymmetry<nDim>(geometry, config, varBegin, varEnd, idxVel, gradient);
 
-  /*--- If no solver was provided we do not communicate ---*/
+  /*--- If no solver was provided we do not communicate. ---*/
 
   if (solver == nullptr) return;
 
   /*--- Account for periodic contributions. ---*/
 
-  for (size_t iPeriodic = 1; iPeriodic <= config.GetnMarker_Periodic()/2; ++iPeriodic)
-  {
+  for (size_t iPeriodic = 1; iPeriodic <= config.GetnMarker_Periodic()/2; ++iPeriodic) {
     solver->InitiatePeriodicComms(&geometry, &config, iPeriodic, kindPeriodicComm);
     solver->CompletePeriodicComms(&geometry, &config, iPeriodic, kindPeriodicComm);
   }
@@ -218,14 +221,20 @@ void computeHessiansL2Projection(CSolver* solver,
   const size_t nFace = (nDim == 2) ? 3 : 4;
   const size_t nNode = (nDim == 2) ? 3 : 4;
 
-  su2double normal[nDim] = {};
-
+  /*-----------------------------------------------------------------*/
+  /*--- For tris, Σ(u_i * n_i) = 2*|K|*∇u|_K                      ---*/
+  /*--- For tets, Σ(u_i * n_i) = 6*|K|*∇u|_K                      ---*/
+  /*--- n_i is the inward normal of the edge opposite node i. The ---*/
+  /*--- factor accounts for this and the number of points in the  ---*/
+  /*--- element, thus 6 for tris and 24 for tets to get ∇u|_K.    ---*/
+  /*-----------------------------------------------------------------*/
   const su2double factor = (nDim == 2) ? 1.0/6.0 : 1.0/24.0;
+
+  su2double normal[nDim] = {};
 
   /*--- For each (non-halo) volume integrate over its faces (edges). ---*/
 
-  for (size_t iPoint = 0; iPoint < nPointDomain; ++iPoint)
-  {
+  for (size_t iPoint = 0; iPoint < nPointDomain; ++iPoint) {
     for (size_t iVar = varBegin; iVar < varEnd; ++iVar)
       for (size_t iDim = 0; iDim < 3*(nDim-1); ++iDim)
         hessian(iPoint, iVar, iDim) = 0.0;
@@ -233,18 +242,17 @@ void computeHessiansL2Projection(CSolver* solver,
 
   /*--- For each volume integrate over its faces (edges). ---*/
   auto nodes = geometry.nodes;
-  for (size_t iElem = 0; iElem < nElem; ++iElem)
-  {
+  for (size_t iElem = 0; iElem < nElem; ++iElem) {
     auto elem = geometry.elem[iElem];
 
     /*--- Add the contribution from each node of the volume. ---*/
     for (size_t iNode = 0; iNode < nNode; ++iNode) {
       const size_t iPoint = elem->GetNode(iNode);
 
-      /*--- Inward normal of opposite face ---*/
+      /*--- Inward normal of opposite face. ---*/
       GetInwardNormal<nDim>(elem, nodes, iNode, normal);
 
-      /*--- Gradient contribution of the node ---*/
+      /*--- Gradient contribution of the node. ---*/
       for (size_t jNode = 0; jNode < nNode; ++jNode) {
         const size_t jPoint = elem->GetNode(jNode);
         if (!nodes->GetDomain(jPoint)) continue;
@@ -264,14 +272,13 @@ void computeHessiansL2Projection(CSolver* solver,
     }
   }
 
-  /*--- If no solver was provided we do not communicate ---*/
+  /*--- If no solver was provided we do not communicate. ---*/
 
   if (solver == nullptr) return;
 
   /*--- Account for periodic contributions. ---*/
 
-  for (size_t iPeriodic = 1; iPeriodic <= config.GetnMarker_Periodic()/2; ++iPeriodic)
-  {
+  for (size_t iPeriodic = 1; iPeriodic <= config.GetnMarker_Periodic()/2; ++iPeriodic) {
     solver->InitiatePeriodicComms(&geometry, &config, iPeriodic, kindPeriodicComm);
     solver->CompletePeriodicComms(&geometry, &config, iPeriodic, kindPeriodicComm);
   }
