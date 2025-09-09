@@ -682,6 +682,12 @@ void SurfaceMetricField(const CConfig* config, CGeometry* geometry) {
   const unsigned short nDim = geometry->GetnDim();
   const unsigned short nSymMat = 3 * (nDim - 1);
 
+  if (config->GetnMarker_GeoDev() == 0 && rank == MASTER_NODE) {
+    cout << "Warning: Surface metric requested without any markers specified for metric calculation.\n"
+            "Use option METRIC_GEODEV= ( marker, geodev, ... ), where geodev is allowed surface \n"
+            "deviation in degrees." << endl;
+  }
+
   /*--- Create a metric container  ---*/
   auto& metric_field = geometry->nodes->GetMetric();
   geometricSurfaceMetrics<su2double, tensor::metric>(

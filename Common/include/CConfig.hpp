@@ -1264,8 +1264,11 @@ private:
   unsigned short nAdapt_Time_Subinterval;  /*!< \brief Number of unsteady time sub-intervals for adaptation. */
   su2double Metric_Hmax,                   /*!< \brief Maximum cell size */
             Metric_Hmin,                   /*!< \brief Minimum cell size */
-            Metric_ARmax,                  /*!< \brief Maximum cell aspect ratio */
-            Metric_GeoDev;                 /*!< \brief Deviation (degrees) from tangent plane for surface metric */
+            Metric_ARmax;                  /*!< \brief Maximum cell aspect ratio */
+
+  unsigned short nMarker_GeoDev;           /*!< \brief Number of markers where surface metric is requested */
+  string* Marker_GeoDev;                   /*!< \brief Markers where surface metric is requested */
+  su2double* Metric_GeoDev;                /*!< \brief Deviation (degrees) from tangent plane for surface metric */
 
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
@@ -10026,10 +10029,22 @@ public:
   su2double GetMetric_ARmax(void) const { return Metric_ARmax; }
 
   /*!
+   * \brief Get number of markers where surface metric was requested
+   * \return Number of markers where surface metric was requested
+   */
+  unsigned short GetnMarker_GeoDev(void) const { return nMarker_GeoDev; }
+
+  /*!
+   * \brief Get marker where surface metric was requested
+   * \return Marker where surface metric was requested
+   */
+  string GetMarker_GeoDev(unsigned short iMarker) const { return Marker_GeoDev[iMarker]; }
+
+  /*!
    * \brief Get deviation from tangent plane (degrees) for surface metric
    * \return Deviation from tangent plane (degrees) for surface metric
    */
-  su2double GetMetric_GeoDev(void) const { return Metric_GeoDev; }
+  su2double GetMetric_GeoDev(unsigned short iMarker) const { return Metric_GeoDev[iMarker]; }
 
   /*!
    * \brief Get constraint complexity

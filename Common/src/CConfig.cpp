@@ -3045,7 +3045,7 @@ void CConfig::SetConfig_Options() {
   /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
   addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E6);
   /*!\brief METRIC_GEO_DEV \n DESCRIPTION: Deviation from tangent plane (degrees) for surface metric */
-  addDoubleOption("METRIC_GEODEV", Metric_GeoDev, 10.0);
+  addStringDoubleListOption("METRIC_GEODEV", nMarker_GeoDev, Marker_GeoDev, Metric_GeoDev);
   /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
   addPythonOption("METRIC_HGRAD");
 
@@ -7894,32 +7894,39 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
   }
 
   if (val_software == SU2_COMPONENT::SU2_CFD || val_software == SU2_COMPONENT::SU2_SOL ||
-      val_software == SU2_COMPONENT::SU2_ERR || Kind_SU2 == SU2_COMPONENT::SU2_ITP) {
+      val_software == SU2_COMPONENT::SU2_ERR || val_software == SU2_COMPONENT::SU2_ITP ||
+      val_software == SU2_COMPONENT::SU2_MET) {
     if (Compute_Metric) {
-        cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
-        cout << "Adaptation sensor(s): ";
-        for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
-          cout << GetMetric_SensorString(iSensor);
-          if (iSensor < nMetric_Sensor - 1 ) cout << ", ";
+      cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
+      cout << "Adaptation sensor(s): ";
+      for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
+        cout << GetMetric_SensorString(iSensor);
+        if (iSensor < nMetric_Sensor - 1 ) cout << ", ";
+      }
+      cout << endl;
+      switch (Kind_Hessian_Method) {
+        case GREEN_GAUSS: cout << "Hessian for adaptive metric: Green-Gauss." << endl; break;
+        case L2_PROJECTION: cout << "Hessian for adaptive metric: L2-projection." << endl; break;
+      }
+      if (Normalize_Metric) {
+        cout << "Target complexity: " << Metric_Complexity << endl;
+        if (TimeMarching != TIME_MARCHING::STEADY) {
+          cout << "  Unsteady adaptation sub-intervals: " << nAdapt_Time_Subinterval << endl;
+          cout << "  Target space-time complexity: " << Metric_Complexity * nAdapt_Time_Subinterval << endl;
         }
-        cout << endl;
-        switch (Kind_Hessian_Method) {
-          case GREEN_GAUSS: cout << "Hessian for adaptive metric: Green-Gauss." << endl; break;
-          case L2_PROJECTION: cout << "Hessian for adaptive metric: L2-projection." << endl; break;
-        }
-        if (Normalize_Metric) {
-          cout << "Target complexity: " << Metric_Complexity << endl;
-          if (TimeMarching != TIME_MARCHING::STEADY) {
-            cout << "  Unsteady adaptation sub-intervals: " << nAdapt_Time_Subinterval << endl;
-            cout << "  Target space-time complexity: " << Metric_Complexity * nAdapt_Time_Subinterval << endl;
-          }
-          cout << "Lp norm: " << Metric_Norm << endl;
-          cout << "Min. edge length: " << Metric_Hmin << endl;
-          cout << "Max. edge length: " << Metric_Hmax << endl;
-        }
-        else {
-          cout << "Output unnormalized metric field." << endl;
-        }
+        cout << "Lp norm: " << Metric_Norm << endl;
+        cout << "Min. edge length: " << Metric_Hmin << endl;
+        cout << "Max. edge length: " << Metric_Hmax << endl;
+      }
+      else {
+        cout << "Output unnormalized metric field." << endl;
+      }
+      if (nMarker_GeoDev != 0) {
+      cout << "Surface metric allowed deviation (degrees):";
+      for (auto iMarker_GeoDev = 0; iMarker_GeoDev < nMarker_GeoDev; iMarker_GeoDev++) {
+        cout << "  " << Marker_GeoDev[iMarker_GeoDev] << ": " << Metric_GeoDev[iMarker_GeoDev] << endl;
+      }
+    }
     }
   }
 }

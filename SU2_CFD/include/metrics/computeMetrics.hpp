@@ -31,6 +31,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <limits>
 #include "../../../Common/include/parallelization/omp_structure.hpp"
 #include "../../../Common/include/linear_algebra/blas_structure.hpp"
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
@@ -303,9 +304,8 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
   const ScalarType eigmax = 1.0 / pow(hmin, 2.0);
   const ScalarType eigmin = 1.0 / pow(hmax, 2.0);
 
-  /*--- Constraint on deviation from tangent plane ---*/
-  const ScalarType geodev = SU2_TYPE::GetValue(config.GetMetric_GeoDev());
-  const ScalarType alpha = geodev * M_PI / 180.0;
+  /*--- Constraint on deviation from tangent plane ---*/;
+  const ScalarType deg2rad = M_PI / 180.0;
 
   /*--- Working arrays ---*/
   ScalarType M[nDim][nDim], R[nDim][nDim], EigVal[nDim], work[nDim];
@@ -327,6 +327,38 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
     for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
       if (!nodes->GetPhysicalBoundary(iPoint)) continue;
 
+      /*--- Find the minimum GeoDev value for this point across all applicable markers ---*/
+      ScalarType alpha = std::numeric_limits<ScalarType>::max();
+      ScalarType n[2] = {};
+      bool foundMarker = false;
+
+      for (unsigned short iMarkerGeoDev = 0; iMarkerGeoDev < config.GetnMarker_GeoDev(); ++iMarkerGeoDev) {
+        const string& markerTag = config.GetMarker_GeoDev(iMarkerGeoDev);
+
+        /*--- Find the geometry marker index corresponding to this tag ---*/
+        for (unsigned short iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
+          if (geometry.GetMarker_Tag(iMarker) == markerTag) {
+            /*--- Check if this point belongs to this marker ---*/
+            const auto iVertex = nodes->GetVertex(iPoint, iMarker);
+            if (iVertex >= 0) {
+              /*--- Point belongs to this marker, get the GeoDev value ---*/
+              const ScalarType geodev_deg = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
+              const ScalarType geodev_rad = geodev_deg * deg2rad;
+              alpha = min(alpha, geodev_rad);
+              foundMarker = true;
+
+              /*--- Also add to the normal ---*/
+              const auto* normal = geometry.vertex[iMarker][iVertex]->GetNormal();
+              for (auto iDim = 0u; iDim < 2; ++iDim) n[iDim] += SU2_TYPE::GetValue(normal[iDim]);
+            }
+            break; /*--- Found the marker, no need to continue searching ---*/
+          }
+        }
+      }
+
+      /*--- If point doesn't belong to any GeoDev marker, skip it ---*/
+      if (!foundMarker) continue;
+
       /*--- Get curvature directly from geometry ---*/
       const ScalarType curvature = SU2_TYPE::GetValue(nodes->GetCurvature(iPoint));
 
@@ -339,15 +371,6 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
       EigVal[1] = eigmin;                         // Normal direction
 
       /*--- Build rotation matrix ---*/
-      ScalarType n[2] = {};
-      for (size_t iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
-        const auto iVertex = nodes->GetVertex(iPoint, iMarker);
-        if (iVertex >= 0) {
-          const auto* normal = geometry.vertex[iMarker][iVertex]->GetNormal();
-          for (auto iDim = 0u; iDim < 2; ++iDim) n[iDim] += SU2_TYPE::GetValue(normal[iDim]);
-        }
-      }
-
       const auto area = GeometryToolbox::Norm(2, n);
       for (auto iDim = 0u; iDim < 2; ++iDim) n[iDim] /= area;
 
@@ -488,6 +511,25 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
     /*--- Build metric tensors from curvature information ---*/
     for (size_t iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
       if (config.GetMarker_All_KindBC(iMarker) == SEND_RECEIVE) continue;
+
+      /*--- Check if this marker is in the GeoDev list ---*/
+      ScalarType alpha = std::numeric_limits<ScalarType>::max();
+      bool foundGeoDevMarker = false;
+      const string& markerTag = geometry.GetMarker_Tag(iMarker);
+
+      for (unsigned short iMarkerGeoDev = 0; iMarkerGeoDev < config.GetnMarker_GeoDev(); ++iMarkerGeoDev) {
+        if (config.GetMarker_GeoDev(iMarkerGeoDev) == markerTag) {
+          /*--- This marker is in the GeoDev list ---*/
+          const ScalarType geodev_deg = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
+          const ScalarType geodev_rad = geodev_deg * deg2rad;
+          alpha = min(alpha, geodev_rad);
+          foundGeoDevMarker = true;
+          break;
+        }
+      }
+
+      /*--- If this marker is not in the GeoDev list, skip it ---*/
+      if (!foundGeoDevMarker) continue;
 
       for (size_t iVertex = 0; iVertex < geometry.GetnVertex(iMarker); ++iVertex) {
         const auto iPoint = geometry.vertex[iMarker][iVertex]->GetNode();

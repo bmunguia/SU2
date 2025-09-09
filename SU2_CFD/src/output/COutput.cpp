@@ -831,6 +831,11 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
 
     case OUTPUT_TYPE::METRIC_GEO:
       if (config->GetCompute_Metric_Geo()) {
+        if (config->GetnMarker_GeoDev() == 0 && rank == MASTER_NODE) {
+          cout << "Warning: Writing surface metric file without any markers specified for metric calculation.\n"
+                  "Use option METRIC_GEODEV= ( marker, geodev, ... ), where geodev is allowed surface \n"
+                  "deviation in degrees." << endl;
+        }
         /*--- For now, write all volume info to a restart file ---*/
         extension = CSU2FileWriter::fileExt;
 
