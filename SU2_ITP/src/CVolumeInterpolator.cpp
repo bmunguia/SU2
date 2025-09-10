@@ -604,28 +604,39 @@ void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometr
         su2double parCoor[3];
         surfaceADT.DetermineContainingElement(surfCoor, markerID, elemID, rankID, parCoor, weightsInterpol);
       } else {
-        /*--- For 2D case (LINE elements), use inverse distance weighting ---*/
-        su2double totalWeight = 0.0;
+        /*--- For 2D case (LINE elements), use linear shape functions ---*/
+        /*--- Get line element nodes ---*/
+        const unsigned long i0 = geometry_src->bound[markerID][elemID]->GetNode(0);
+        const unsigned long i1 = geometry_src->bound[markerID][elemID]->GetNode(1);
 
-        for (auto iNode = 0u; iNode < nNodes; ++iNode) {
-          unsigned long nodeID = geometry_src->bound[markerID][elemID]->GetNode(iNode);
-
-          /*--- Compute distance from interpolation point to node ---*/
-          su2double dist2 = 0.0;
-          for (auto k = 0u; k < nDim; ++k) {
-            su2double diff = coor[k] - geometry_src->nodes->GetCoord(nodeID, k);
-            dist2 += diff * diff;
-          }
-
-          /*--- Inverse distance weighting (with small epsilon to avoid division by zero) ---*/
-          weightsInterpol[iNode] = 1.0 / (sqrt(dist2) + 1e-12);
-          totalWeight += weightsInterpol[iNode];
+        /*--- Get node coordinates ---*/
+        su2double x0[2], x1[2];
+        for (auto k = 0u; k < nDim; ++k) {
+          x0[k] = geometry_src->nodes->GetCoord(i0, k);
+          x1[k] = geometry_src->nodes->GetCoord(i1, k);
         }
 
-        /*--- Normalize weights ---*/
-        for (auto iNode = 0u; iNode < nNodes; ++iNode) {
-          weightsInterpol[iNode] /= totalWeight;
+        /*--- Use the same parametrization as CADTElemClass::Dist2ToLine ---*/
+        /*--- X = X0 + (r+1)*(X1-X0)/2, -1 <= r <= 1                     ---*/
+        /*--- V0 = surfCoor - (X1+X0)/2, V1 = (X1-X0)/2                  ---*/
+        su2double V0[2], V1[2];
+        for (auto k = 0u; k < nDim; ++k) {
+          V0[k] = surfCoor[k] - 0.5 * (x1[k] + x0[k]);
+          V1[k] = 0.5 * (x1[k] - x0[k]);
         }
+
+        /*--- Determine the parametric coordinate r for the projection ---*/
+        su2double dotV0V1 = 0.0, dotV1V1 = 0.0;
+        for (auto k = 0u; k < nDim; ++k) {
+          dotV0V1 += V0[k] * V1[k];
+          dotV1V1 += V1[k] * V1[k];
+        }
+        su2double r = (dotV1V1 > 1e-12) ? dotV0V1 / dotV1V1 : 0.0;
+        r = max(-1.0, min(1.0, r));  // Clamp to element bounds
+
+        /*--- Compute linear shape function weights ---*/
+        weightsInterpol[0] = 0.5 * (1.0 - r);  // Weight for node 0
+        weightsInterpol[1] = 0.5 * (1.0 + r);  // Weight for node 1
       }
 
       /*--- Initialize interpolated solution to zero ---*/
