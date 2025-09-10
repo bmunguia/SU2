@@ -4130,6 +4130,7 @@ void CFlowOutput::AddMeshAdaptationOutputs(const CConfig* config) {
       AddVolumeOutput("METRIC_ZZ", "Metric_zz", "MESH_ADAPT", "z-z-component of the metric");
     }
     AddVolumeOutput("VOLUME", "Volume", "MESH_ADAPT", "Dual-cell volume");
+    AddVolumeOutput("TOTAL_VOLUME", "Total_Volume", "MESH_ADAPT", "Dual-cell volume, including periodic volume");
   }
 
   if(config->GetCompute_Metric_Geo()) {
@@ -4164,7 +4165,8 @@ void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver
       SetVolumeOutputValue("METRIC_YZ", iPoint, Node_Flow->GetMetric(iPoint, 4));
       SetVolumeOutputValue("METRIC_ZZ", iPoint, Node_Flow->GetMetric(iPoint, 5));
     }
-    SetVolumeOutputValue("VOLUME", iPoint, Node_Geo->GetVolume(iPoint) + Node_Geo->GetPeriodicVolume(iPoint));
+    SetVolumeOutputValue("VOLUME", iPoint, Node_Geo->GetVolume(iPoint));
+    SetVolumeOutputValue("TOTAL_VOLUME", iPoint, Node_Geo->GetVolume(iPoint) + Node_Geo->GetPeriodicVolume(iPoint));
   }
 
   if(config->GetCompute_Metric_Geo()) {
