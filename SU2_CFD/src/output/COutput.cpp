@@ -837,7 +837,7 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
                   "deviation in degrees." << endl;
         }
         /*--- For now, write all volume info to a restart file ---*/
-        extension = CSU2FileWriter::fileExt;
+        extension = CSU2BinaryFileWriter::fileExt;
 
         if (fileName.empty())
           fileName = config->GetFilename(metricGeoFilename, "", curTimeIter);
@@ -849,7 +849,7 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
         metricGeoDataSorter->SetRequiredFieldNames(requiredMetricGeoFieldNames);
 
         LogOutputFiles("SU2 surface geometry metric");
-        fileWriter = new CSU2FileWriter(metricGeoDataSorter);
+        fileWriter = new CSU2BinaryFileWriter(metricGeoDataSorter);
       }
       break;
 
