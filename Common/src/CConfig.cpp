@@ -2216,10 +2216,10 @@ void CConfig::SetConfig_Options() {
   addStringOption("VALUE_OBJFUNC_FILENAME", ObjFunc_Value_FileName, string("of_func.dat"));
   /*!\brief SENSOR_ERROR_FILENAME
    *  \n DESCRIPTION: Output interpolation error in mesh adaptation sensor  \ingroup Config*/
-  addStringOption("SENSOR_ERROR_FILENAME", Sensor_Error_FileName, string("sensor_error.dat"));
+  addStringOption("SENSOR_ERROR_FILENAME", Sensor_Error_FileName, string("sensor_error"));
   /*!\brief METRIC_INTEGRAL_FILENAME
    *  \n DESCRIPTION: Output integral of metric tensor field for mesh adaptation sensor  \ingroup Config*/
-  addStringOption("METRIC_INTEGRAL_FILENAME", Metric_Integral_FileName, string("metric_integral.dat"));
+  addStringOption("METRIC_INTEGRAL_FILENAME", Metric_Integral_FileName, string("metric_integral"));
   /*!\brief SURFACE_FLOW_FILENAME
    *  \n DESCRIPTION: Output file surface flow coefficient (w/o extension)  \ingroup Config*/
   addStringOption("SURFACE_FILENAME", SurfCoeff_FileName, string("surface"));
