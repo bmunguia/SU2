@@ -4539,7 +4539,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
   const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1) || (steady);
 
   /*--- Integrate and normalize the metric tensor field ---*/
-  vector<su2double> integrals;
+  vector<double> integrals;
   for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
     SU2_OMP_MASTER
     if (goal) {
@@ -4558,13 +4558,13 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
 
       /*--- Integrate metric field on the last iteration (the end of the simulation if steady) ---*/
       auto& metrics = base_nodes->GetMetric();
-      su2double integral = 0.0;
+      double integral = 0.0;
       if (is_last_iter)
         integral = integrateMetrics<su2double, tensor::metric>(*geometry, *config, iSensor, metrics);
 
       /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
       if (steady || (normalize && is_last_iter))
-        normalizeMetrics<su2double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
+        normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
 
       /*--- Store the integral to be written ---*/
       if (is_last_iter) {

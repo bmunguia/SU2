@@ -589,7 +589,7 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
   }
 
   /*--- Read and sum all integral values (space-time integral) ---*/
-  su2double integral_value = 0.0;
+  double integral_value = 0.0;
   bool found_value = false;
   string line;
   int lines_to_skip = tabTecplot ? 2 : 1;  // Skip 2 lines for .dat, 1 line for .csv
@@ -623,7 +623,7 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
     /*--- We expect at least 2 values: TimeIter, Integral ---*/
     if (tokens.size() >= 2) {
       try {
-        su2double integral_val = stod(tokens[1]);
+        double integral_val = stod(tokens[1]);
         integral_value += integral_val;
         found_value = true;
       } catch (const exception& e) {
@@ -645,18 +645,18 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
   }
 
   /*--- Create a metric container for the normalization ---*/
-  su2matrix<su2double> metric_field(nPointDomain, nSymMat);
+  su2matrix<double> metric_field(nPointDomain, nSymMat);
 
   /*--- Extract metric tensor from solution fields ---*/
   for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
     for (auto iSymMat = 0u; iSymMat < nSymMat; iSymMat++) {
-      metric_field(iPoint, iSymMat) = solver->GetNodes()->GetSolution(iPoint, iFields[iSymMat]);
+      metric_field(iPoint, iSymMat) = SU2_TYPE::GetValue(solver->GetNodes()->GetSolution(iPoint, iFields[iSymMat]));
     }
   }
 
   /*--- Apply normalization using the tensor::metric interface ---*/
   const unsigned short iSensor = 0;
-  normalizeMetrics<su2double, tensor::metric>(
+  normalizeMetrics<double, tensor::metric>(
     *geometry, *config, iSensor, integral_value, metric_field);
 
   /*--- Write the normalized metric back to the solution fields ---*/
@@ -690,7 +690,7 @@ void SurfaceMetricField(const CConfig* config, CGeometry* geometry) {
 
   /*--- Create a metric container  ---*/
   auto& metric_field = geometry->nodes->GetMetric();
-  geometricSurfaceMetrics<su2double, tensor::metric>(
+  geometricSurfaceMetrics<double, tensor::metric>(
     *geometry, *config, metric_field
   );
 
