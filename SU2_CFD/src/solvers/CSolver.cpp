@@ -4646,16 +4646,13 @@ void CSolver::AddMetrics(CSolver **solver, const CGeometry*geometry, const CConf
   const bool is_first_iter = (time_iter == 0) || (restartMetric);
   const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1);
 
+  double coeff = (time_stepping &&  (is_first_iter || is_last_iter))? 0.5 : 1.0;
+  if (time_stepping) coeff *= SU2_TYPE::GetValue(config->GetTime_Step());
+
   for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     for (auto iMat = 0; iMat < nSymMat; ++iMat) {
       double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, iSensor, iMat));
-      if (time_stepping) {
-        /*--- Integrate the unsteady metric ---*/
-        const double coeff = (is_first_iter || is_last_iter)? 0.5 : 1.0;
-        const double time_step = SU2_TYPE::GetValue(config->GetTime_Step());
-        hess *= coeff * time_step;
-      }
-      varFlo->AddMetric(iPoint, iMat, hess);
+      varFlo->AddMetric(iPoint, iMat, coeff * hess);
     }
   }
 }
