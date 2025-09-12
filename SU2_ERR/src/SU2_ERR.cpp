@@ -157,6 +157,7 @@ int main(int argc, char* argv[]) {
 
   /*--- TODO: allow for multiple sensors ---*/
   vector<unsigned long> time_iters;
+  vector<unsigned long> num_points;
   vector<su2double> sensor_errors;
 
   if (config_src[ZONE_0]->GetTime_Domain()) {
@@ -231,7 +232,7 @@ int main(int argc, char* argv[]) {
           /*--- Get the correct field index ---*/
           if (rank == MASTER_NODE) {
             cout << endl << "---------------------------- Error Estimation ---------------------------" << endl;
-            cout << "Calculating L" << config_ref[iZone] ->GetMetric_Norm() << "-norm error in sensor..." << endl;
+            cout << "Calculating L1-norm error in sensor." << endl;
           }
           int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0][FLOW_SOL]);
           if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldDst << " in interpolated solution." << endl;
@@ -246,12 +247,13 @@ int main(int argc, char* argv[]) {
           /*--- Add to the vector to be output ---*/
           if (rank == MASTER_NODE) {
             time_iters.push_back(TimeIter);
+            num_points.push_back(geometry_src[iZone][INST_0]->GetGlobal_nPointDomain());
             sensor_errors.push_back(sensor_error);
           }
 
           if (rank == MASTER_NODE) {
             string sensor_string = config_src[ZONE_0]->GetMetric_SensorString(0);
-            cout << sensor_string << "L" << config_ref[iZone]->GetMetric_Norm() << "-norm field error: " << sensor_error << endl;
+            cout << sensor_string << " L1-norm field error: " << sensor_error << endl;
           }
         }
 
@@ -305,7 +307,7 @@ int main(int argc, char* argv[]) {
       /*--- Get the correct field index ---*/
       if (rank == MASTER_NODE) {
         cout << endl << "---------------------------- Error Estimation ---------------------------" << endl;
-        cout << "Calculating L" << config_ref[iZone] ->GetMetric_Norm() << "-norm error in sensor..." << endl;
+        cout << "Calculating L1-norm error in sensor..." << endl;
       }
       int iFieldDst = GetSensorFieldIndex(config_dst[iZone], solver_dst[iZone][INST_0][FLOW_SOL]);
       if (rank == MASTER_NODE) cout << "Sensor found at index " << iFieldDst << " in interpolated solution." << endl;
@@ -320,12 +322,13 @@ int main(int argc, char* argv[]) {
       /*--- Add to the output data ---*/
       if (rank == MASTER_NODE) {
         time_iters.push_back(0);
+        num_points.push_back(geometry_src[iZone][INST_0]->GetGlobal_nPointDomain());
         sensor_errors.push_back(sensor_error);
       }
 
       if (rank == MASTER_NODE) {
         string sensor_string = config_src[ZONE_0]->GetMetric_SensorString(0);
-        cout << sensor_string << "L" << config_ref[iZone]->GetMetric_Norm() << "-norm field error: " << sensor_error << endl;
+        cout << sensor_string << " L1-norm field error: " << sensor_error << endl;
       }
     }
     for (iZone = 0; iZone < nZone; iZone++) {
@@ -346,23 +349,33 @@ int main(int argc, char* argv[]) {
       filename += ".dat";
     else
       filename += ".csv";
-    Error_file.open(filename.c_str(), ios::out);
 
-    if (tabTecplot) {
-      Error_file << "TITLE = \"SU2_ERR Evaluation\"" << endl;
-      Error_file << "VARIABLES = ";
+    /*--- Check if file exists to determine write vs append mode ---*/
+    const bool file_exists = std::filesystem::exists(filename);
+
+    /*--- Open in appropriate mode ---*/
+    if (file_exists) {
+      Error_file.open(filename.c_str(), ios::app);
+    } else {
+      Error_file.open(filename.c_str(), ios::out);
+
+      /*--- Write header only for new files ---*/
+      if (tabTecplot) {
+        Error_file << "TITLE = \"SU2_ERR Evaluation\"" << endl;
+        Error_file << "VARIABLES = ";
+      }
+
+      /*--- TODO: allow for multiple sensors ---*/
+      string sensor_string = config_src[ZONE_0]->GetMetric_SensorString(0);
+      Error_file << "\"Time Iter\",\"Num Point\",\"" << sensor_string << "\"";
+      if (tabTecplot)
+        Error_file << "\nZONE T= \"Error estimates\"" << endl;
+      else
+        Error_file << endl;
     }
 
-    /*--- TODO: allow for multiple sensors ---*/
-    string sensor_string = config_src[ZONE_0]->GetMetric_SensorString(0);
-    Error_file << "\"Time Iter\",\"" << sensor_string << "\"";
-    if (tabTecplot)
-      Error_file << "\nZONE T= \"Error estimates\"" << endl;
-    else
-      Error_file << endl;
-
     for (auto i = 0; i < sensor_errors.size(); ++i) {
-      Error_file << time_iters[i] << ", " << sensor_errors[i] << endl;
+      Error_file << time_iters[i] << ", " << num_points[i] << ", " << sensor_errors[i] << endl;
     }
 
     Error_file.close();
@@ -563,16 +576,18 @@ su2double EstimateFieldError(const CConfig* config, CGeometry* geometry,
     su2double volume = geometry->nodes->GetVolume(iPoint);
     su2double local_error = fabs(field_dst - field_ref) * volume;
 
-    /*--- Add to Lp-norm sum ---*/
-    local_sum += pow(local_error, p);
+    /*--- Add to L1-norm sum ---*/
+    local_sum += local_error;
+    // local_sum += pow(local_error, p);
   }
 
   /*--- Parallel sum across all MPI ranks ---*/
   su2double global_sum = 0.0;
   SU2_MPI::Allreduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
 
-  /*--- Take the p-th root for Lp norm ---*/
-  su2double global_error = pow(global_sum, 1.0 / p);
+  /*--- Take the p-th root for Lp-norm ---*/
+  // su2double global_error = pow(global_sum, 1.0 / p);
 
-  return global_error;
+  // return global_error;
+  return global_sum;
 }

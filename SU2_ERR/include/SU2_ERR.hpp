@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include <filesystem>
+
 #include "../../SU2_ITP/include/CLinearVolumeInterpolator.hpp"
 
 /*!
