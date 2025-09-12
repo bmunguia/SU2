@@ -1164,6 +1164,11 @@ private:
   unsigned short Comm_Level;                 /*!< \brief Level of MPI communications to be performed. */
   VERIFICATION_SOLUTION Kind_Verification_Solution; /*!< \brief Verification solution for accuracy assessment. */
 
+  su2double InviscidVortex_R;    /*!< \brief Radius of the isentropic vortex. */
+  su2double InviscidVortex_x0;   /*!< \brief Initial x-coordinate of the isentropic vortex. */
+  su2double InviscidVortex_y0;   /*!< \brief Initial y-coordinate of the isentropic vortex. */
+  su2double InviscidVortex_eps;  /*!< \brief Strength of the isentropic vortex. */
+
   bool Time_Domain;              /*!< \brief Determines if the multizone problem is solved in time-domain */
   unsigned long nOuterIter,      /*!< \brief Determines the number of outer iterations in the multizone problem */
   nInnerIter,                    /*!< \brief Determines the number of inner iterations in each multizone block */
@@ -9372,6 +9377,30 @@ public:
    * \return The verification solution to be used.
    */
   VERIFICATION_SOLUTION GetVerification_Solution(void) const { return Kind_Verification_Solution;}
+
+  /*!
+   * \brief Get the radius of the isentropic vortex.
+   * \return The radius of the isentropic vortex.
+   */
+  su2double GetInviscidVortex_R(void) const {return InviscidVortex_R; }
+
+  /*!
+   * \brief Get the initial x-coordinate of the isentropic vortex.
+   * \return The initial x-coordinate of the isentropic vortex.
+   */
+  su2double GetInviscidVortex_x0(void) const {return InviscidVortex_x0; }
+
+  /*!
+   * \brief Get the initial y-coordinate of the isentropic vortex.
+   * \return The initial y-coordinate of the isentropic vortex.
+   */
+  su2double GetInviscidVortex_y0(void) const {return InviscidVortex_y0; }
+
+  /*!
+   * \brief Get the strength of the isentropic vortex.
+   * \return The strength of the isentropic vortex.
+   */
+  su2double GetInviscidVortex_eps(void) const {return InviscidVortex_eps; }
 
   /*!
    * \brief Get topology optimization.

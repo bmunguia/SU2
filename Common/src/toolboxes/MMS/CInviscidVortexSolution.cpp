@@ -42,10 +42,10 @@ CInviscidVortexSolution::CInviscidVortexSolution(unsigned short val_nDim, unsign
   }
 
   /*--- Store the inviscid vortex specific parameters here. ---*/
-  x0Vortex = -0.5;  // Initial x-coordinate of the vortex center.
-  y0Vortex = 0.0;   // Initial y-coordinate of the vortex center.
-  RVortex = 0.1;    // Radius of the vortex.
-  epsVortex = 1.0;  // Strength of the vortex.
+  x0Vortex = config->GetInviscidVortex_x0();    // Initial x-coordinate of the vortex center.
+  y0Vortex = config->GetInviscidVortex_y0();    // Initial y-coordinate of the vortex center.
+  RVortex = config->GetInviscidVortex_R();      // Radius of the vortex.
+  epsVortex = config->GetInviscidVortex_eps();  // Strength of the vortex.
 
   /* Get the Mach number and advection angle (in degrees). */
   MachVortex = config->GetMach();

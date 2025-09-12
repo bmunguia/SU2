@@ -1147,6 +1147,15 @@ void CConfig::SetConfig_Options() {
   /*!\brief KIND_VERIFICATION_SOLUTION \n DESCRIPTION: Specify the verification solution OPTIONS: see \link Verification_Solution_Map \endlink \n DEFAULT: NO_VERIFICATION_SOLUTION \ingroup Config*/
   addEnumOption("KIND_VERIFICATION_SOLUTION", Kind_Verification_Solution, Verification_Solution_Map, VERIFICATION_SOLUTION::NONE);
 
+  /*!\brief INVISCID_VORTEX_R \n DESCRIPTION: Specify the radius of the isentropic vortex \n DEFAULT: 0.1 \ingroup Config*/
+  addDoubleOption("INVISCID_VORTEX_R", InviscidVortex_R, 0.1);
+  /*!\brief INVISCID_VORTEX_X0 \n DESCRIPTION: Specify the initial x-coordinate the isentropic vortex \n DEFAULT: -0.5 \ingroup Config*/
+  addDoubleOption("INVISCID_VORTEX_X0", InviscidVortex_x0, -0.5);
+  /*!\brief INVISCID_VORTEX_Y0 \n DESCRIPTION: Specify the initial y-coordinate the isentropic vortex \n DEFAULT: 0.0 \ingroup Config*/
+  addDoubleOption("INVISCID_VORTEX_Y0", InviscidVortex_y0, 0.0);
+  /*!\brief INVISCID_VORTEX_EPS \n DESCRIPTION: Specify the strength of the isentropic vortex \n DEFAULT: 1.0 \ingroup Config*/
+  addDoubleOption("INVISCID_VORTEX_EPS", InviscidVortex_eps, 1.0);
+
   /*!\brief KIND_MATRIX_COLORING \n DESCRIPTION: Specify the method for matrix coloring for Jacobian computations OPTIONS: see \link MatrixColoring_Map \endlink \n DEFAULT GREEDY_COLORING \ingroup Config*/
   addEnumOption("KIND_MATRIX_COLORING", Kind_Matrix_Coloring, MatrixColoring_Map, GREEDY_COLORING);
 
