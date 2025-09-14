@@ -6983,6 +6983,9 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         case LIMITER::VAN_ALBADA_EDGE:
           cout << "Van Albada slope-limiting method implemented by edges." << endl;
           break;
+        case LIMITER::PIPERNO:
+          cout << "Piperno slope-limiting method implemented by edges." << endl;
+          break;
         case LIMITER::SHARP_EDGES:
           cout << "Sharp edges slope-limiting method, with constant: " << Venkat_LimiterCoeff << ".\n";
           cout << "The reference element size is: " << RefElemLength << ".\n";

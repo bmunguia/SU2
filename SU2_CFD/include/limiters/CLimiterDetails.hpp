@@ -117,6 +117,58 @@ struct LimiterHelpers
     Type S5 = 8.0*Dm*Dm*(Dp*Dp-2.0*Dm*(Dp-Dm));
     return (y + Dp*S5) / (y + Dm*(pow(delta,4)+S5));
   }
+
+  FORCEINLINE static Type pipernoPhiFunction(const Type& R)
+  {
+    /*--- φ(R) = 0 if r <= 0 ---*/
+    if (R <= 0.0) return 0.0;
+
+    /*--- φ(R) = 1 + (3/2 r + 1)(r - 1)^3 if 0 <= r <= 1 ---*/
+    if (R <= 1.0) {
+      Type r_minus_1 = R - 1.0;
+      return 1.0 + (1.5 * R + 1.0) * pow(r_minus_1, 3);
+    }
+
+    /*--- φ(R) = (3r^2 - 6r + 19) / (r^3 - 3r + 18) if 1 <= r ---*/
+    Type r_squared = R * R;
+    Type r_cubed = r_squared * R;
+    Type numerator = 3.0 * r_squared - 6.0 * R + 19.0;
+    Type denominator = r_cubed - 3.0 * R + 18.0;
+    return numerator / max(denominator, std::numeric_limits<passivedouble>::epsilon());
+  }
+
+  FORCEINLINE static Type pipernoFunction(const Type& proj, const Type& delta, const Type& eps)
+  {
+    /*--- Avoid division by zero ---*/
+    Type delta_safe = max(fabs(delta), eps);
+    Type proj_safe = max(fabs(proj), eps);
+
+    /*----------------------------------------------------------------*/
+    /*--- In Piperno's notation:                                   ---*/
+    /*---   proj = ∇u_i·Δx (gradient projection)                   ---*/
+    /*---   delta = Δu_{i+1/2} (centered difference)               ---*/
+    /*---   Δu_{i-1/2} = 2∇u_i·Δx - Δu_{i+1/2}                     ---*/
+    /*---   R = Δu_{i+1/2} / Δu_{i-1/2} = delta / (2*proj - delta) ---*/
+    /*----------------------------------------------------------------*/
+    Type delta_upwind = 2.0 * proj_safe - delta_safe;
+    Type R = delta_safe / max(fabs(delta_upwind), eps) *
+             ((delta_upwind >= 0.0) ? 1.0 : -1.0);
+
+    /*--- Compute inverse R for φ function ---*/
+    Type inv_R = 1.0 / max(fabs(R), eps) * ((R >= 0.0) ? 1.0 : -1.0);
+
+    /*--- Compute φ(1/R) ---*/
+    Type phi_inv_R = pipernoPhiFunction(inv_R);
+
+    /*--- Compute ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
+    /*--- When φ(R) = 1, this gives the beta scheme ---*/
+    Type psi_R = (ONE3 + TWO3 * R) * phi_inv_R;
+
+    /*--- Apply sign correction ---*/
+    Type sign = (delta * proj >= 0.0) ? 1.0 : 0.0;
+
+    return sign * psi_R;
+  }
 };
 
 
@@ -481,5 +533,38 @@ struct CLimiterDetails<LIMITER::WALL_DISTANCE>
   inline su2double limiterFunction(size_t, su2double proj, su2double delta) const
   {
     return LimiterHelpers<>::venkatFunction(proj, delta, eps2);
+  }
+};
+
+/*!
+ * \brief Piperno limiter specialization.
+ * \ingroup FvmAlgos
+ */
+template<>
+struct CLimiterDetails<LIMITER::PIPERNO>
+{
+  su2double eps;
+
+  /*!
+   * \brief Set a small epsilon to avoid divisions by 0.
+   */
+  template<class... Ts>
+  inline void preprocess(CGeometry&, const CConfig&, Ts&...)
+  {
+    eps = LimiterHelpers<>::epsilon();
+  }
+
+  /*!
+   * \brief No geometric modification for this kind of limiter.
+   */
+  template<class... Ts>
+  inline su2double geometricFactor(Ts&...) const {return 1.0;}
+
+  /*!
+   * \brief Piperno limiter function.
+   */
+  inline su2double limiterFunction(size_t, su2double proj, su2double delta) const
+  {
+    return LimiterHelpers<>::pipernoFunction(proj, delta, eps);
   }
 };

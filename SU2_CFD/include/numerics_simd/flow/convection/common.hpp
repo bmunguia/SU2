@@ -77,7 +77,7 @@ FORCEINLINE void betaUnlimited(Int iPoint,
     const Double delta_beta_i = (1.0 - beta) * delta_cent + beta * delta_upwind_i;
     const Double delta_beta_j = (1.0 - beta) * delta_cent + beta * delta_upwind_j;
 
-    /*--- Apply reconstruction: Wij = Wi + 0.5 * ΔW_ij^β ---*/
+    /*--- Apply reconstruction: V_ij = Vi + 0.5 * ΔV_ij^β ---*/
     V.i.all(iVar) += 0.5 * delta_beta_i;
     V.j.all(iVar) -= 0.5 * delta_beta_j;
   }
@@ -129,6 +129,89 @@ FORCEINLINE void musclEdgeLimited(Int iPoint,
 }
 
 /*!
+ * \brief Piperno limiter function φ(R).
+ */
+FORCEINLINE Double pipernoLimiterFunction(Double R) {
+  /*--- φ(R) = 0 if r <= 0 ---*/
+  const Double positive_R = fmax(R, 0.0);
+
+  /*--- φ(R) = 1 + (3/2 r + 1)(r - 1)^3 if 0 <= r <= 1 ---*/
+  const Double r_minus_1 = positive_R - 1.0;
+  const Double r_minus_1_cubed = pow(r_minus_1, 3);
+  const Double phi_case1 = 1.0 + (1.5 * positive_R + 1.0) * r_minus_1_cubed;
+
+  /*--- φ(R) = (3r^2 - 6r + 19) / (r^3 - 3r + 18) if 1 <= r ---*/
+  const Double r_squared = pow(positive_R, 2);
+  const Double r_cubed = pow(positive_R, 3);
+  const Double numerator = 3.0 * r_squared - 6.0 * positive_R + 19.0;
+  const Double denominator = r_cubed - 3.0 * positive_R + 18.0;
+  const Double phi_case2 = numerator / fmax(denominator, 1e-14);
+
+  /*--- Select appropriate case based on R value ---*/
+  const Double phi_01 = (positive_R <= 1.0) * phi_case1 + (positive_R > 1.0) * phi_case2;
+
+  /*--- Return 0 if R <= 0, otherwise return computed φ(R) ---*/
+  return (R > 0.0) * phi_01;
+}
+
+/*!
+ * \brief Piperno slope limiter reconstruction (edge formulation).
+ */
+template<size_t nVarGrad_ = 0, size_t nDim, class VarType, class Gradient_t>
+FORCEINLINE void musclPiperno(Int iPoint,
+                              Int jPoint,
+                              const VectorDbl<nDim>& vector_ij,
+                              const Gradient_t& gradient,
+                              CPair<VarType>& V) {
+  constexpr auto nVarGrad = nVarGrad_ > 0 ? nVarGrad_ : VarType::nVar;
+
+  auto grad_i = gatherVariables<nVarGrad,nDim>(iPoint, gradient);
+  auto grad_j = gatherVariables<nVarGrad,nDim>(jPoint, gradient);
+
+  for (size_t iVar = 0; iVar < nVarGrad; ++iVar) {
+    /*--- Compute differences for Piperno scheme ---*/
+    const Double delta_ij = V.j.all(iVar) - V.i.all(iVar);  // Δu_{i+1/2}
+    const Double proj_i = dot(grad_i[iVar], vector_ij);     // ∇u_i · Δx_{ij}
+    const Double proj_j = dot(grad_j[iVar], vector_ij);     // ∇u_j · Δx_{ij}
+
+    /*--- Compute upwind differences consistent with beta scheme ---*/
+    /*--- Δu_{i-1/2} = 2∇u_i·Δx - Δu_{i+1/2} (upwind difference) ---*/
+    /*--- Δu_{i+3/2} = 2∇u_j·Δx - Δu_{i+1/2} (upwind difference) ---*/
+    const Double delta_i_minus_half = 2.0 * proj_i - delta_ij;
+    const Double delta_j_plus_half = 2.0 * proj_j - delta_ij;
+
+    /*--- Compute slope ratios R_i and R_j ---*/
+    /*--- R_i = Δu_{i+1/2} / Δu_{i-1/2} ---*/
+    /*--- R_j = Δu_{i+1/2} / Δu_{i+3/2} ---*/
+    const Double sign_delta_i = (delta_i_minus_half >= 0.0) - (delta_i_minus_half < 0.0);
+    const Double sign_delta_j = (delta_j_plus_half >= 0.0) - (delta_j_plus_half < 0.0);
+    
+    const Double R_i = delta_ij / fmax(abs(delta_i_minus_half), 1e-14) * sign_delta_i;
+    const Double R_j = delta_ij / fmax(abs(delta_j_plus_half), 1e-14) * sign_delta_j;
+
+    /*--- Compute Piperno limiter functions ---*/
+    /*--- ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
+    const Double sign_R_i = (R_i >= 0.0) - (R_i < 0.0);
+    const Double sign_R_j = (R_j >= 0.0) - (R_j < 0.0);
+    
+    const Double inv_R_i = 1.0 / fmax(abs(R_i), 1e-14) * sign_R_i;
+    const Double inv_R_j = 1.0 / fmax(abs(R_j), 1e-14) * sign_R_j;
+
+    const Double phi_inv_R_i = pipernoLimiterFunction(inv_R_i);
+    const Double phi_inv_R_j = pipernoLimiterFunction(inv_R_j);
+
+    const Double psi_R_i = (ONE3 + TWO3 * R_i) * phi_inv_R_i;
+    const Double psi_R_j = (ONE3 + TWO3 * R_j) * phi_inv_R_j;
+
+    /*--- Apply Piperno reconstruction ---*/
+    /*--- u_{i+1/2,L}^{lim} = u_i + 0.5 ψ(R_i) Δu_{i-1/2} ---*/
+    /*--- u_{i+1/2,R}^{lim} = u_{i+1} - 0.5 ψ(R_j) Δu_{i+3/2} ---*/
+    V.i.all(iVar) += 0.5 * psi_R_i * delta_i_minus_half;
+    V.j.all(iVar) -= 0.5 * psi_R_j * delta_j_plus_half;
+  }
+}
+
+/*!
  * \brief Retrieve primitive variables for points i/j, reconstructing them if needed.
  * \note Density and enthalpy are recomputed from ideal gas EOS.
  * \param[in] iEdge, iPoint, jPoint - Edge and its nodes.
@@ -167,12 +250,14 @@ FORCEINLINE CPair<ReconVarType> reconstructPrimitives(Int iEdge, Int iPoint, Int
 
     switch (limiterType) {
     case LIMITER::NONE:
-    //   musclUnlimited<nVarGrad>(iPoint, vector_ij, 0.5, gradients, V.i.all);
-    //   musclUnlimited<nVarGrad>(jPoint, vector_ij,-0.5, gradients, V.j.all);
-      betaUnlimited<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V, 1.0/3.0);
+      musclUnlimited<nVarGrad>(iPoint, vector_ij, 0.5, gradients, V.i.all);
+      musclUnlimited<nVarGrad>(jPoint, vector_ij,-0.5, gradients, V.j.all);
       break;
     case LIMITER::VAN_ALBADA_EDGE:
       musclEdgeLimited<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V);
+      break;
+    case LIMITER::PIPERNO:
+      musclPiperno<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V);
       break;
     default:
       musclPointLimited<nVarGrad>(iPoint, vector_ij, 0.5, limiters, gradients, V.i.all);

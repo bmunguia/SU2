@@ -941,6 +941,7 @@ enum class LIMITER {
   VENKATAKRISHNAN_WANG , /*!< \brief Slope limiter using Venkatakrisnan method, eps based on solution (stencil formulation). */
   BARTH_JESPERSEN      , /*!< \brief Slope limiter using Barth-Jespersen method (stencil formulation). */
   VAN_ALBADA_EDGE      , /*!< \brief Slope limiter using Van Albada method (edge formulation). */
+  PIPERNO              , /*!< \brief Slope limiter using Piperno method (edge formulation). */
   SHARP_EDGES          , /*!< \brief Slope limiter using sharp edges. */
   WALL_DISTANCE          /*!< \brief Slope limiter using wall distance. */
 };
@@ -953,6 +954,7 @@ static const MapType<std::string, LIMITER> Limiter_Map = {
   MakePair("VENKATAKRISHNAN_WANG", LIMITER::VENKATAKRISHNAN_WANG)
   MakePair("BARTH_JESPERSEN", LIMITER::BARTH_JESPERSEN)
   MakePair("VAN_ALBADA_EDGE", LIMITER::VAN_ALBADA_EDGE)
+  MakePair("PIPERNO", LIMITER::PIPERNO)
   MakePair("SHARP_EDGES", LIMITER::SHARP_EDGES)
   MakePair("WALL_DISTANCE", LIMITER::WALL_DISTANCE)
 };

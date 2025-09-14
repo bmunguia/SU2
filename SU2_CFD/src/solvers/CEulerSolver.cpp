@@ -1654,6 +1654,7 @@ void CEulerSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
   const bool center = (config->GetKind_ConvNumScheme_Flow() == SPACE_CENTERED);
   const bool limiter = (config->GetKind_SlopeLimit_Flow() != LIMITER::NONE) && (InnerIter <= config->GetLimiterIter());
   const bool van_albada = (config->GetKind_SlopeLimit_Flow() == LIMITER::VAN_ALBADA_EDGE);
+  const bool piperno = (config->GetKind_SlopeLimit_Flow() == LIMITER::PIPERNO);
 
   /*--- Common preprocessing steps. ---*/
 
@@ -1676,7 +1677,7 @@ void CEulerSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
 
     /*--- Limiter computation ---*/
 
-    if (limiter && !van_albada) SetPrimitive_Limiter(geometry, config);
+    if (limiter && !van_albada && !piperno) SetPrimitive_Limiter(geometry, config);
   }
 }
 
@@ -1784,6 +1785,7 @@ void CEulerSolver::Upwind_Residual(CGeometry *geometry, CSolver **solver_contain
   const bool muscl            = (config->GetMUSCL_Flow() && (iMesh == MESH_0));
   const bool limiter          = (config->GetKind_SlopeLimit_Flow() != LIMITER::NONE);
   const bool van_albada       = (config->GetKind_SlopeLimit_Flow() == LIMITER::VAN_ALBADA_EDGE);
+  const bool piperno          = (config->GetKind_SlopeLimit_Flow() == LIMITER::PIPERNO);
 
   /*--- Non-physical counter. ---*/
   unsigned long counter_local = 0;
@@ -1879,6 +1881,11 @@ void CEulerSolver::Upwind_Residual(CGeometry *geometry, CSolver **solver_contain
           su2double V_ij = V_j[iVar] - V_i[iVar];
           lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, EPS);
           lim_j = LimiterHelpers<>::vanAlbadaFunction(-Project_Grad_j, V_ij, EPS);
+        }
+        else if (piperno) {
+          su2double V_ij = V_j[iVar] - V_i[iVar];
+          lim_i = LimiterHelpers<>::pipernoFunction(Project_Grad_i, V_ij, EPS);
+          lim_j = LimiterHelpers<>::pipernoFunction(-Project_Grad_j, V_ij, EPS);
         }
         else if (limiter) {
           lim_i = nodes->GetLimiter_Primitive(iPoint, iVar);

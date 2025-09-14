@@ -76,6 +76,7 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
   const bool center = (config->GetKind_ConvNumScheme_Flow() == SPACE_CENTERED);
   const bool limiter = (config->GetKind_SlopeLimit_Flow() != LIMITER::NONE) && (InnerIter <= config->GetLimiterIter());
   const bool van_albada = (config->GetKind_SlopeLimit_Flow() == LIMITER::VAN_ALBADA_EDGE);
+  const bool piperno = (config->GetKind_SlopeLimit_Flow() == LIMITER::PIPERNO);
   const bool wall_functions = config->GetWall_Functions();
 
   /*--- Common preprocessing steps (implemented by CEulerSolver) ---*/
@@ -112,7 +113,7 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   /*--- Compute the limiters ---*/
 
-  if (muscl && !center && limiter && !van_albada && !Output) {
+  if (muscl && !center && limiter && !van_albada && !piperno && !Output) {
     SetPrimitive_Limiter(geometry, config);
   }
 
