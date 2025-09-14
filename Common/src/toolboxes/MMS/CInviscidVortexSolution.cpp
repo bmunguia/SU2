@@ -104,18 +104,28 @@ void CInviscidVortexSolution::GetSolution(const su2double* val_coords, const su2
   const su2double dy = val_coords[1] - (y0Vortex + val_t * vInf);
 
   /* Compute the components of the velocity. */
-  su2double f = 1.0 - (dx * dx + dy * dy) / (RVortex * RVortex);
-  su2double t1 = epsVortex * dy * exp(0.5 * f) / (2.0 * PI_NUMBER * RVortex);
-  su2double u = uInf - VelInf * t1;
+  // su2double f = 1.0 - (dx * dx + dy * dy) / (RVortex * RVortex);
+  su2double beta = 5.0 / (2.0 * PI_NUMBER * sqrt(Gamma)) * exp(0.5);
+  su2double f = -(dx * dx + dy * dy) / (2.0 * epsVortex * epsVortex * RVortex * RVortex);
+  // su2double t1 = epsVortex * dy * exp(0.5 * f) / (2.0 * PI_NUMBER * RVortex);
+  su2double Omega = beta * exp(f);
+  // su2double u = uInf - VelInf * t1;
+  su2double du = - dy * Omega / RVortex;
+  su2double u = uInf + du;
 
-  t1 = epsVortex * dx * exp(0.5 * f) / (2.0 * PI_NUMBER * RVortex);
-  su2double v = vInf + VelInf * t1;
+  // t1 = epsVortex * dx * exp(0.5 * f) / (2.0 * PI_NUMBER * RVortex);
+  // su2double v = vInf + VelInf * t1;
+  su2double dv = dx * Omega / RVortex;
+  su2double v = vInf + dv;
 
   /* Compute the density and the pressure. */
-  t1 = 1.0 - epsVortex * epsVortex * Gm1 * MachVortex * MachVortex * exp(f) / (8.0 * PI_NUMBER * PI_NUMBER);
+  // t1 = 1.0 - epsVortex * epsVortex * Gm1 * MachVortex * MachVortex * exp(f) / (8.0 * PI_NUMBER * PI_NUMBER);
+  su2double dT = -Gm1 * Omega * Omega / 2.0;
 
-  su2double rho = pow(t1, ovGm1);
-  su2double p = pow(t1, gamOvGm1);
+  // su2double rho = pow(t1, ovGm1);
+  // su2double p = pow(t1, gamOvGm1);
+  su2double rho = pow(1.0 + dT, ovGm1);
+  su2double p = pow(1.0 + dT, gamOvGm1) / Gamma;
 
   /* Compute the conservative variables. Note that both 2D and 3D
      cases are treated correctly. */

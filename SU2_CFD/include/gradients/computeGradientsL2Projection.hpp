@@ -134,7 +134,6 @@ void computeGradientsL2Projection(CSolver* solver,
 {
   const size_t nPointDomain = geometry.GetnPointDomain();
   const size_t nElem = geometry.GetnElem();
-  const size_t nFace = (nDim == 2) ? 3 : 4;
   const size_t nNode = (nDim == 2) ? 3 : 4;
 
   /*-----------------------------------------------------------------*/
@@ -218,8 +217,9 @@ void computeHessiansL2Projection(CSolver* solver,
 {
   const size_t nPointDomain = geometry.GetnPointDomain();
   const size_t nElem = geometry.GetnElem();
-  const size_t nFace = (nDim == 2) ? 3 : 4;
   const size_t nNode = (nDim == 2) ? 3 : 4;
+  const size_t nSymMat = 3 * (nDim - 1);
+  su2double diagScale;
 
   /*-----------------------------------------------------------------*/
   /*--- For tris, Σ(u_i * n_i) = 2*|K|*∇u|_K                      ---*/
@@ -233,11 +233,10 @@ void computeHessiansL2Projection(CSolver* solver,
   su2double normal[nDim] = {};
 
   /*--- For each (non-halo) volume integrate over its faces (edges). ---*/
-
   for (size_t iPoint = 0; iPoint < nPointDomain; ++iPoint) {
     for (size_t iVar = varBegin; iVar < varEnd; ++iVar)
-      for (size_t iDim = 0; iDim < 3*(nDim-1); ++iDim)
-        hessian(iPoint, iVar, iDim) = 0.0;
+      for (size_t iMat = 0; iMat < 3*(nDim-1); ++iMat)
+        hessian(iPoint, iVar, iMat) = 0.0;
   }
 
   /*--- For each volume integrate over its faces (edges). ---*/
@@ -256,15 +255,20 @@ void computeHessiansL2Projection(CSolver* solver,
       for (size_t jNode = 0; jNode < nNode; ++jNode) {
         const size_t jPoint = elem->GetNode(jNode);
         if (!nodes->GetDomain(jPoint)) continue;
-        const su2double Volume = nodes->GetVolume(jPoint) + nodes->GetPeriodicVolume(jPoint);
-        for (size_t iVar = varBegin; iVar < varEnd; ++iVar) {
-          for (size_t iDim = 0; iDim < nDim; ++iDim) {
-            for (size_t jDim = 0; jDim < nDim; ++jDim) {
-              su2double grad = gradient(iPoint, iVar, jDim);
-              size_t ind = (iDim <= jDim) ? iDim * nDim - ((iDim - 1) * iDim) / 2 + jDim - iDim
-                                          : jDim * nDim - ((jDim - 1) * jDim) / 2 + iDim - jDim;
-              if (iDim != jDim) grad *= 0.5;
-              hessian(jPoint, iVar, ind) += factor * grad * normal[iDim] / Volume;
+
+        /*---  Weight for this node. ---*/
+        const su2double weight = factor / (nodes->GetVolume(jPoint) + nodes->GetPeriodicVolume(jPoint));
+
+        for (size_t jDim = 0; jDim < nDim; ++jDim) {
+          for (size_t iVar = varBegin; iVar < varEnd; ++iVar) {
+
+            /*--- Weighted contribution of this gradient term for this node. ---*/
+            const su2double contribution = weight * gradient(iPoint, iVar, jDim);
+            for (size_t iDim = 0; iDim < nDim; ++iDim) {
+              size_t iMat = (iDim <= jDim) ? iDim * nDim - ((iDim - 1) * iDim) / 2 + jDim - iDim
+                                           : jDim * nDim - ((jDim - 1) * jDim) / 2 + iDim - jDim;
+              diagScale = (iDim == jDim)? 1.0 : 0.5;
+              hessian(jPoint, iVar, iMat) += diagScale * contribution * normal[iDim];
             }
           }
         }

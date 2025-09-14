@@ -49,6 +49,41 @@ FORCEINLINE void musclUnlimited(Int iPoint,
 }
 
 /*!
+ * \brief Beta scheme reconstruction for (beta = 1/3 for third-order accuracy).
+ */
+template<size_t nVarGrad_ = 0, size_t nDim, class VarType, class Gradient_t>
+FORCEINLINE void betaUnlimited(Int iPoint,
+                               Int jPoint,
+                               const VectorDbl<nDim>& vector_ij,
+                               const Gradient_t& gradient,
+                               CPair<VarType>& V,
+                               Double beta) {
+  constexpr auto nVarGrad = nVarGrad_ > 0 ? nVarGrad_ : VarType::nVar;
+
+  auto grad_i = gatherVariables<nVarGrad,nDim>(iPoint, gradient);
+  auto grad_j = gatherVariables<nVarGrad,nDim>(jPoint, gradient);
+
+  for (size_t iVar = 0; iVar < nVarGrad; ++iVar) {
+    /*--- Centered difference: dV_ij^cent = Vj - Vi ---*/
+    const Double delta_cent = V.j.all(iVar) - V.i.all(iVar);
+
+    /*--- Upwind difference: dV_ij^upwind = 2∇V(Ci)·(SiSj) - dV_ij^cent ---*/
+    const Double grad_proj_i = 2.0 * dot(grad_i[iVar], vector_ij);
+    const Double grad_proj_j = 2.0 * dot(grad_j[iVar], vector_ij);
+    const Double delta_upwind_i = grad_proj_i - delta_cent;
+    const Double delta_upwind_j = grad_proj_j - delta_cent;
+
+    /*--- Beta-weighted difference: dV_ij^beta = (1-beta)ΔV_ij^cent + beta ΔV_ij^upwind ---*/
+    const Double delta_beta_i = (1.0 - beta) * delta_cent + beta * delta_upwind_i;
+    const Double delta_beta_j = (1.0 - beta) * delta_cent + beta * delta_upwind_j;
+
+    /*--- Apply reconstruction: Wij = Wi + 0.5 * ΔW_ij^β ---*/
+    V.i.all(iVar) += 0.5 * delta_beta_i;
+    V.j.all(iVar) -= 0.5 * delta_beta_j;
+  }
+}
+
+/*!
  * \brief Limited reconstruction with point-based limiter.
  */
 template<size_t nVarGrad_ = 0, size_t nVar, size_t nDim, class Limiter_t, class Gradient_t>
@@ -132,8 +167,9 @@ FORCEINLINE CPair<ReconVarType> reconstructPrimitives(Int iEdge, Int iPoint, Int
 
     switch (limiterType) {
     case LIMITER::NONE:
-      musclUnlimited<nVarGrad>(iPoint, vector_ij, 0.5, gradients, V.i.all);
-      musclUnlimited<nVarGrad>(jPoint, vector_ij,-0.5, gradients, V.j.all);
+    //   musclUnlimited<nVarGrad>(iPoint, vector_ij, 0.5, gradients, V.i.all);
+    //   musclUnlimited<nVarGrad>(jPoint, vector_ij,-0.5, gradients, V.j.all);
+      betaUnlimited<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V, 1.0/3.0);
       break;
     case LIMITER::VAN_ALBADA_EDGE:
       musclEdgeLimited<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V);

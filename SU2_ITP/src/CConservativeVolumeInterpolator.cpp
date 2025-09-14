@@ -604,7 +604,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
       }
     }
 
-    /*--- Volume average integral: gra(u_dst) = int_K_dst (gra(u) dA) / |K_dst| ---*/
+    /*--- Volume average integral: ∇u_dst = ∫_K_dst (∇u dA) / |K_dst| ---*/
     const su2double dstVolume = dstElem->GetVolume();
 
     /*--- Normalize by intersection volume instead of destination volume ---*/
@@ -727,7 +727,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
         const su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
         const su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
 
-        /*--- u_K(P_i) = u_K(G_K) + gra(u_K)  dot  G_K P_i ---*/
+        /*--- u_K(P_i) = u_K(G_K) + ∇u_K dot G_K P_i ---*/
         u_K_P[iNode] = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
       }
 
@@ -828,11 +828,11 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* c
         const su2double u_G = dstElemMass[elemID][iVar] / elemVolume;
         const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
 
-        /*--- Linear reconstruction: u(P_i) = u(G_K) + gra(u)  dot  (P_i - G_K) ---*/
-        const su2double vertexValue = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
+        /*--- Linear reconstruction: u(P_i) = u(G_K) + ∇u dot (P_i - G_K) ---*/
+        const su2double u_P = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
 
         /*--- Accumulate weighted contribution ---*/
-        solver_dst->GetNodes()->AddSolution_Mass(l, iVar, vertexValue * elemVolume);
+        solver_dst->GetNodes()->AddSolution_Mass(l, iVar, u_P * elemVolume);
       }
 
       /*--- Accumulate weight ---*/
@@ -902,7 +902,7 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   intersectionElemVols.clear();
   candidateElems.clear();
 
-  const su2double EPS = 1e-9;
+  const su2double EPS = 1e-20;
 
   /*--- Triangle vertices: P is destination and Q is source ---*/
   su2double P[3][2] = {{dstTri[0], dstTri[1]}, {dstTri[2], dstTri[3]}, {dstTri[4], dstTri[5]}};

@@ -158,6 +158,9 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
 
   ScalarType A[nDim][nDim], EigVec[nDim][nDim], EigVal[nDim], work[nDim];
 
+  /*--- Minimum eigenvalue threshold ---*/
+  const ScalarType eps = 1e-12;
+
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     /*--- Get full metric tensor ---*/
     Tensor::get(metric, iPoint, iSensor, A, nDim);
@@ -165,15 +168,16 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
     /*--- Compute eigenvalues and eigenvectors ---*/
     CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
 
-    /*--- If NaN detected, set values to zero ---*/
-    /*--- Otherwise, store recombined matrix  ---*/
-    bool check_hess = true;
+    /*--- Make positive definite by taking absolute value of eigenvalues ---*/
+    /*--- Handle NaN and very small values that could cause numerical issues ---*/
     for (auto iDim = 0; iDim < nDim; iDim++) {
-      if (EigVal[iDim] != EigVal[iDim] || fabs(EigVal[iDim]) < 1e-16) {
-        EigVal[iDim] = 1e-16;
-        check_hess = false;
+      if (EigVal[iDim] != EigVal[iDim]) {
+        /*--- NaN detected, set to small positive value ---*/
+        EigVal[iDim] = eps;
+      } else {
+        /*--- Take absolute value and ensure minimum threshold ---*/
+        EigVal[iDim] = max(fabs(EigVal[iDim]), eps);
       }
-      EigVal[iDim] = fabs(EigVal[iDim]);
     }
 
     CBlasStructure::EigenRecomposition(A, EigVec, EigVal, nDim);
@@ -191,7 +195,7 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
  * \param[in] metric - Metric container.
  * \return Integral of the metric tensor determinant.
 */
-template<size_t nDim, class ScalarType, class Tensor, class MetricType>
+template<size_t nDim, class ScalarType, class MetricType>
 ScalarType integrateMetrics(CGeometry& geometry, const CConfig& config,
                             unsigned short iSensor, MetricType& metric) {
 
@@ -201,19 +205,29 @@ ScalarType integrateMetrics(CGeometry& geometry, const CConfig& config,
   const ScalarType p = config.GetMetric_Norm();
   const ScalarType normExp = p / (2.0 * p + nDim);
 
-  ScalarType A[nDim][nDim], EigVec[nDim][nDim], EigVal[nDim], work[nDim];
-
   ScalarType localIntegral = 0.0;
   ScalarType globalIntegral = 0.0;
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     auto nodes = geometry.nodes;
 
-    /*--- Decompose metric ---*/
-    Tensor::get(metric, iPoint, iSensor, A, nDim);
-    CBlasStructure::EigenDecomposition(A, EigVec, EigVal, nDim, work);
+    /*--- Calculate determinant ---*/
+    ScalarType det;
+    if constexpr (nDim == 2) {
+      const ScalarType m00 = metric(iPoint, 0);
+      const ScalarType m01 = metric(iPoint, 1);
+      const ScalarType m11 = metric(iPoint, 2);
+      det = m00 * m11 - m01 * m01;
+    } else if constexpr (nDim == 3) {
+      const ScalarType m00 = metric(iPoint, 0);
+      const ScalarType m01 = metric(iPoint, 1);
+      const ScalarType m02 = metric(iPoint, 2);
+      const ScalarType m11 = metric(iPoint, 3);
+      const ScalarType m12 = metric(iPoint, 4);
+      const ScalarType m22 = metric(iPoint, 5);
+      det = m00 * (m11 * m22 - m12 * m12) - m01 * (m01 * m22 - m02 * m12) + m02 * (m01 * m12 - m02 * m11);
+    }
 
     /*--- Integrate determinant ---*/
-    const ScalarType det = computeDeterminant<nDim>(EigVal);
     const ScalarType Vol = SU2_TYPE::GetValue(nodes->GetVolume(iPoint));
     localIntegral += pow(abs(det), normExp) * Vol;
   }
@@ -242,7 +256,7 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
 
   /*--- Constants defining normalization ---*/
   const ScalarType p = config.GetMetric_Norm();
-  const ScalarType N = ScalarType(config.GetMetric_Complexity() * config.GetnAdapt_Time_Subinterval());
+  const ScalarType N = SU2_TYPE::GetValue(config.GetMetric_Complexity() * config.GetnAdapt_Time_Subinterval());
   const ScalarType globalFactor = pow(N / integral, 2.0 / nDim);
   const ScalarType normExp = -1.0 / (2.0 * p + nDim);
 
@@ -852,16 +866,16 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
  * \param[in] metric - Metric container.
  * \return Integral of the metric tensor determinant.
 */
-template<class ScalarType, class Tensor, class MetricType>
+template<class ScalarType, class MetricType>
 ScalarType integrateMetrics(CGeometry& geometry, const CConfig& config,
                             unsigned short iSensor, MetricType& metric) {
   su2double integral;
   switch (geometry.GetnDim()) {
     case 2:
-      integral = detail::integrateMetrics<2, ScalarType, Tensor>(geometry, config, iSensor, metric);
+      integral = detail::integrateMetrics<2, ScalarType>(geometry, config, iSensor, metric);
       break;
     case 3:
-      integral = detail::integrateMetrics<3, ScalarType, Tensor>(geometry, config, iSensor, metric);
+      integral = detail::integrateMetrics<3, ScalarType>(geometry, config, iSensor, metric);
       break;
     default:
       SU2_MPI::Error("Too many dimensions for metric integration.", CURRENT_FUNCTION);

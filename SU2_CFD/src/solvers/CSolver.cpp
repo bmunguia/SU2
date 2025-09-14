@@ -4560,7 +4560,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
       auto& metrics = base_nodes->GetMetric();
       double integral = 0.0;
       if (is_last_iter)
-        integral = integrateMetrics<su2double, tensor::metric>(*geometry, *config, iSensor, metrics);
+        integral = integrateMetrics<double>(*geometry, *config, iSensor, metrics);
 
       /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
       if (steady || (normalize && is_last_iter))
@@ -4646,7 +4646,7 @@ void CSolver::AddMetrics(CSolver **solver, const CGeometry*geometry, const CConf
   const bool is_first_iter = (time_iter == 0) || (restartMetric);
   const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1);
 
-  double coeff = (time_stepping &&  (is_first_iter || is_last_iter))? 0.5 : 1.0;
+  double coeff = (time_stepping && (is_first_iter || is_last_iter))? 0.5 : 1.0;
   if (time_stepping) coeff *= SU2_TYPE::GetValue(config->GetTime_Step());
 
   for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
