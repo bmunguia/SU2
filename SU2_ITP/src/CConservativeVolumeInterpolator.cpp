@@ -31,6 +31,7 @@
 #include "../include/CConservativeVolumeInterpolator.hpp"
 #include "../../Common/include/fem/fem_standard_element.hpp"
 #include "../../Common/include/adt/CADTPointsOnlyClass.hpp"
+#include "../../Common/include/toolboxes/geometry_toolbox.hpp"
 
 CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) {}
@@ -349,10 +350,10 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
     }
 
     /*--- Track destination element area conservation ---*/
-    su2double intersectionVol = 0.0;
+    su2double totalIntVol = 0.0;
     for (const auto& srcElemMesh : overlapMeshes[dstElemID]) {
       for (const auto& vol : srcElemMesh.vols) {
-        intersectionVol += vol;
+        totalIntVol += vol;
       }
     }
   }
@@ -528,7 +529,9 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   /*--- Initialize mass contributions for conservation statistics ---*/
   for (auto& v : srcElemContributedMass) std::fill(v.begin(), v.end(), 0.0);
 
+  const unsigned short nPointPerElem = (nDim == 2)? 3 : 4;
   const unsigned short nCoorPerElem = (nDim == 2)? 6 : 12;
+  su2double G_subelem[3], dist[3];
 
   /*--- Loop over all destination elements that have intersections ---*/
   su2double absDiffTol[5] = {1e-10, 1e-8, 1e-6, 1e-4, 1e-2};
@@ -548,18 +551,18 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
     const auto* dstElem = geometry_dst->elem[dstElemID];
     auto& dstMass = dstElemMass[dstElemID];
     auto& dstGrad = dstElemGrad[dstElemID];
-    fill(dstMass.begin(), dstMass.end(), 0.0);
-    fill(dstGrad.begin(), dstGrad.end(), 0.0);
+    std::fill(dstMass.begin(), dstMass.end(), 0.0);
+    std::fill(dstGrad.begin(), dstGrad.end(), 0.0);
 
     /*--- Track total triangle area for this destination element ---*/
-    su2double intersectionVol = 0.0;
+    su2double totalIntVol = 0.0;
 
     /*--- Process each intersection region T_j = intersection(K_dst, K_src_j) ---*/
     for (const auto& srcElemMesh : srcElemMeshes) {
       unsigned long srcElemID = srcElemMesh.srcElemID;
-      const vector<su2double>& triElemCoords = srcElemMesh.coords;
-      const vector<su2double>& triElemVols = srcElemMesh.vols;
-      unsigned int numTri = triElemCoords.size() / nCoorPerElem;
+      const vector<su2double>& intElemCoords = srcElemMesh.coords;
+      const vector<su2double>& intElemVols = srcElemMesh.vols;
+      unsigned int numTri = intElemCoords.size() / nCoorPerElem;
 
       /*--- Get source element properties ---*/
       const auto* srcElem = geometry_src->elem[srcElemID];
@@ -570,36 +573,41 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
       const su2double* G_K_src = srcElem->GetCG();
 
       for (auto iTri = 0u; iTri < numTri; ++iTri) {
-        /*--- Get triangle coordinates and area ---*/
-        const su2double* triCoor = &triElemCoords[iTri * nCoorPerElem];
-        const su2double triVol = triElemVols[iTri];
+        /*--- Get sub-element coordinates and area ---*/
+        const su2double* intCoor = &intElemCoords[iTri * nCoorPerElem];
+        const su2double intVol = intElemVols[iTri];
 
-        /*--- Triangle centroid coordinates ---*/
-        const su2double xi = (triCoor[0] + triCoor[2] + triCoor[4]) / 3.0;
-        const su2double yi = (triCoor[1] + triCoor[3] + triCoor[5]) / 3.0;
+        /*--- Sub-element centroid coordinates ---*/
+        for (auto iDim = 0; iDim < nDim; ++iDim) {
+          G_subelem[iDim] = 0.0;
+          for (auto k = 0; k < nPointPerElem; ++k) {
+            G_subelem[iDim] += intCoor[k * nDim + iDim];
+          }
+          G_subelem[iDim] /= nPointPerElem;
+        }
+
+        /*--- Displacement from source centroid to sub-element centroid ---*/
+        GeometryToolbox::Distance(nDim, G_subelem, G_K_src, dist);
 
         /*--- Integrate intersection volume ---*/
-        intersectionVol += triVol;
+        totalIntVol += intVol;
 
         /*--- Integrate mass and gradient ---*/
         for (auto iVar = 0u; iVar < nVar; ++iVar) {
           const su2double u_src = srcMass[iVar] / srcVolume;
           const su2double* grad_u = srcGrad.data() + iVar * nDim;
 
-          /*--- Displacement from source centroid to triangle centroid ---*/
-          const su2double dx = xi - G_K_src[0];
-          const su2double dy = yi - G_K_src[1];
-
           /*--- Evaluate solution at triangle centroid ---*/
-          const su2double u = u_src + grad_u[0] * dx + grad_u[1] * dy;
+          su2double u = u_src;
+          for (auto iDim = 0u; iDim < nDim; ++iDim) u += grad_u[iDim] * dist[iDim];
 
           /*--- Add contribution to destination mass and gradient ---*/
-          dstMass[iVar] += triVol * u;
+          dstMass[iVar] += intVol * u;
           for (auto iDim = 0u; iDim < nDim; ++iDim)
-            dstGrad[iVar * nDim + iDim] += triVol * grad_u[iDim];
+            dstGrad[iVar * nDim + iDim] += intVol * grad_u[iDim];
 
           /*--- Track source element mass contributions ---*/
-          srcElemContributedMass[srcElemID][iVar] += triVol * u;
+          srcElemContributedMass[srcElemID][iVar] += intVol * u;
         }
       }
     }
@@ -613,11 +621,11 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
     /*--- This preserves constant/linear solutions in non-matching domains ---*/
     for (auto iVar = 0u; iVar < nVar; ++iVar) {
       /*--- For mass: divide by intersection volume to get correct barycenter value ---*/
-      dstMass[iVar] = dstMass[iVar] * dstVolume / intersectionVol;
+      dstMass[iVar] = dstMass[iVar] * dstVolume / totalIntVol;
 
       /*--- For gradient: use intersection-weighted average ---*/
       for (auto iDim = 0u; iDim < nDim; ++iDim) {
-        dstGrad[iVar * nDim + iDim] /= intersectionVol;
+        dstGrad[iVar * nDim + iDim] /= totalIntVol;
       }
     }
   }
@@ -664,6 +672,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
 
   /*--- Loop over all destination elements that have overlaps ---*/
   su2double u_tilde[3];
+  su2double dist[3];
   vector<su2double> correctedMass(1, 0.0);
   vector<su2double> correctedGrad(1 * nDim, 0.0);
   vector<vector<su2double>> vertexSol(3, vector<su2double>(1));
@@ -724,11 +733,11 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       su2double u_K_P[3];  // Values at vertices P_0, P_1, P_2
       for (auto iNode = 0u; iNode < 3; ++iNode) {
         /*--- Vector G_K P_i ---*/
-        const su2double dx = dstVertices[iNode * 2 + 0] - G_K[0];
-        const su2double dy = dstVertices[iNode * 2 + 1] - G_K[1];
+        dist[0] = dstVertices[iNode * 2 + 0] - G_K[0];
+        dist[1] = dstVertices[iNode * 2 + 1] - G_K[1];
 
         /*--- u_K(P_i) = u_K(G_K) + ∇u_K dot G_K P_i ---*/
-        u_K_P[iNode] = u_G + gradu_G[0] * dx + gradu_G[1] * dy;
+        u_K_P[iNode] = u_G + gradu_G[0] * dist[0] + gradu_G[1] * dist[1];
       }
 
       /*--------------------------------------------------------------------------*/
@@ -908,6 +917,10 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   su2double P[3][2] = {{dstTri[0], dstTri[1]}, {dstTri[2], dstTri[3]}, {dstTri[4], dstTri[5]}};
   su2double Q[3][2] = {{srcTri[0], srcTri[1]}, {srcTri[2], srcTri[3]}, {srcTri[4], srcTri[5]}};
 
+  /*--- Edge definitions ---*/
+  const su2double* P_edges[3][2] = {{P[0], P[1]}, {P[1], P[2]}, {P[2], P[0]}};
+  const su2double* Q_edges[3][2] = {{Q[0], Q[1]}, {Q[1], Q[2]}, {Q[2], Q[0]}};
+
   /*--- Edge definitions: edge j connects vertex j to vertex (j+1)%3 ---*/
   /*--- Edge 0: Q0-Q1, Edge 1: Q1-Q2, Edge 2: Q2-Q0 for triangle Q   ---*/
   /*--- Edge 0: P0-P1, Edge 1: P1-P2, Edge 2: P2-P0 for triangle P   ---*/
@@ -921,17 +934,13 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
   su2double power_P[3][3], power_Q[3][3];
   for (auto i = 0u; i < 3; ++i) {
     for (auto j = 0u; j < 3; ++j) {
-      power_P[i][j] = ComputeSignedDistance(P[i], Q[j], Q[(j+1)%3]);
-      power_Q[i][j] = ComputeSignedDistance(Q[i], P[j], P[(j+1)%3]);
+      power_P[i][j] = ComputeSignedDistance(P[i], Q_edges[j][0], Q_edges[j][1]);
+      power_Q[i][j] = ComputeSignedDistance(Q[i], P_edges[j][0], P_edges[j][1]);
     }
   }
 
   /*--- Track what we find in each step for proper inclusion test logic ---*/
   bool hasInteriorVertices = false;
-
-  /*--- Edge definitions ---*/
-  const su2double* P_edges[3][2] = {{P[0], P[1]}, {P[1], P[2]}, {P[2], P[0]}};
-  const su2double* Q_edges[3][2] = {{Q[0], Q[1]}, {Q[1], Q[2]}, {Q[2], Q[0]}};
 
   /*--------------------------------------------------------------------------*/
   /*--- Step 2: Handle degenerate edge-edge intersection cases.            ---*/
@@ -1026,20 +1035,21 @@ bool CConservativeVolumeInterpolator::TriangleTriangleIntersection(CGeometry* ge
 }
 
 su2double CConservativeVolumeInterpolator::ComputeSignedDistance(const su2double point[2],
-                                                                 const su2double lineStart[2],
-                                                                 const su2double lineEnd[2]) {
-  /*--- Unit normal of line ---*/
-  su2double Nx = lineStart[1] - lineEnd[1];
-  su2double Ny = lineEnd[0] - lineStart[0];
-  const su2double mag = sqrt(Nx * Nx + Ny * Ny);
-  Nx /= mag;
-  Ny /= mag;
+                                                                 const su2double* lineStart,
+                                                                 const su2double* lineEnd) {
+  /*--- Compute line normal directly from pointers (avoiding temporary array) ---*/
+  su2double normal[2];
+  normal[0] = lineStart[1] - lineEnd[1];
+  normal[1] = lineEnd[0] - lineStart[0];
+
+  /*--- Normalize the normal vector ---*/
+  su2double mag = GeometryToolbox::Norm(nDim, normal);
+  normal[0] /= mag; normal[1] /= mag;
 
   /*--- Compute signed distance using dot product between [P P{i+1}] and N ---*/
-  const su2double Px = point[0] - lineStart[0];
-  const su2double Py = point[1] - lineStart[1];
+  const su2double vec[2] = {point[0] - lineStart[0], point[1] - lineStart[1]};
 
-  return Px * Nx + Py * Ny;
+  return GeometryToolbox::DotProduct(nDim, normal, vec);
 }
 
 void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(const su2double* P_edges[3][2],
@@ -1160,18 +1170,20 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(const s
         /*--- Edge Q: Q0 + s * (Q1 - Q0), s in [0,1] ---*/
 
         /*--- Direction vector of edge P ---*/
-        su2double dx_P = P1[0] - P0[0];
-        su2double dy_P = P1[1] - P0[1];
-        su2double lengthP_sq = dx_P*dx_P + dy_P*dy_P;
+        su2double vec_P[2];
+        GeometryToolbox::Distance(nDim, P1, P0, vec_P);
+        su2double lengthP_sq = GeometryToolbox::SquaredNorm(nDim, vec_P);
 
         /*--- Find parameter values where Q vertices lie on P edge ---*/
         /*--- Q0 = P0 + s_Q0 * (P1 - P0) ---*/
         /*--- Q1 = P0 + s_Q1 * (P1 - P0) ---*/
 
-        su2double s_Q0 = ((Q0[0] - P0[0]) * dx_P +
-                          (Q0[1] - P0[1]) * dy_P) / lengthP_sq;
-        su2double s_Q1 = ((Q1[0] - P0[0]) * dx_P +
-                          (Q1[1] - P0[1]) * dy_P) / lengthP_sq;
+        su2double vec_P0Q0[2], vec_P0Q1[2];
+        GeometryToolbox::Distance(nDim, Q0, P0, vec_P0Q0);
+        GeometryToolbox::Distance(nDim, Q1, P0, vec_P0Q1);
+
+        su2double s_Q0 = (vec_P0Q0[0] * vec_P[0] + vec_P0Q0[1] * vec_P[1]) / lengthP_sq;
+        su2double s_Q1 = (vec_P0Q1[0] * vec_P[0] + vec_P0Q1[1] * vec_P[1])  / lengthP_sq;
 
         /*--- Edge P spans parameter interval [0, 1] ---*/
         /*--- Edge Q spans parameter interval [min(s_Q0, s_Q1), max(s_Q0, s_Q1)] ---*/
@@ -1185,8 +1197,8 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(const s
         if (overlap_start < overlap_end) {
           /*--- There is overlap, add intersection points ---*/
           /*--- Add start point of overlap ---*/
-          su2double X_start = P0[0] + overlap_start * dx_P;
-          su2double Y_start = P0[1] + overlap_start * dy_P;
+          su2double X_start = P0[0] + overlap_start * vec_P[0];
+          su2double Y_start = P0[1] + overlap_start * vec_P[1];
 
           /*--- Check if start point corresponds to a known vertex ---*/
           int Pi_start = -1, Qj_start = -1;
@@ -1204,8 +1216,8 @@ void CConservativeVolumeInterpolator::ProcessDegenerateEdgeIntersections(const s
 
           /*--- Add end point of overlap if different from start ---*/
           if (abs(overlap_end - overlap_start) > EPS) {
-            su2double X_end = P0[0] + overlap_end * dx_P;
-            su2double Y_end = P0[1] + overlap_end * dy_P;
+            su2double X_end = P0[0] + overlap_end * vec_P[0];
+            su2double Y_end = P0[1] + overlap_end * vec_P[1];
 
             /*--- Check if end point corresponds to a known vertex ---*/
             int Pi_end = -1, Qj_end = -1;
@@ -1375,18 +1387,23 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradient(const su2do
                                                                      vector<su2double>& mass,
                                                                      vector<su2double>& grad) {
   /*--- Initialize output ---*/
-  fill(mass.begin(), mass.end(), 0.0);
-  fill(grad.begin(), grad.end(), 0.0);
+  std::fill(mass.begin(), mass.end(), 0.0);
+  std::fill(grad.begin(), grad.end(), 0.0);
 
   /*--- Extract triangle vertices ---*/
-  const su2double x0 = vertexCoords[0], y0 = vertexCoords[1];
-  const su2double x1 = vertexCoords[2], y1 = vertexCoords[3];
-  const su2double x2 = vertexCoords[4], y2 = vertexCoords[5];
+  const su2double p0[2] = {vertexCoords[0], vertexCoords[1]};
+  const su2double p1[2] = {vertexCoords[2], vertexCoords[3]};
+  const su2double p2[2] = {vertexCoords[4], vertexCoords[5]};
 
   /*--- Inward normals (pointing toward opposite vertex) ---*/
-  su2double n0[2] = {y1 - y2, x2 - x1};
-  su2double n1[2] = {y2 - y0, x0 - x2};
-  su2double n2[2] = {y0 - y1, x1 - x0};
+  const su2double edge01[2][2] = {{p1[0], p1[1]}, {p2[0], p2[1]}};  // Edge p1-p2
+  const su2double edge12[2][2] = {{p2[0], p2[1]}, {p0[0], p0[1]}};  // Edge p2-p0
+  const su2double edge20[2][2] = {{p0[0], p0[1]}, {p1[0], p1[1]}};  // Edge p0-p1
+
+  su2double n0[2], n1[2], n2[2];
+  GeometryToolbox::LineNormal(edge01, n0);  // Normal to edge p1-p2 (inward normal for vertex p0)
+  GeometryToolbox::LineNormal(edge12, n1);  // Normal to edge p2-p0 (inward normal for vertex p1)
+  GeometryToolbox::LineNormal(edge20, n2);  // Normal to edge p0-p1 (inward normal for vertex p2)
 
   const su2double mass_factor = elemVolume / 3.0;
   const su2double grad_factor = 0.5 / elemVolume;
@@ -1415,8 +1432,8 @@ void CConservativeVolumeInterpolator::ComputeTriangleMassAndGradientFEM(const su
                                                                         vector<su2double>& mass,
                                                                         vector<su2double>& grad) {
   /*--- Initialize output ---*/
-  fill(mass.begin(), mass.end(), 0.0);
-  fill(grad.begin(), grad.end(), 0.0);
+  std::fill(mass.begin(), mass.end(), 0.0);
+  std::fill(grad.begin(), grad.end(), 0.0);
 
   /*--- Get integration points and basis functions from FEM standard element ---*/
   CFEMStandardElement& stdElement = GetFEMStandardElement();
@@ -1499,8 +1516,7 @@ bool CConservativeVolumeInterpolator::ExtrapolateFromNearestNode(CGeometry* geom
 
   /*--- Displacement vector ---*/
   su2double displacement[3];
-  for (auto iDim = 0u; iDim < nDim; ++iDim)
-    displacement[iDim] = uncontainedCoord[iDim] - nearestCoord[iDim];
+  GeometryToolbox::Distance(nDim, uncontainedCoord, nearestCoord, displacement);
 
   /*--- Get solution at nearest contained node ---*/
   vector<su2double> nearestSolution(nVar);

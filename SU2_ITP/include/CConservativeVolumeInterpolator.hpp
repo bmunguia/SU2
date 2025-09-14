@@ -189,7 +189,7 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
      * \param[in] lineEnd - Line end point (x, y)
      * \return Signed distance (positive if point is on left side of oriented line)
      */
-    su2double ComputeSignedDistance(const su2double point[2], const su2double lineStart[2], const su2double lineEnd[2]);
+    su2double ComputeSignedDistance(const su2double* point, const su2double* lineStart, const su2double* lineEnd);
 
     /*!
      * \brief Process degenerate edge-edge intersection cases following Alauzet's algorithm.
