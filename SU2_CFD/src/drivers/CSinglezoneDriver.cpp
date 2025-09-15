@@ -65,10 +65,6 @@ void CSinglezoneDriver::StartSolver() {
   if (config_container[ZONE_0]->GetRestart() && driver_config->GetTime_Domain())
     TimeIter = config_container[ZONE_0]->GetRestart_Iter();
 
-  /*--- Compute the initial metric tensor if performing an unsteady restart. ---*/
-  if (config_container[ZONE_0]->GetRestart() && driver_config->GetTime_Domain() && config_container[ZONE_0]->GetCompute_Metric())
-    ComputeMetricField(true);
-
   /*--- Run the problem until the number of time iterations required is reached. ---*/
   /*--- or until a SIGTERM signal stops the loop. We catch SIGTERM and exit gracefully ---*/
   while ( TimeIter < config_container[ZONE_0]->GetnTime_Iter()) {
@@ -143,6 +139,17 @@ void CSinglezoneDriver::Preprocess(unsigned long TimeIter) {
   }
 
   SU2_MPI::Barrier(SU2_MPI::GetComm());
+
+  /*--- Compute the initial metric tensor if performing an unsteady restart. ---*/
+  /*--- The metric at RestartIter-1 is the endpoint of sub-interval i-1, and the
+        initial metric of sub-interval i, so we calculate it after setting the
+        initial condition. ---*/
+  if (config_container[ZONE_0]->GetTime_Domain() &&
+      config_container[ZONE_0]->GetCompute_Metric() &&
+      config_container[ZONE_0]->GetRestart() &&
+      TimeIter == config_container[ZONE_0]->GetRestart_Iter()) {
+    ComputeMetricField(true);
+  }
 
   /*--- Run a predictor step ---*/
   if (config_container[ZONE_0]->GetPredictor())
