@@ -264,7 +264,6 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
 
   /*--- Loop over all destination elements ---*/
   unsigned long totalOverlaps = 0;
-  unsigned long failedIntersections = 0;
   for (auto dstElemID = 0u; dstElemID < nElem_dst; ++dstElemID) {
     auto* dstElem = geometry_dst->elem[dstElemID];
 
@@ -324,8 +323,21 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
           srcTri[iNode * nDim + iDim] = geometry_src->nodes->GetCoord(nodeID, iDim);
       }
 
+      /*--- Fast bounding box pre-check to avoid intersection procedure ---*/
+      bool boundingBoxOverlap = true;
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        su2double dstMin = min({dstTri[0*nDim + iDim], dstTri[1*nDim + iDim], dstTri[2*nDim + iDim]});
+        su2double dstMax = max({dstTri[0*nDim + iDim], dstTri[1*nDim + iDim], dstTri[2*nDim + iDim]});
+        su2double srcMin = min({srcTri[0*nDim + iDim], srcTri[1*nDim + iDim], srcTri[2*nDim + iDim]});
+        su2double srcMax = max({srcTri[0*nDim + iDim], srcTri[1*nDim + iDim], srcTri[2*nDim + iDim]});
+        if (dstMax < srcMin || srcMax < dstMin) {
+          boundingBoxOverlap = false;
+          break;
+        }
+      }
+
       /*--- Check for intersection and detect new candidates ---*/
-      if (TriangleTriangleIntersection(geometry_src, dstTri, srcTri, srcElemID, pointCloud,
+      if (boundingBoxOverlap && TriangleTriangleIntersection(geometry_src, dstTri, srcTri, srcElemID, pointCloud,
                                        intersectionElemCoords, intersectionElemVols,
                                        detectedCandidates)) {
         overlapMeshes[dstElemID].push_back({srcElemID, intersectionElemCoords, intersectionElemVols});
@@ -335,9 +347,6 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
         for (const auto& vol : intersectionElemVols) {
           srcElemContributedVol[srcElemID] += vol;
         }
-      } else {
-        /*--- Triangle intersection failed ---*/
-        failedIntersections++;
       }
 
       /*--- Add new candidates to processing queue ---*/
@@ -377,7 +386,6 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
   if (rank == MASTER_NODE) {
     cout << "Found " << totalOverlaps << " total overlapping element pairs." << endl;
     cout << "Number of destination elements with overlaps: " << overlapMeshes.size() << endl;
-    cout << "Number of failed triangle intersections: " << failedIntersections << "." << endl;
 
     cout << "Source element area conservation (abs. diff.):" << endl;
     for (auto i = 0u; i < 5; ++i) {
@@ -676,6 +684,8 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
   vector<su2double> correctedMass(1, 0.0);
   vector<su2double> correctedGrad(1 * nDim, 0.0);
   vector<vector<su2double>> vertexSol(3, vector<su2double>(1));
+
+  unsigned long countCorrected = 0;
   for (const auto& intersection : overlapMeshes) {
     unsigned long dstElemID = intersection.first;
     const IntersectionMesh& srcElemMeshes = intersection.second;
@@ -747,6 +757,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       for (auto iNode = 0u; iNode < 3; ++iNode) {
         if (u_K_P[iNode] < u_min - EPS || u_K_P[iNode] > u_max + EPS) {
           violatesMaxPrinciple = true;
+          countCorrected++;
           break;
         }
       }
@@ -800,6 +811,11 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       dstElemGrad[dstElemID][iVar * nDim + 0] = correctedGrad[0];
       dstElemGrad[dstElemID][iVar * nDim + 1] = correctedGrad[1];
     }
+  }
+
+  if (rank == MASTER_NODE) {
+    cout << "Maximum principle correction completed: ";
+    cout << countCorrected << " masses corrected." << endl;
   }
 }
 
