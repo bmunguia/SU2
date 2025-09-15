@@ -707,6 +707,8 @@ private:
   Wrt_Restart_Overwrite,              /*!< \brief Overwrite restart files or append iteration number.*/
   Wrt_Surface_Overwrite,              /*!< \brief Overwrite surface output files or append iteration number.*/
   Wrt_Volume_Overwrite,               /*!< \brief Overwrite volume output files or append iteration number.*/
+  Wrt_Sensor_Error_Overwrite,         /*!< \brief Overwrite interpolation error.*/
+  Wrt_Metric_Integral_Overwrite,      /*!< \brief Overwrite integral of metric tensor field.*/
   PyCustomSource,                     /*!< \brief Use a user-defined custom source term .*/
   Restart_Flow;                       /*!< \brief Restart flow solution for adjoint and linearized problems. */
   unsigned short nMarker_Monitoring,  /*!< \brief Number of markers to monitor. */
@@ -5437,6 +5439,18 @@ public:
   bool GetWrt_Surface_Overwrite(void) const { return Wrt_Surface_Overwrite; }
 
    /*!
+   * \brief Flag for whether interpolation error files are overwritten.
+   * \return Flag for overwriting. If Flag=false, interpolation error is appended to file
+   */
+  bool GetWrt_Sensor_Error_Overwrite(void) const { return Wrt_Sensor_Error_Overwrite; }
+
+  /*!
+   * \brief Flag for whether integral of metric tensor field files are overwritten.
+   * \return Flag for overwriting. If Flag=false, metric integral is appended to file
+   */
+  bool GetWrt_Metric_Integral_Overwrite(void) const { return Wrt_Metric_Integral_Overwrite; }
+
+  /*!
    * \brief Flag for whether visualization files are overwritten.
    * \return Flag for overwriting. If Flag=false, iteration nr is appended to filename
    */

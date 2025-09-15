@@ -354,7 +354,7 @@ int main(int argc, char* argv[]) {
     const bool file_exists = std::filesystem::exists(filename);
 
     /*--- Open in appropriate mode ---*/
-    if (file_exists) {
+    if (file_exists && !config_src[ZONE_0]->GetWrt_Sensor_Error_Overwrite()) {
       Error_file.open(filename.c_str(), ios::app);
     } else {
       Error_file.open(filename.c_str(), ios::out);

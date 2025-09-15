@@ -1199,6 +1199,10 @@ void CConfig::SetConfig_Options() {
   addBoolOption("WRT_SURFACE_OVERWRITE", Wrt_Surface_Overwrite, true);
   /*!\brief WRT_VOLUME_OVERWRITE \n DESCRIPTION: overwrite visualisation files or append iteration number. \n Options: YES, NO \ingroup Config */
   addBoolOption("WRT_VOLUME_OVERWRITE", Wrt_Volume_Overwrite, true);
+  /*!\brief WRT_SENSOR_ERROR_OVERWRITE \n DESCRIPTION: overwrite interpolation error. \n Options: YES, NO \ingroup Config */
+  addBoolOption("WRT_SENSOR_ERROR_OVERWRITE", Wrt_Sensor_Error_Overwrite, true);
+  /*!\brief WRT_METRIC_INTEGRAL_OVERWRITE \n DESCRIPTION: overwrite integral of metric tensor field. \n Options: YES, NO \ingroup Config */
+  addBoolOption("WRT_METRIC_INTEGRAL_OVERWRITE", Wrt_Metric_Integral_Overwrite, true);
   /*!\brief SYSTEM_MEASUREMENTS \n DESCRIPTION: System of measurements \n OPTIONS: see \link Measurements_Map \endlink \n DEFAULT: SI \ingroup Config*/
   addEnumOption("SYSTEM_MEASUREMENTS", SystemMeasurements, Measurements_Map, SI);
   /*!\brief MULTIZONE_ADAPT_FILENAME \n DESCRIPTION: Append zone number to restart and solution filenames. \ingroup Config*/

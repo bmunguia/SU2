@@ -537,7 +537,7 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   /*--- Initialize mass contributions for conservation statistics ---*/
   for (auto& v : srcElemContributedMass) std::fill(v.begin(), v.end(), 0.0);
 
-  const unsigned short nPointPerElem = (nDim == 2)? 3 : 4;
+  const unsigned short nNodePerElem = (nDim == 2)? 3 : 4;
   const unsigned short nCoorPerElem = (nDim == 2)? 6 : 12;
   su2double G_subelem[3], dist[3];
 
@@ -588,10 +588,10 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
         /*--- Sub-element centroid coordinates ---*/
         for (auto iDim = 0; iDim < nDim; ++iDim) {
           G_subelem[iDim] = 0.0;
-          for (auto k = 0; k < nPointPerElem; ++k) {
+          for (auto k = 0; k < nNodePerElem; ++k) {
             G_subelem[iDim] += intCoor[k * nDim + iDim];
           }
-          G_subelem[iDim] /= nPointPerElem;
+          G_subelem[iDim] /= nNodePerElem;
         }
 
         /*--- Displacement from source centroid to sub-element centroid ---*/
@@ -676,16 +676,25 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
 void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry* geometry_src,
                                                                       CGeometry* geometry_dst,
                                                                       CSolver* solver_src) {
+  /*--- TODO: extend to tetrahedra ---*/
+  const unsigned short nNodePerElem = (nDim == 2)? 3 : 4;
   const su2double EPS = 1e-16;
 
-  /*--- Loop over all destination elements that have overlaps ---*/
-  su2double u_tilde[3];
+  su2double dstVertices[12];
+  su2double u_tilde[3], u_K_P[4];
   su2double dist[3];
+
+  vector<pair<su2double, unsigned short>> sortedValues;
+
   vector<su2double> correctedMass(1, 0.0);
   vector<su2double> correctedGrad(1 * nDim, 0.0);
   vector<vector<su2double>> vertexSol(3, vector<su2double>(1));
 
-  unsigned long countCorrected = 0;
+  /*--- Track maximum corrections for each variable ---*/
+  vector<su2double> maxCorrection(nVar, 0.0);
+  vector<unsigned long> countCorrectedPerVar(nVar, 0);
+
+  /*--- Loop over all destination elements that have overlaps ---*/
   for (const auto& intersection : overlapMeshes) {
     unsigned long dstElemID = intersection.first;
     const IntersectionMesh& srcElemMeshes = intersection.second;
@@ -694,11 +703,10 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
     if (dstElem->GetVTK_Type() != TRIANGLE) continue;
 
     /*--- Get destination element vertices ---*/
-    su2double dstVertices[6];
-    for (auto iNode = 0u; iNode < 3; ++iNode) {
+    for (auto iNode = 0u; iNode < nNodePerElem; ++iNode) {
       unsigned long nodeID = dstElem->GetNode(iNode);
-      dstVertices[iNode * 2 + 0] = geometry_dst->nodes->GetCoord(nodeID, 0);
-      dstVertices[iNode * 2 + 1] = geometry_dst->nodes->GetCoord(nodeID, 1);
+      for (auto iDim = 0u; iDim < nDim; ++iDim)
+        dstVertices[iNode * nDim + iDim] = geometry_dst->nodes->GetCoord(nodeID, iDim);
     }
 
     /*--- Element volume and centroid (barycenter G_K) ---*/
@@ -710,8 +718,8 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       /*--- Step 1: Compute local bounds from overlapping source elements.     ---*/
       /*--------------------------------------------------------------------------*/
-      su2double u_min = 1e20;
-      su2double u_max = -1e20;
+      su2double u_src_min = 1e20;
+      su2double u_src_max = -1e20;
 
       /*--- Find all vertices Q from source elements K_src that K overlaps ---*/
       for (const auto& srcElemMesh : srcElemMeshes) {
@@ -720,16 +728,16 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
         if (srcElem->GetVTK_Type() != TRIANGLE) continue;
 
         /*--- Get solution values at vertices of source element ---*/
-        for (auto iNode = 0u; iNode < 3; ++iNode) {
+        for (auto iNode = 0u; iNode < nNodePerElem; ++iNode) {
           unsigned long nodeID = srcElem->GetNode(iNode);
           su2double u_vertex = solver_src->GetNodes()->GetSolution(nodeID, iVar);
-          u_min = min(u_min, u_vertex);
-          u_max = max(u_max, u_vertex);
+          u_src_min = min(u_src_min, u_vertex);
+          u_src_max = max(u_src_max, u_vertex);
         }
       }
 
       /*--- Skip if no valid bounds found ---*/
-      if (u_min > 1e19 || u_max < -1e19) continue;
+      if (u_src_min > 1e19 || u_src_max < -1e19) continue;
 
       /*--------------------------------------------------------------------------*/
       /*--- Step 2: Get current solution at destination element.               ---*/
@@ -740,37 +748,37 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       /*--- Step 3: Compute u_K(P_i) at each vertex using Taylor expansion.    ---*/
       /*--------------------------------------------------------------------------*/
-      su2double u_K_P[3];  // Values at vertices P_0, P_1, P_2
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < nNodePerElem; ++iNode) {
         /*--- Vector G_K P_i ---*/
-        dist[0] = dstVertices[iNode * 2 + 0] - G_K[0];
-        dist[1] = dstVertices[iNode * 2 + 1] - G_K[1];
+        for (auto iDim = 0u; iDim < nDim; ++iDim)
+          dist[iDim] = dstVertices[iNode * nDim + iDim] - G_K[iDim];
 
         /*--- u_K(P_i) = u_K(G_K) + ∇u_K dot G_K P_i ---*/
-        u_K_P[iNode] = u_G + gradu_G[0] * dist[0] + gradu_G[1] * dist[1];
+        u_K_P[iNode] = u_G;
+        for (auto iDim = 0u; iDim < nDim; ++iDim)
+          u_K_P[iNode] += gradu_G[iDim] * dist[iDim];
       }
 
       /*--------------------------------------------------------------------------*/
-      /*--- Step 4: Check if maximum principle is violated.                    ---*/
+      /*--- Step 4: Check if maximum principle is violated. If not, skip.      ---*/
       /*--------------------------------------------------------------------------*/
       bool violatesMaxPrinciple = false;
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
-        if (u_K_P[iNode] < u_min - EPS || u_K_P[iNode] > u_max + EPS) {
+      for (auto iNode = 0u; iNode < nNodePerElem; ++iNode) {
+        if (u_K_P[iNode] < u_src_min - EPS || u_K_P[iNode] > u_src_max + EPS) {
           violatesMaxPrinciple = true;
-          countCorrected++;
           break;
         }
       }
 
-      /*--- If no violation, skip correction ---*/
       if (!violatesMaxPrinciple) continue;
 
       /*--------------------------------------------------------------------------*/
       /*--- Step 5: Apply Alauzet's correction algorithm.                      ---*/
       /*--------------------------------------------------------------------------*/
       /*--- Sort vertices by solution value: u_K(P_0) ≤ u_K(P_1) ≤ u_K(P_2) ---*/
-      vector<pair<su2double, unsigned short>> sortedValues;
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
+      /*--- TODO: extend to tetrahedra ---*/
+      sortedValues.clear();
+      for (auto iNode = 0u; iNode < nNodePerElem; ++iNode) {
         sortedValues.push_back(make_pair(u_K_P[iNode], iNode));
       }
       sort(sortedValues.begin(), sortedValues.end());
@@ -780,25 +788,26 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       const su2double u_P2 = sortedValues[2].first;  // Largest value
 
       /*--- Apply first correction pass ---*/
-      const su2double u_M_P2 = min(u_P2, u_max);
-      const su2double u_M_P1 = min(u_P1 + 0.5 * max(0.0, u_P2 - u_max), u_max);
+      const su2double u_M_P2 = min(u_P2, u_src_max);
+      const su2double u_M_P1 = min(u_P1 + 0.5 * max(0.0, u_P2 - u_src_max), u_src_max);
       const su2double u_M_P0 = 3.0 * u_G - u_M_P1 - u_M_P2;
 
       /*--- Apply second correction pass ---*/
-      const su2double u_tilde_P0 = max(u_M_P0, u_min);
-      const su2double u_tilde_P1 = max(u_M_P1 - 0.5 * max(0.0, u_min - u_M_P0), u_min);
+      const su2double u_tilde_P0 = max(u_M_P0, u_src_min);
+      const su2double u_tilde_P1 = max(u_M_P1 - 0.5 * max(0.0, u_src_min - u_M_P0), u_src_min);
       const su2double u_tilde_P2 = 3.0 * u_G - u_tilde_P0 - u_tilde_P1;
 
       /*--------------------------------------------------------------------------*/
       /*--- Step 6: Compute corrected mass and gradient from new nodal values. ---*/
       /*--------------------------------------------------------------------------*/
       /*--- Put corrected values back in original vertex order ---*/
+      /*--- TODO: extend to tetrahedra ---*/
       u_tilde[sortedValues[0].second] = u_tilde_P0;
       u_tilde[sortedValues[1].second] = u_tilde_P1;
       u_tilde[sortedValues[2].second] = u_tilde_P2;
 
       /*--- Prepare vertex solutions for single variable ---*/
-      for (auto iNode = 0u; iNode < 3; ++iNode) {
+      for (auto iNode = 0u; iNode < nNodePerElem; ++iNode) {
         vertexSol[iNode][0] = u_tilde[iNode];
       }
 
@@ -806,16 +815,44 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       ComputeTriangleMassAndGradient(dstVertices, vertexSol, elemVolume, 1,
                                      correctedMass, correctedGrad);
 
+      /*--- Track maximum correction for this variable ---*/
+      const su2double originalMass = dstElemMass[dstElemID][iVar];
+      const su2double massCorrection = abs(correctedMass[0] - originalMass);
+
+      /*--- Only count and apply meaningful corrections ---*/
+      // if (massCorrection < EPS) continue;
+
+      countCorrectedPerVar[iVar]++;
+      maxCorrection[iVar] = max(maxCorrection[iVar], massCorrection);
+
       /*--- Update destination element data ---*/
       dstElemMass[dstElemID][iVar] = correctedMass[0];
-      dstElemGrad[dstElemID][iVar * nDim + 0] = correctedGrad[0];
-      dstElemGrad[dstElemID][iVar * nDim + 1] = correctedGrad[1];
+      for (auto iDim = 0u; iDim < nDim; ++iDim)
+        dstElemGrad[dstElemID][iVar * nDim + iDim] = correctedGrad[iDim];
     }
   }
 
+  /*--- Calculate total corrections ---*/
+  unsigned long countCorrected = 0;
+  for (auto iVar = 0u; iVar < nVar; ++iVar) {
+    countCorrected += countCorrectedPerVar[iVar];
+  }
+
   if (rank == MASTER_NODE) {
-    cout << "Maximum principle correction completed: ";
-    cout << countCorrected << " masses corrected." << endl;
+    if (countCorrected > 0) {
+      cout << "Maximum principle correction completed: ";
+      cout << countCorrected << " masses corrected." << endl;
+
+      for (auto iVar = 0u; iVar < nVar; ++iVar) {
+        if (countCorrectedPerVar[iVar] > 0) {
+          cout << "  Variable " << iVar << ": " << countCorrectedPerVar[iVar];
+          cout << " corrections, max correction = " << scientific << setprecision(3);
+          cout << maxCorrection[iVar] << endl;
+        }
+      }
+    } else {
+      cout << "Maximum principle correction completed: no corrections applied." << endl;
+    }
   }
 }
 

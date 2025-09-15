@@ -4599,7 +4599,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
     const bool file_exists = std::filesystem::exists(filename);
 
     /*--- Open in appropriate mode ---*/
-    if (file_exists) {
+    if (file_exists && !config->GetWrt_Metric_Integral_Overwrite()) {
       Integral_file.open(filename.c_str(), ios::app);
     } else {
       Integral_file.open(filename.c_str(), ios::out);
