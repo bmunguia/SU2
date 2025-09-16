@@ -1062,6 +1062,15 @@ class CFVMFlowSolverBase : public CSolver {
   void SetPrimitive_Gradient_LS(CGeometry* geometry, const CConfig* config, bool reconstruction = false) final;
 
   /*!
+   * \brief Compute the gradient of the primitive variables using a L2-Projection method,
+   *        and stores the result in the <i>Gradient_Primitive</i> variable.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
+   */
+  void SetPrimitive_Gradient_L2P(CGeometry* geometry, const CConfig* config, bool reconstruction = false) final;
+
+  /*!
    * \brief Compute the limiter of the primitive variables.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.

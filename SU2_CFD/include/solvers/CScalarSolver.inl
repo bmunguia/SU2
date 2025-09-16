@@ -114,6 +114,7 @@ void CScalarSolver<VariableType>::CommonPreprocessing(CGeometry *geometry, const
       case GREEN_GAUSS: SetSolution_Gradient_GG(geometry, config, -1, true); break;
       case LEAST_SQUARES: SetSolution_Gradient_LS(geometry, config, -1, true); break;
       case WEIGHTED_LEAST_SQUARES: SetSolution_Gradient_LS(geometry, config, -1, true); break;
+      case L2_PROJECTION: SetSolution_Gradient_L2P(geometry, config, -1, true); break;
     }
   }
 

@@ -96,6 +96,8 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
       case LEAST_SQUARES:
       case WEIGHTED_LEAST_SQUARES:
         SetPrimitive_Gradient_LS(geometry, config, true); break;
+      case L2_PROJECTION:
+        SetPrimitive_Gradient_L2P(geometry, config, true); break;
       default: break;
     }
   }
@@ -107,6 +109,8 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
   }
   else if (config->GetKind_Gradient_Method() == WEIGHTED_LEAST_SQUARES) {
     SetPrimitive_Gradient_LS(geometry, config);
+  } else if (config->GetKind_Gradient_Method() == L2_PROJECTION) {
+    SetPrimitive_Gradient_L2P(geometry, config);
   }
 
   if (Output) ompMasterAssignBarrier(nPrimVarGrad, nPrimVarGrad_bak);

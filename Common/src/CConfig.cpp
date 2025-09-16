@@ -7145,11 +7145,13 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           case GREEN_GAUSS: cout << "Gradient for upwind reconstruction: Green-Gauss." << endl; break;
           case LEAST_SQUARES: cout << "Gradient for upwind reconstruction: unweighted Least-Squares." << endl; break;
           case WEIGHTED_LEAST_SQUARES: cout << "Gradient for upwind reconstruction: inverse-distance weighted Least-Squares." << endl; break;
+          case L2_PROJECTION: cout << "Gradient for upwind reconstruction: L2-projection." << endl; break;
         }
         switch (Kind_Gradient_Method) {
           case GREEN_GAUSS: cout << "Gradient for viscous and source terms: Green-Gauss." << endl; break;
           case LEAST_SQUARES: cout << "Gradient for viscous and source terms: unweighted Least-Squares." << endl; break;
           case WEIGHTED_LEAST_SQUARES: cout << "Gradient for viscous and source terms: inverse-distance weighted Least-Squares." << endl; break;
+          case L2_PROJECTION: cout << "Gradient for viscous and source terms: L2-projection." << endl; break;
         }
       }
       else{

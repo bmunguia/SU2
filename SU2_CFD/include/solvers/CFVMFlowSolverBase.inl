@@ -416,6 +416,17 @@ void CFVMFlowSolverBase<V, R>::SetPrimitive_Gradient_LS(CGeometry* geometry, con
 }
 
 template <class V, ENUM_REGIME R>
+void CFVMFlowSolverBase<V, R>::SetPrimitive_Gradient_L2P(CGeometry* geometry, const CConfig* config,
+                                                         bool reconstruction) {
+  const auto& primitives = nodes->GetPrimitive();
+  auto& gradient = reconstruction ? nodes->GetGradient_Reconstruction() : nodes->GetGradient_Primitive();
+  const auto comm = reconstruction? MPI_QUANTITIES::PRIMITIVE_GRAD_REC : MPI_QUANTITIES::PRIMITIVE_GRADIENT;
+  const auto commPer = reconstruction? PERIODIC_PRIM_GG_R : PERIODIC_PRIM_GG;
+
+  computeGradientsL2Projection(this, comm, commPer, *geometry, *config, primitives, 0, nPrimVarGrad, prim_idx.Velocity(), gradient);
+}
+
+template <class V, ENUM_REGIME R>
 void CFVMFlowSolverBase<V, R>::SetPrimitive_Limiter(CGeometry* geometry, const CConfig* config) {
   const auto kindLimiter = config->GetKind_SlopeLimit_Flow();
   const auto& primitives = nodes->GetPrimitive();

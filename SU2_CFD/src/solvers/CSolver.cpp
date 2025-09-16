@@ -2277,6 +2277,15 @@ void CSolver::SetSolution_Gradient_LS(CGeometry *geometry, const CConfig *config
   computeGradientsLeastSquares(this, comm, commPer, *geometry, *config, weighted, solution, 0, nVar, idxVel, gradient, rmatrix);
 }
 
+void CSolver::SetSolution_Gradient_L2P(CGeometry *geometry, const CConfig *config, short idxVel, bool reconstruction) {
+
+  const auto& solution = base_nodes->GetSolution();
+  auto& gradient = reconstruction? base_nodes->GetGradient_Reconstruction() : base_nodes->GetGradient();
+  const auto comm = reconstruction? MPI_QUANTITIES::SOLUTION_GRAD_REC : MPI_QUANTITIES::SOLUTION_GRADIENT;
+  const auto commPer = reconstruction? PERIODIC_SOL_GG_R : PERIODIC_SOL_GG;
+  computeGradientsL2Projection(this, comm, commPer, *geometry, *config, solution, 0, nVar, idxVel, gradient);
+}
+
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetPrimitive_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
@@ -2291,7 +2300,7 @@ void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short id
                             *geometry, *config, gradient, 0, nHess, idxVel, hessian);
 }
 
-void CSolver::SetHessian_L2Projection(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
+void CSolver::SetHessian_L2P(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   /*--- Calculate the gradient ---*/
   const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetPrimitive_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
