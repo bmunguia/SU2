@@ -39,13 +39,16 @@
 class CKelvinHelmholtzSolution final : public CVerificationSolution {
  protected:
   /*--- Specific conditions for the instability. ---*/
+  unsigned short nInstability;   /*!< \brief n parmeter defining the frequency of the velocity perturbation. */
+
   su2double dyInstability;  /*!< \brief Δy parameter defining the ramp function and velocity perturbation.. */
   su2double w0Instability;  /*!< \brief w0 parameter defining the amplitude of the velocity perturbation. */
-  su2double nInstability;   /*!< \brief n parmeter defining the frequency of the velocity perturbation. */
+
   su2double rho1Instability;  /*!< \brief Central fluid density. */
   su2double rho2Instability;  /*!< \brief Outer fluid density. */
   su2double u1Instability;    /*!< \brief Central fluid x-velocity. */
   su2double u2Instability;    /*!< \brief Outer fluid x-velocity. */
+
   su2double p0Instability;    /*!< \brief Initial pressure. */
 
   /*--- Variables involving gamma. */
@@ -79,14 +82,6 @@ class CKelvinHelmholtzSolution final : public CVerificationSolution {
    * \param[in] val_solution - Array where the exact solution is stored.
    */
   void GetSolution(const su2double* val_coords, const su2double val_t, su2double* val_solution) const override;
-
-  /*!
-   * \brief Get the boundary conditions state for an exact solution.
-   * \param[in] val_coords   - Cartesian coordinates of the current position.
-   * \param[in] val_t        - Current physical time.
-   * \param[in] val_solution - Array where the exact solution is stored.
-   */
-  void GetBCState(const su2double* val_coords, const su2double val_t, su2double* val_solution) const override;
 
   /*!
    * \brief Whether or not the exact solution is known for this verification solution.

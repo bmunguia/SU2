@@ -42,9 +42,10 @@ CKelvinHelmholtzSolution::CKelvinHelmholtzSolution(unsigned short val_nDim, unsi
   }
 
   /*--- Store the KH instability parameters here. ---*/
+  nInstability = 1;
+
   dyInstability = 0.05;
   w0Instability = 0.1;
-  nInstability = 1.0;
 
   rho1Instability = 2.0;
   rho2Instability = 1.0;
@@ -77,14 +78,6 @@ CKelvinHelmholtzSolution::CKelvinHelmholtzSolution(unsigned short val_nDim, unsi
 }
 
 CKelvinHelmholtzSolution::~CKelvinHelmholtzSolution() = default;
-
-void CKelvinHelmholtzSolution::GetBCState(const su2double* val_coords, const su2double val_t,
-                                          su2double* val_solution) const {
-  /*--- For the case that the KH instability is run with boundary
-        conditions (other possibility is with periodic conditions),
-        the exact solution is prescribed on the boundaries. ---*/
-  GetSolution(val_coords, val_t, val_solution);
-}
 
 void CKelvinHelmholtzSolution::GetSolution(const su2double* val_coords, const su2double val_t,
                                            su2double* val_solution) const {
