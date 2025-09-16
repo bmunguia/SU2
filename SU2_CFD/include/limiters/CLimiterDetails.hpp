@@ -139,10 +139,6 @@ struct LimiterHelpers
 
   FORCEINLINE static Type pipernoFunction(const Type& proj, const Type& delta, const Type& eps)
   {
-    /*--- Avoid division by zero ---*/
-    Type delta_safe = max(fabs(delta), eps);
-    Type proj_safe = max(fabs(proj), eps);
-
     /*----------------------------------------------------------------*/
     /*--- In Piperno's notation:                                   ---*/
     /*---   proj = ∇u_i·Δx (gradient projection)                   ---*/
@@ -150,19 +146,22 @@ struct LimiterHelpers
     /*---   Δu_{i-1/2} = 2∇u_i·Δx - Δu_{i+1/2}                     ---*/
     /*---   R = Δu_{i+1/2} / Δu_{i-1/2} = delta / (2*proj - delta) ---*/
     /*----------------------------------------------------------------*/
-    Type delta_upwind = 2.0 * proj_safe - delta_safe;
-    Type R = delta_safe / max(fabs(delta_upwind), eps) *
-             ((delta_upwind >= 0.0) ? 1.0 : -1.0);
+    Type delta_upwind = 2.0 * proj - delta;
+    Type sign_delta = (delta >= 0.0) ? 1.0 : -1.0;
+    Type inv_delta = sign_delta / max(fabs(delta), eps);
 
-    /*--- Compute inverse R for φ function ---*/
-    Type inv_R = 1.0 / max(fabs(R), eps) * ((R >= 0.0) ? 1.0 : -1.0);
+    /*--- Compute 1/R directly = Δu_{i-1/2} / Δu_{i+1/2} ---*/
+    Type inv_R = delta_upwind * inv_delta;
 
     /*--- Compute φ(1/R) ---*/
     Type phi_inv_R = pipernoPhiFunction(inv_R);
 
+    /*--- R = 1 / inv_R for ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
+    Type R = 1.0 / max(fabs(inv_R), eps) * ((inv_R >= 0.0) ? 1.0 : -1.0);
+
     /*--- Compute ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
     /*--- When φ(R) = 1, this gives the beta scheme ---*/
-    Type psi_R = (ONE3 + TWO3 * R) * phi_inv_R;
+    Type psi_R = (ONE3 * delta_upwind + TWO3 * delta) * phi_inv_R;
 
     /*--- Apply sign correction ---*/
     Type sign = (delta * proj >= 0.0) ? 1.0 : 0.0;

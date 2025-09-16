@@ -183,31 +183,25 @@ FORCEINLINE void musclPiperno(Int iPoint,
     /*--- Compute slope ratios R_i and R_j ---*/
     /*--- R_i = Δu_{i+1/2} / Δu_{i-1/2} ---*/
     /*--- R_j = Δu_{i+1/2} / Δu_{i+3/2} ---*/
-    const Double sign_delta_i = (delta_i_minus_half >= 0.0) - (delta_i_minus_half < 0.0);
-    const Double sign_delta_j = (delta_j_plus_half >= 0.0) - (delta_j_plus_half < 0.0);
-    
-    const Double R_i = delta_ij / fmax(abs(delta_i_minus_half), 1e-14) * sign_delta_i;
-    const Double R_j = delta_ij / fmax(abs(delta_j_plus_half), 1e-14) * sign_delta_j;
+    const Double sign_delta_ij = (delta_ij >= 0.0) - (delta_ij < 0.0);
+    const Double inv_delta_ij = sign_delta_ij / fmax(abs(delta_ij), 1e-14);
+
+    const Double inv_R_i = delta_i_minus_half * inv_delta_ij;
+    const Double inv_R_j = delta_j_plus_half * inv_delta_ij;
 
     /*--- Compute Piperno limiter functions ---*/
     /*--- ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
-    const Double sign_R_i = (R_i >= 0.0) - (R_i < 0.0);
-    const Double sign_R_j = (R_j >= 0.0) - (R_j < 0.0);
-    
-    const Double inv_R_i = 1.0 / fmax(abs(R_i), 1e-14) * sign_R_i;
-    const Double inv_R_j = 1.0 / fmax(abs(R_j), 1e-14) * sign_R_j;
-
     const Double phi_inv_R_i = pipernoLimiterFunction(inv_R_i);
     const Double phi_inv_R_j = pipernoLimiterFunction(inv_R_j);
 
-    const Double psi_R_i = (ONE3 + TWO3 * R_i) * phi_inv_R_i;
-    const Double psi_R_j = (ONE3 + TWO3 * R_j) * phi_inv_R_j;
+    const Double proj_lim_i = (ONE3 * delta_i_minus_half + TWO3 * delta_ij) * phi_inv_R_i;
+    const Double proj_lim_j = (ONE3 * delta_j_plus_half + TWO3 * delta_ij) * phi_inv_R_j;
 
     /*--- Apply Piperno reconstruction ---*/
     /*--- u_{i+1/2,L}^{lim} = u_i + 0.5 ψ(R_i) Δu_{i-1/2} ---*/
     /*--- u_{i+1/2,R}^{lim} = u_{i+1} - 0.5 ψ(R_j) Δu_{i+3/2} ---*/
-    V.i.all(iVar) += 0.5 * psi_R_i * delta_i_minus_half;
-    V.j.all(iVar) -= 0.5 * psi_R_j * delta_j_plus_half;
+    V.i.all(iVar) += 0.5 * proj_lim_i;
+    V.j.all(iVar) -= 0.5 * proj_lim_j;
   }
 }
 
