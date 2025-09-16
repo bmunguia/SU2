@@ -859,6 +859,8 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
 void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* config,
                                                                 CGeometry* geometry_dst,
                                                                 CSolver* solver_dst) {
+  su2double vec[3];
+
   /*--- Loop over all nodes and accumulate contributions from each element ---*/
   for (auto l = 0u; l < nPoint_dst; ++l) {
     /*--- Get pointer to node coordinates and solution mass ---*/
@@ -882,7 +884,9 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* c
       const su2double* G_K = elem->GetCG();
 
       /*--- Vector from centroid to node ---*/
-      const su2double vec[2] = {coor[0] - G_K[0], coor[1] - G_K[1]};
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        vec[iDim] = coor[iDim] - G_K[iDim];
+      }
 
       /*--- Loop over variables ---*/
       for (auto iVar = 0u; iVar < nVar; ++iVar) {
@@ -891,7 +895,8 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* c
         const su2double* gradu_G = dstElemGrad[elemID].data() + iVar * nDim;
 
         /*--- Linear reconstruction: u(P_i) = u(G_K) + ∇u dot (P_i - G_K) ---*/
-        const su2double u_P = u_G + gradu_G[0] * vec[0] + gradu_G[1] * vec[1];
+        su2double u_P = u_G;
+        for (auto iDim = 0u; iDim < nDim; ++iDim) u_P += gradu_G[iDim] * vec[iDim];
 
         /*--- Accumulate weighted contribution ---*/
         solver_dst->GetNodes()->AddSolution_Mass(l, iVar, u_P * elemVolume);

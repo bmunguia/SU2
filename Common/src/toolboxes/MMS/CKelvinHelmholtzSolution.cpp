@@ -32,8 +32,8 @@ CKelvinHelmholtzSolution::CKelvinHelmholtzSolution() : CVerificationSolution() {
 CKelvinHelmholtzSolution::CKelvinHelmholtzSolution(unsigned short val_nDim, unsigned short val_nVar,
                                                    unsigned short val_iMesh, CConfig* config)
     : CVerificationSolution(val_nDim, val_nVar, val_iMesh, config) {
-  /*--- Write a message that the solution is initialized for the
-   KH instability test case. ---*/
+  /*  Write a message that the solution is initialized for the
+   KH instability test case. */
   if ((rank == MASTER_NODE) && (val_iMesh == MESH_0)) {
     cout << endl;
     cout << "Warning: Fluid properties and solution are being " << endl;
@@ -41,8 +41,10 @@ CKelvinHelmholtzSolution::CKelvinHelmholtzSolution(unsigned short val_nDim, unsi
     cout << endl << flush;
   }
 
-  /*--- Store the KH instability parameters here. ---*/
-  nInstability = 1;
+  /*--- Store the KH instability parameters here. Parameters based on Robertson et al.,
+   "Computational  Eulerian hydrodynamics and Galilean invariance" and Alauzet et al.,
+   "Time-accurate multi-scale anisotropic mesh adaptation for unsteady ﬂows in CFD." */
+  nInstability = 2;
 
   dyInstability = 0.05;
   w0Instability = 0.1;
@@ -54,11 +56,11 @@ CKelvinHelmholtzSolution::CKelvinHelmholtzSolution(unsigned short val_nDim, unsi
 
   p0Instability = 2.5;
 
-  /*--- Useful coefficients in which Gamma is present. ---*/
+  /* Useful coefficients in which Gamma is present. */
   Gamma = config->GetGamma();
   ovGm1 = 1.0 / (Gamma - 1.0);
 
-  /*--- Perform some sanity and error checks for this solution here. ---*/
+  /* Perform some sanity and error checks for this solution here. */
   if ((config->GetTime_Marching() != TIME_MARCHING::TIME_STEPPING) &&
       (config->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_1ST) &&
       (config->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_2ND))
@@ -75,6 +77,10 @@ CKelvinHelmholtzSolution::CKelvinHelmholtzSolution(unsigned short val_nDim, unsi
 
   if ((config->GetKind_FluidModel() != STANDARD_AIR) && (config->GetKind_FluidModel() != IDEAL_GAS))
     SU2_MPI::Error("Standard air or ideal gas must be selected for the KH instability", CURRENT_FUNCTION);
+
+  if (nInstability % 2 != 0) {
+    SU2_MPI::Error("KH instability frequency parameter n must be divisible by 2", CURRENT_FUNCTION);
+  }
 }
 
 CKelvinHelmholtzSolution::~CKelvinHelmholtzSolution() = default;
@@ -96,7 +102,8 @@ void CKelvinHelmholtzSolution::GetSolution(const su2double* val_coords, const su
   /* Compute the sinusoidal y-velocity perturbation. */
   const su2double vden1 = 1.0 + exp(1.25 * (y - 1.75) / dyInstability);
   const su2double vden2 = 1.0 + exp(1.25 * (y + 0.75) / dyInstability);
-  const su2double v = w0Instability * sin(2.0 * nInstability * PI_NUMBER * x) * (1.0 / vden1 - 1.0 / vden2);
+  const su2double vosc = sin(nInstability * PI_NUMBER * x);
+  const su2double v = w0Instability * vosc * (1.0 / vden1 - 1.0 / vden2);
 
   /* Compute the conservative variables. Note that both 2D and 3D
      cases are treated correctly. */
