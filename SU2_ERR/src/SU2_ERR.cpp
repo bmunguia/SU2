@@ -185,9 +185,10 @@ int main(int argc, char* argv[]) {
       const bool IsTimeWrt = (TimeIter % config_src[ZONE_0]->GetVolumeOutputFrequency(0) == 0);
       const bool IsTimeEnd = (TimeIter + 1 == config_src[ZONE_0]->GetnTime_Iter()) ||
                              (TimeIter + 2 == config_src[ZONE_0]->GetnTime_Iter() && dual_time_2nd);
-      const bool IsTimeRestart = ((long)TimeIter == SU2_TYPE::Int(config_src[ZONE_0]->GetRestart_Iter()));
+      // const bool IsTimeRestart = ((long)TimeIter == SU2_TYPE::Int(config_src[ZONE_0]->GetRestart_Iter()));
 
-      if (StopCalc || IsTime0 || IsTimeWrt || IsTimeEnd || IsTimeRestart) {
+      if (StopCalc || IsTime0 || IsTimeWrt || IsTimeEnd) {
+      // if (StopCalc || IsTime0 || IsTimeWrt || IsTimeEnd || IsTimeRestart) {
         /*--- Read in the restart file for this time step ---*/
         for (iZone = 0; iZone < nZone; iZone++) {
           /*--- Set the current iteration number in the config class. ---*/
