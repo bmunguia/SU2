@@ -1,4 +1,5 @@
-common_src += files(['CInviscidVortexSolution.cpp',
+common_src += files(['CSodShockTubeSolution.cpp',
+            'CInviscidVortexSolution.cpp',
            'CKelvinHelmholtzSolution.cpp',
            'CIncTGVSolution.cpp',
            'CMMSIncNSSolution.cpp',

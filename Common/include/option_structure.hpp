@@ -2736,6 +2736,7 @@ enum class VERIFICATION_SOLUTION {
   NONE,                     /*!< \brief No verification solution, standard solver mode. */
   INVISCID_VORTEX,          /*!< \brief Inviscid vortex. Exact solution of the unsteady Euler equations. */
   KELVIN_HELMHOLTZ,         /*!< \brief Kelvin-Helmholtz instability. */
+  SHOCK_TUBE,               /*!< \brief Sod shock tube. Exact solution of the unsteady Euler equations. */
   RINGLEB,                  /*!< \brief Ringleb flow. Exact solution of the steady Euler equations. */
   NS_UNIT_QUAD,             /*!< \brief Exact solution of the laminar Navier Stokes equations without heat conduction. */
   TAYLOR_GREEN_VORTEX,      /*!< \brief Taylor Green Vortex. */
@@ -2752,6 +2753,7 @@ static const MapType<std::string, VERIFICATION_SOLUTION> Verification_Solution_M
   MakePair("NO_VERIFICATION_SOLUTION", VERIFICATION_SOLUTION::NONE)
   MakePair("INVISCID_VORTEX",          VERIFICATION_SOLUTION::INVISCID_VORTEX)
   MakePair("KELVIN_HELMHOLTZ",         VERIFICATION_SOLUTION::KELVIN_HELMHOLTZ)
+  MakePair("SHOCK_TUBE",               VERIFICATION_SOLUTION::SHOCK_TUBE)
   MakePair("RINGLEB",                  VERIFICATION_SOLUTION::RINGLEB)
   MakePair("NS_UNIT_QUAD",             VERIFICATION_SOLUTION::NS_UNIT_QUAD)
   MakePair("TAYLOR_GREEN_VORTEX",      VERIFICATION_SOLUTION::TAYLOR_GREEN_VORTEX)
