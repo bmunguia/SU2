@@ -177,8 +177,8 @@ FORCEINLINE void musclPiperno(Int iPoint,
     /*--- Compute upwind differences consistent with beta scheme ---*/
     /*--- Δu_{i-1/2} = 2∇u_i·Δx - Δu_{i+1/2} (upwind difference) ---*/
     /*--- Δu_{i+3/2} = 2∇u_j·Δx - Δu_{i+1/2} (upwind difference) ---*/
-    const Double delta_i_minus_half = 2.0 * proj_i - delta_ij;
-    const Double delta_j_plus_half = 2.0 * proj_j - delta_ij;
+    const Double delta_imhalf = 2.0 * proj_i - delta_ij;
+    const Double delta_jphalf = 2.0 * proj_j - delta_ij;
 
     /*--- Compute slope ratios R_i and R_j ---*/
     /*--- R_i = Δu_{i+1/2} / Δu_{i-1/2} ---*/
@@ -186,16 +186,16 @@ FORCEINLINE void musclPiperno(Int iPoint,
     const Double sign_delta_ij = (delta_ij >= 0.0) - (delta_ij < 0.0);
     const Double inv_delta_ij = sign_delta_ij / fmax(abs(delta_ij), 1e-14);
 
-    const Double inv_R_i = delta_i_minus_half * inv_delta_ij;
-    const Double inv_R_j = delta_j_plus_half * inv_delta_ij;
+    const Double inv_R_i = delta_imhalf * inv_delta_ij;
+    const Double inv_R_j = delta_jphalf * inv_delta_ij;
 
     /*--- Compute Piperno limiter functions ---*/
     /*--- ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
     const Double phi_inv_R_i = pipernoLimiterFunction(inv_R_i);
     const Double phi_inv_R_j = pipernoLimiterFunction(inv_R_j);
 
-    const Double proj_lim_i = (ONE3 * delta_i_minus_half + TWO3 * delta_ij) * phi_inv_R_i;
-    const Double proj_lim_j = (ONE3 * delta_j_plus_half + TWO3 * delta_ij) * phi_inv_R_j;
+    const Double proj_lim_i = (ONE3 * delta_imhalf + TWO3 * delta_ij) * phi_inv_R_i;
+    const Double proj_lim_j = (ONE3 * delta_jphalf + TWO3 * delta_ij) * phi_inv_R_j;
 
     /*--- Apply Piperno reconstruction ---*/
     /*--- u_{i+1/2,L}^{lim} = u_i + 0.5 ψ(R_i) Δu_{i-1/2} ---*/

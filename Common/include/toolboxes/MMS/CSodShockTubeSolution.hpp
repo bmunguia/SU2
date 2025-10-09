@@ -45,6 +45,8 @@ class CSodShockTubeSolution final : public CVerificationSolution {
 
   /*--- Variables involving gamma. ---*/
   su2double Gamma;    /*!< \brief Gamma */
+  su2double Gm1;      /*!< \brief Gamma minus 1 */
+  su2double Gp1;      /*!< \brief Gamma minus 1 */
   su2double ovGm1;    /*!< \brief 1 over Gamma minus 1 */
 
  public:
@@ -93,7 +95,7 @@ class CSodShockTubeSolution final : public CVerificationSolution {
   /*!
    * \brief Solves for the pressure ratio P in the Riemann problem using Newton's method.
    * \param[in] pL - Left pressure
-   * \param[in] pR - Right pressure  
+   * \param[in] pR - Right pressure
    * \param[in] cL - Left sound speed
    * \param[in] cR - Right sound speed
    * \return The pressure ratio P
@@ -105,7 +107,7 @@ class CSodShockTubeSolution final : public CVerificationSolution {
    * \param[in] P - Pressure ratio
    * \param[in] pL - Left pressure
    * \param[in] pR - Right pressure
-   * \param[in] cL - Left sound speed  
+   * \param[in] cL - Left sound speed
    * \param[in] cR - Right sound speed
    * \return Function value
    */

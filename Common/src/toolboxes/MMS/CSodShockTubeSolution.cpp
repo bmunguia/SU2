@@ -48,7 +48,9 @@ CSodShockTubeSolution::CSodShockTubeSolution(unsigned short val_nDim, unsigned s
 
   /* Useful coefficients in which Gamma is present. */
   Gamma = config->GetGamma();
-  ovGm1 = 1.0 / (Gamma - 1.0);
+  Gm1 = Gamma - 1.0;
+  Gp1 = Gamma + 1.0;
+  ovGm1 = 1.0 / Gm1;
 
   /* Perform some sanity and error checks for this solution here. */
   if ((config->GetTime_Marching() != TIME_MARCHING::TIME_STEPPING) &&
@@ -79,7 +81,7 @@ void CSodShockTubeSolution::GetSolution(const su2double* val_coords, const su2do
                                      su2double* val_solution) const {
   /* Get the x-coordinate (assuming 1D problem along x-axis) */
   const su2double x = val_coords[0];
-  
+
   /* If time is essentially zero, return initial conditions */
   su2double rho, u, p;
   if (val_t < 1e-12) {
@@ -92,50 +94,59 @@ void CSodShockTubeSolution::GetSolution(const su2double* val_coords, const su2do
     /* Compute sound speeds */
     const su2double cL = sqrt(Gamma * pL / rhoL);
     const su2double cR = sqrt(Gamma * pR / rhoR);
-    
-    /* Solve for pressure ratio P */
-    const su2double P = SolvePressureRatio(pL, pR, cL, cR);
-    
-    /* Compute wave speeds and positions */
-    const su2double c_shock = uR + cR * sqrt((Gamma - 1.0 + P * (Gamma + 1.0)) / (2.0 * Gamma));
-    const su2double x_shock = x0 + c_shock * val_t;
-    
-    const su2double alpha = (Gamma + 1.0) / (Gamma - 1.0);
-    const su2double c_contact = uL + 2.0 * cL / (Gamma - 1.0) * (1.0 - pow(P * pR / pL, (Gamma - 1.0) / 2.0 / Gamma));
-    const su2double x_contact = x0 + c_contact * val_t;
-    
-    const su2double rho3 = rhoL * pow(P * pR / pL, 1.0 / Gamma);
-    const su2double p3 = P * pR;
-    const su2double c_fanright = c_contact - sqrt(Gamma * p3 / rho3);
-    const su2double x_fanright = x0 + c_fanright * val_t;
-    
-    const su2double c_fanleft = -cL;
-    const su2double x_fanleft = x0 + c_fanleft * val_t;
-    
+
+    /* Solve for post-shock pressure p4 */
+    const su2double p4 = SolvePressureRatio(pL, pR, cL, cR);
+
+    /* Post-shock state */
+    const su2double z = (p4 / pR - 1.0);
+    const su2double gmfac1 = 0.5 * Gm1 / Gamma;
+    const su2double gmfac2 = 0.5 * Gp1 / Gamma;
+
+    const su2double fact = sqrt(1.0 + gmfac2 * z);
+    const su2double u4 = cR * z / (Gamma * fact);
+    const su2double rho4 = rhoR * (1.0 + gmfac2 * z) / (1.0 + gmfac1 * z);
+
+    /* Shock speed */
+    const su2double w = cR * fact;
+    const su2double x_shock = x0 + w * val_t;
+
+    /* Contact discontinuity speed and position */
+    const su2double u3 = u4;
+    const su2double p3 = p4;
+    const su2double rho3 = rhoL * pow(p3 / pL, 1.0 / Gamma);
+    const su2double x_contact = x0 + u3 * val_t;
+
+    /* Rarefaction wave boundaries */
+    const su2double c3 = sqrt(Gamma * p3 / rho3);
+    const su2double x_fanright = x0 + (u3 - c3) * val_t;
+    const su2double x_fanleft = x0 - cL * val_t;
+
     /* Determine which region we're in and set solution accordingly */
     if (x >= x_shock) {
-      /* Region R (unshocked right state) */
+      /* Region 5 (unshocked right state) */
       rho = rhoR;
       u = uR;
       p = pR;
     } else if (x >= x_contact) {
-      /* Region 2 (shocked right state) */
-      rho = (1.0 + alpha * P) / (alpha + P) * rhoR;
-      u = c_contact;
-      p = P * pR;
+      /* Region 4 (shocked right state) */
+      rho = rho4;
+      u = u4;
+      p = p4;
     } else if (x >= x_fanright) {
       /* Region 3 (contact region) */
       rho = rho3;
-      u = c_contact;
+      u = u3;
       p = p3;
     } else if (x >= x_fanleft) {
-      /* Region 4 (rarefaction fan) */
-      const su2double u4 = 2.0 / (Gamma + 1.0) * (cL + (x - x0) / val_t);
-      rho = rhoL * pow(1.0 - (Gamma - 1.0) / 2.0 * u4 / cL, 2.0 / (Gamma - 1.0));
-      u = u4;
-      p = pL * pow(1.0 - (Gamma - 1.0) / 2.0 * u4 / cL, 2.0 * Gamma / (Gamma - 1.0));
+      /* Region 2 (rarefaction fan) */
+      const su2double u_fan = 2.0 / Gp1 * (cL + (x - x0) / val_t);
+      const su2double fact_fan = 1.0 - 0.5 * Gm1 * u_fan / cL;
+      rho = rhoL * pow(fact_fan, 2.0 / Gm1);
+      u = u_fan;
+      p = pL * pow(fact_fan, 2.0 * Gamma / Gm1);
     } else {
-      /* Region L (unshocked left state) */
+      /* Region 1 (unshocked left state) */
       rho = rhoL;
       u = uL;
       p = pL;
@@ -154,34 +165,38 @@ void CSodShockTubeSolution::GetSolution(const su2double* val_coords, const su2do
 }
 
 su2double CSodShockTubeSolution::SolvePressureRatio(su2double pL, su2double pR, su2double cL, su2double cR) const {
-  /* Use Newton's method to solve for pressure ratio P */
-  su2double P = 0.5; // Initial guess
+  /* Use Newton's method to solve for post-shock pressure p4 */
+  su2double p4 = pL; // Initial guess - start with left pressure
   const su2double tol = 1e-12, eps = 1e-8;
   const int max_iter = 100;
-  
+
   for (int iter = 0; iter < max_iter; iter++) {
-    const su2double f = PressureFunction(P, pL, pR, cL, cR);
-    
+    const su2double f = PressureFunction(p4, pL, pR, cL, cR);
+
     if (fabs(f) < tol) break;
-    
-    /* Compute derivative numerically for simplicity */
-    const su2double df_dP = (PressureFunction(P + eps, pL, pR, cL, cR) - f) / eps;
-    
+
+    /* Compute derivative numerically */
+    const su2double df_dp4 = (PressureFunction(p4 + eps, pL, pR, cL, cR) - f) / eps;
+
     /* Newton update */
-    P = P - f / df_dP;
-    
-    /* Ensure P stays positive */
-    P = std::max(P, 1e-6);
+    p4 = p4 - f / df_dp4;
+
+    /* Ensure p4 stays positive */
+    p4 = max(p4, 1e-6);
   }
-  
-  return P;
+
+  return p4;
 }
 
-su2double CSodShockTubeSolution::PressureFunction(su2double P, su2double pL, su2double pR, 
-                                               su2double cL, su2double cR) const {
-  const su2double a = (Gamma - 1.0) * (cR / cL) * (P - 1.0);
-  const su2double b = sqrt(2.0 * Gamma * (2.0 * Gamma + (Gamma + 1.0) * (P - 1.0)));
-  return P - pL / pR * pow(1.0 - a / b, 2.0 * Gamma / (Gamma - 1.0));
+su2double CSodShockTubeSolution::PressureFunction(su2double p4, su2double pL, su2double pR,
+                                                  su2double cL, su2double cR) const {
+  /* Standard shock tube function following Python reference implementation */
+  const su2double z = (p4 / pR - 1.0);
+
+  const su2double fact = 0.5 * Gm1 / Gamma * (cR / cL) * z / sqrt(1.0 + 0.5 * Gp1 / Gamma * z);
+  const su2double power_term = pow(1.0 - fact, 2.0 * Gamma / Gm1);
+
+  return pL * power_term - p4;
 }
 
 bool CSodShockTubeSolution::ExactSolutionKnown() const { return true; }

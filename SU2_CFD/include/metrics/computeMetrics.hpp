@@ -286,13 +286,13 @@ void normalizeMetrics(CGeometry& geometry, const CConfig& config,
     for (auto iDim = 0u; iDim < nDim; ++iDim)
       EigVal[iDim] = min(max(abs(EigVal[iDim]), eigmin), eigmax);
 
-    // /*--- Clip by user-specified aspect ratio ---*/
-    // unsigned short iMax = 0;
-    // for (auto iDim = 1; iDim < nDim; ++iDim)
-    //   iMax = (EigVal[iDim] > EigVal[iMax])? iDim : iMax;
+    /*--- Clip by user-specified aspect ratio ---*/
+    unsigned short iMax = 0;
+    for (auto iDim = 1; iDim < nDim; ++iDim)
+      iMax = (EigVal[iDim] > EigVal[iMax])? iDim : iMax;
 
-    // for (auto iDim = 0u; iDim < nDim; ++iDim)
-    //   EigVal[iDim] = max(EigVal[iDim], EigVal[iMax]/armax2);
+    for (auto iDim = 0u; iDim < nDim; ++iDim)
+      EigVal[iDim] = max(EigVal[iDim], EigVal[iMax]/armax2);
 
     /*--- Recompose and store metric ---*/
     CBlasStructure::EigenRecomposition(A, EigVec, EigVal, nDim);
