@@ -616,9 +616,8 @@ public:
    * \brief A virtual member.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
-   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
    */
-  virtual void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) { }
+  virtual void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) { }
 
   /*!
    * \brief Set the old solution variables to the current solution value for Runge-Kutta iteration.

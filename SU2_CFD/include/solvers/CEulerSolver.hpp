@@ -278,49 +278,36 @@ protected:
    * \brief Store the primitive variables needed for adaptation.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
-   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
    */
-  void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config, const CVariable* var) final {
-    if (config->GetGoal_Oriented_Metric()) {
-      //--- store temperature and viscosity in aux vector
-      for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
-        const su2double density = nodes->GetDensity(iPoint);
-        const su2double temp = nodes->GetTemperature(iPoint);
-        const su2double* vel = nodes->GetPrimitive(iPoint)+1;
-        const su2double lam_visc = nodes->GetLaminarViscosity(iPoint);
-        const su2double eddy_visc = nodes->GetEddyViscosity(iPoint);
-        nodes->SetPrimitive_Adapt(iPoint, 0, temp);
-        for (auto iDim = 0; iDim < nDim; ++iDim)
-          nodes->SetPrimitive_Adapt(iPoint, iDim+1, vel[iDim]);
-        nodes->SetPrimitive_Adapt(iPoint, nDim+1, lam_visc/density);
-        nodes->SetPrimitive_Adapt(iPoint, nDim+2, eddy_visc/density);
-      }
-    }
-    else {
-      //--- store mach and/or pressure in aux vector
-      const auto nAdapSensor = config->GetnMetric_Sensor();
-      su2double aux = 0.0;
-      for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
-        for (auto iSensor = 0; iSensor < nAdapSensor; iSensor++) {
-          switch (config->GetMetric_Sensor(iSensor)) {
-            case METRIC_SENSOR::DENSITY:
-              aux = nodes->GetDensity(iPoint);
-              break;
-            case METRIC_SENSOR::MACH:
-              aux = nodes->GetVelocity2(iPoint) / nodes->GetSoundSpeed(iPoint);
-              break;
-            case METRIC_SENSOR::PRESSURE:
-              aux = nodes->GetPressure(iPoint);
-              break;
-            case METRIC_SENSOR::TEMPERATURE:
-              aux = nodes->GetTemperature(iPoint);
-              break;
-            default:
-              aux = nodes->GetDensity(iPoint);
-              break;
+  void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) final {
+    const auto nSensor = config->GetnMetric_Sensor();
+    for (auto iSensor = 0; iSensor < nSensor; iSensor++) {
+      switch (config->GetMetric_Sensor(iSensor)) {
+        case METRIC_SENSOR::DENSITY:
+          for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
+            const su2double prim_var = nodes->GetDensity(iPoint);
+            nodes->SetPrimitive_Adapt(iPoint, iSensor, prim_var);
           }
-          nodes->SetPrimitive_Adapt(iPoint, iSensor, aux);
-        }
+          break;
+        case METRIC_SENSOR::PRESSURE:
+          for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
+            const su2double prim_var = nodes->GetPressure(iPoint);
+            nodes->SetPrimitive_Adapt(iPoint, iSensor, prim_var);
+          }
+          break;
+        case METRIC_SENSOR::TEMPERATURE:
+          for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
+            const su2double prim_var = nodes->GetTemperature(iPoint);
+            nodes->SetPrimitive_Adapt(iPoint, iSensor, prim_var);
+          }
+          break;
+        case METRIC_SENSOR::MACH:
+        default:
+          for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
+            const su2double prim_var = sqrt(nodes->GetVelocity2(iPoint)) / nodes->GetSoundSpeed(iPoint);
+            nodes->SetPrimitive_Adapt(iPoint, iSensor, prim_var);
+          }
+          break;
       }
     }
   }

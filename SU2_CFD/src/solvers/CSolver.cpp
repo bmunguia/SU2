@@ -280,13 +280,13 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       ICOUNT           = nVar;
       break;
     case PERIODIC_GRAD_ADAPT:
-      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : config->GetnMetric_Sensor();
+      ICOUNT          = config->GetnMetric_Sensor();
       JCOUNT          = nDim;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
       break;
     case PERIODIC_HESSIAN:
-      ICOUNT          = config->GetGoal_Oriented_Metric()? nVar : config->GetnMetric_Sensor();
+      ICOUNT          = config->GetnMetric_Sensor();
       JCOUNT          = nSymMat;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
@@ -1463,11 +1463,11 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::GRADIENT_ADAPT:
-      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nDim : config->GetnMetric_Sensor()*nDim;
+      COUNT_PER_POINT  = config->GetnMetric_Sensor()*nDim;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::HESSIAN:
-      COUNT_PER_POINT  = config->GetGoal_Oriented_Metric()? nVar*nSymMat : config->GetnMetric_Sensor()*nSymMat;
+      COUNT_PER_POINT  = config->GetnMetric_Sensor()*nSymMat;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::METRIC:
@@ -2289,9 +2289,9 @@ void CSolver::SetSolution_Gradient_L2P(CGeometry *geometry, const CConfig *confi
 }
 
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
-  const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetPrimitive_Adapt();
+  const auto& solution = base_nodes->GetPrimitive_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  auto nHess = config->GetGoal_Oriented_Metric()? nVar : config->GetnMetric_Sensor();
+  auto nHess = config->GetnMetric_Sensor();
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                              *geometry, *config, solution, 0, nHess, idxVel, gradient);
@@ -2304,9 +2304,9 @@ void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short id
 
 void CSolver::SetHessian_L2P(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   /*--- Calculate the gradient ---*/
-  const auto& solution = config->GetGoal_Oriented_Metric()? base_nodes->GetSolution() : base_nodes->GetPrimitive_Adapt();
+  const auto& solution = base_nodes->GetPrimitive_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  auto nHess = config->GetGoal_Oriented_Metric()? nVar : config->GetnMetric_Sensor();
+  auto nHess = config->GetnMetric_Sensor();
 
   computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                                *geometry, *config, solution, 0, nHess, idxVel, gradient);
@@ -4533,15 +4533,8 @@ void CSolver::SavelibROM(CGeometry *geometry, CConfig *config, bool converged) {
 void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config, bool restartMetric) {
   /*--- TODO: - goal-oriented metric ---*/
   /*---       - metric intersection  ---*/
-  // unsigned long nVarTot = solver[FLOW_SOL]->GetnVar();
-  // if(goal && turb) nVarTot += solver[TURB_SOL]->GetnVar();
-  // vector<vector<double> > weights(3, vector<double>(nVarTot));
   const unsigned long nPointDomain = geometry->GetnPointDomain();
 
-  const bool visc = (config->GetViscous());
-  const bool turb = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
-
-  const bool goal = (config->GetGoal_Oriented_Metric());
   const bool normalize = (config->GetNormalize_Metric());
 
   unsigned short nSensor = config->GetnMetric_Sensor();
@@ -4557,37 +4550,31 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
   vector<double> integrals;
   for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
     SU2_OMP_MASTER
-    if (goal) {
-      SU2_MPI::Error("Goal-oriented metric not currently implemented.", CURRENT_FUNCTION);
-      // auto& metrics = base_nodes->GetMetric();
-      // setPositiveDefiniteMetrics<double, tensor::metric>(*geometry, *config, iSensor, metrics);
-      // if (normalize) {
-      //   normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, metrics);
-      // }
-    }
-    else {
-      /*--- Make the Hessian eigenvalues positive definite, and add to the metric tensor ---*/
-      auto& hessians = base_nodes->GetHessian();
-      setPositiveDefiniteMetrics<su2double, tensor::hessian>(*geometry, *config, iSensor, hessians);
-      AddMetrics(solver, geometry, config, iSensor, restartMetric);
+    /*--- Make the Hessian eigenvalues positive definite, and add to the metric tensor ---*/
+    auto& hessians = base_nodes->GetHessian();
+    setPositiveDefiniteMetrics<su2double, tensor::hessian>(*geometry, *config, iSensor, hessians);
 
-      /*--- Integrate metric field on the last iteration (the end of the simulation if steady) ---*/
-      auto& metrics = base_nodes->GetMetric();
-      double integral = 0.0;
-      if (is_last_iter)
-        integral = integrateMetrics<double>(*geometry, *config, iSensor, metrics);
+    if (iSensor > 0) continue;
 
-      /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
-      if (steady || (normalize && is_last_iter))
-        normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
+    /*--- Add Hessian of sensor at position 0 to metric tensor */
+    AddMetrics(solver, geometry, config, iSensor, restartMetric);
 
-      /*--- Store the integral to be written ---*/
-      if (is_last_iter) {
-        integrals.push_back(integral);
-        if (rank == MASTER_NODE) {
-          cout << "Global metric normalization integral for sensor ";
-          cout << config->GetMetric_SensorString(iSensor) << ": " << integral << endl;
-        }
+    /*--- Integrate metric field on the last iteration (the end of the simulation if steady) ---*/
+    auto& metrics = base_nodes->GetMetric();
+    double integral = 0.0;
+    if (is_last_iter)
+      integral = integrateMetrics<double>(*geometry, *config, iSensor, metrics);
+
+    /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
+    if (steady || (normalize && is_last_iter))
+      normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
+
+    /*--- Store the integral to be written ---*/
+    if (is_last_iter) {
+      integrals.push_back(integral);
+      if (rank == MASTER_NODE) {
+        cout << "Global metric normalization integral for sensor ";
+        cout << config->GetMetric_SensorString(iSensor) << ": " << integral << endl;
       }
     }
     END_SU2_OMP_MASTER
@@ -4649,10 +4636,6 @@ void CSolver::AddMetrics(CSolver **solver, const CGeometry*geometry, const CConf
   const unsigned long nPointDomain = geometry->GetnPointDomain();
   const unsigned short nSymMat = 3*(nDim-1);
   const unsigned short nVarFlo = solver[FLOW_SOL]->GetnVar();
-  const unsigned short nSensor = config->GetnMetric_Sensor();
-
-  const bool turb = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
-  const bool goal = (config->GetGoal_Oriented_Metric());
 
   const unsigned long time_iter = config->GetTimeIter();
   const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||

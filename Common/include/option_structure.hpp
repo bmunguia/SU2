@@ -2835,16 +2835,16 @@ static const MapType<std::string, ENUM_SOBOLEV_MODUS> Sobolev_Modus_Map = {
  */
 enum class METRIC_SENSOR {
   DENSITY,      /*!< \brief Density feature-based metric. */
-  MACH,         /*!< \brief Mach feature-based metric. */
   PRESSURE,     /*!< \brief Pressure feature-based metric. */
   TEMPERATURE,  /*!< \brief Temperature feature-based metric. */
+  MACH,         /*!< \brief Mach feature-based metric. */
   GOAL,         /*!< \brief Goal-oriented metric. */
 };
 static const MapType<std::string, METRIC_SENSOR> Metric_Sensor_Map = {
   MakePair("DENSITY", METRIC_SENSOR::DENSITY)
-  MakePair("MACH", METRIC_SENSOR::MACH)
   MakePair("PRESSURE", METRIC_SENSOR::PRESSURE)
   MakePair("TEMPERATURE", METRIC_SENSOR::TEMPERATURE)
+  MakePair("MACH", METRIC_SENSOR::MACH)
   MakePair("GOAL", METRIC_SENSOR::GOAL)
 };
 
