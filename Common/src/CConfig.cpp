@@ -3042,8 +3042,8 @@ void CConfig::SetConfig_Options() {
    *  \n DESCRIPTION: Numerical method for Hessian computation \n OPTIONS: See \link Gradient_Map \endlink. \n DEFAULT: GREEN_GAUSS. \ingroup Config*/
   addEnumOption("NUM_METHOD_HESS", Kind_Hessian_Method, Gradient_Map, GREEN_GAUSS);
 
-  /*!\brief METRIC_SENSOR \n DESCRIPTION: Sensors for mesh adaptation */
-  addEnumListOption("METRIC_SENSOR", nMetric_Sensor, Metric_Sensor, Metric_Sensor_Map);
+  /*!\brief METRIC_SENSOR \n DESCRIPTION: Sensors for mesh adaptation metric field */
+  addStringListOption("METRIC_SENSOR", nMetric_Sensor, Metric_Sensor);
   /*!\brief METRIC_NORM \n DESCRIPTION: Lp-norm for mesh adaptation */
   addUnsignedShortOption("METRIC_NORM", Metric_Norm, 2);
   /*!\brief METRIC_COMPLEXITY \n DESCRIPTION: Constraint mesh complexity */
@@ -5737,9 +5737,10 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   /*--- Checks for mesh adaptation ---*/
   if (Compute_Metric) {
     /*--- Check that config is valid for requested sensor ---*/
-    for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
+    for (unsigned short iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
+      const string& sensor_name = Metric_Sensor[iSensor];
       /*--- If using GOAL, it must be the only sensor and the discrete adjoint must be used ---*/
-      if (Metric_Sensor[iSensor] == METRIC_SENSOR::GOAL) {
+      if (sensor_name == "GOAL") {
         if (nMetric_Sensor != 1)
           SU2_MPI::Error("Adaptation sensor GOAL cannot be used with other sensors.", CURRENT_FUNCTION);
         if (!DiscreteAdjoint)
@@ -7917,8 +7918,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
     if (Compute_Metric) {
       cout << endl <<"---------------- Mesh Adaptation Information ( Zone "  << iZone << " ) -----------------" << endl;
       cout << "Adaptation sensor(s): ";
-      for (auto iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
-        cout << GetMetric_SensorString(iSensor);
+      for (unsigned short iSensor = 0; iSensor < nMetric_Sensor; iSensor++) {
+        cout << Metric_Sensor[iSensor];
         if (iSensor < nMetric_Sensor - 1 ) cout << ", ";
       }
       cout << endl;

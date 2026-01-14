@@ -516,6 +516,35 @@ class CDriverBase {
   map<string, unsigned short> GetPrimitiveIndices() const;
 
   /*!
+   * \brief Get the list of metric sensor strings from config.
+   * \return Vector of sensor name strings
+   */
+  vector<string> GetMetricSensorList() const;
+
+  /*!
+   * \brief Get all available solution variable names per solver.
+   * \return Map of solver_name -> vector of variable names
+   */
+  map<string, vector<string>> GetSolverVariables() const;
+
+  /*!
+   * \brief Set resolved sensor locations after Python processing.
+   * \param[in] sensor_locations - Vector of (solver_idx, var_idx, name) tuples
+   */
+  void SetResolvedSensors(const vector<tuple<unsigned short, unsigned short, string>>& sensor_locations);
+
+  /*!
+   * \brief Automatically resolve sensor names to (solver_idx, var_idx) by searching all solvers.
+   * Called during initialization when COMPUTE_METRIC is enabled.
+   */
+  void ResolveSensors();
+
+  /*!
+   * \brief Allocate Gradient_Adapt and Hessian arrays for resolved sensors in all solvers.
+   */
+  void AllocateMetricArrays();
+
+  /*!
    * \brief Get a read/write view of the current primitive variables on all mesh nodes of the flow solver.
    * \warning Primitive variables are only available for flow solvers.
    */

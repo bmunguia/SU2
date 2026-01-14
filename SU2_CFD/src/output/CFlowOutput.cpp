@@ -38,6 +38,20 @@
 #include "../../include/variables/CPrimitiveIndices.hpp"
 #include "../../include/fluid/CCoolProp.hpp"
 
+namespace {
+/*!
+ * \brief Convert string to title case (first letter uppercase, rest lowercase).
+ * \param[in] str - Input string (e.g., "DENSITY", "MACH").
+ * \return Title case string (e.g., "Density", "Mach").
+ */
+string ToTitleCase(const string& str) {
+  if (str.empty()) return str;
+  string result = str;
+  for (auto& c : result) c = tolower(c);
+  result[0] = toupper(result[0]);
+  return result;
+}
+}  // anonymous namespace
 
 CFlowOutput::CFlowOutput(const CConfig *config, unsigned short nDim, bool fem_output) :
   CFVMOutput(config, nDim, fem_output),
@@ -4120,28 +4134,30 @@ void CFlowOutput::AddMeshAdaptationOutputs(const CConfig* config) {
   if(config->GetCompute_Metric()) {
     // Gradients
     for (auto iSensor = 0u; iSensor < config->GetnMetric_Sensor(); iSensor++){
-      string sens_str = config->GetMetric_SensorString(iSensor);
+      string sens_str = config->GetMetric_Sensor(iSensor);
+      string sens_title = ToTitleCase(sens_str);
       // Common gradient vector components for both 2D and 3D
-      AddVolumeOutput("Gradient_" + sens_str + "_x", "Gradient_" + sens_str + "_x", "SENSOR_GRADIENT", "x-component of the " + sens_str + " gradient");
-      AddVolumeOutput("Gradient_" + sens_str + "_y", "Gradient_" + sens_str + "_y", "SENSOR_GRADIENT", "y-component of the " + sens_str + " gradient");
+      AddVolumeOutput("GRADIENT_" + sens_str + "_X", "Gradient_" + sens_title + "_x", "SENSOR_GRADIENT", "x-component of the " + sens_title + " gradient");
+      AddVolumeOutput("GRADIENT_" + sens_str + "_Y", "Gradient_" + sens_title + "_y", "SENSOR_GRADIENT", "y-component of the " + sens_title + " gradient");
       // Additional component for 3D
       if (nDim == 3) {
-        AddVolumeOutput("Gradient_" + sens_str + "_z", "Gradient_" + sens_str + "_z", "SENSOR_GRADIENT", "z-component of the " + sens_str + " gradient");
+        AddVolumeOutput("GRADIENT_" + sens_str + "_Z", "Gradient_" + sens_title + "_z", "SENSOR_GRADIENT", "z-component of the " + sens_title + " gradient");
       }
     }
 
     // Hessians
     for (auto iSensor = 0u; iSensor < config->GetnMetric_Sensor(); iSensor++){
-      string sens_str = config->GetMetric_SensorString(iSensor);
+      string sens_str = config->GetMetric_Sensor(iSensor);
+      string sens_title = ToTitleCase(sens_str);
       // Common Hessian tensor components for both 2D and 3D
-      AddVolumeOutput("Hessian_" + sens_str + "_xx", "Hessian_" + sens_str + "_xx", "SENSOR_HESSIAN", "x-x-component of the " + sens_str + " Hessian");
-      AddVolumeOutput("Hessian_" + sens_str + "_xy", "Hessian_" + sens_str + "_xy", "SENSOR_HESSIAN", "x-y-component of the " + sens_str + " Hessian");
-      AddVolumeOutput("Hessian_" + sens_str + "_yy", "Hessian_" + sens_str + "_yy", "SENSOR_HESSIAN", "y-y-component of the " + sens_str + " Hessian");
+      AddVolumeOutput("HESSIAN_" + sens_str + "_XX", "Hessian_" + sens_title + "_xx", "SENSOR_HESSIAN", "x-x-component of the " + sens_title + " Hessian");
+      AddVolumeOutput("HESSIAN_" + sens_str + "_XY", "Hessian_" + sens_title + "_xy", "SENSOR_HESSIAN", "x-y-component of the " + sens_title + " Hessian");
+      AddVolumeOutput("HESSIAN_" + sens_str + "_YY", "Hessian_" + sens_title + "_yy", "SENSOR_HESSIAN", "y-y-component of the " + sens_title + " Hessian");
       // Additional components for 3D
       if (nDim == 3) {
-        AddVolumeOutput("Hessian_" + sens_str + "_xz", "Hessian_" + sens_str + "_xz", "SENSOR_HESSIAN", "x-z-component of the " + sens_str + " Hessian");
-        AddVolumeOutput("Hessian_" + sens_str + "_yz", "Hessian_" + sens_str + "_xz", "SENSOR_HESSIAN", "y-z-component of the " + sens_str + " Hessian");
-        AddVolumeOutput("Hessian_" + sens_str + "_zz", "Hessian_" + sens_str + "_xz", "SENSOR_HESSIAN", "z-z-component of the " + sens_str + " Hessian");
+        AddVolumeOutput("HESSIAN_" + sens_str + "_XZ", "Hessian_" + sens_title + "_xz", "SENSOR_HESSIAN", "x-z-component of the " + sens_title + " Hessian");
+        AddVolumeOutput("HESSIAN_" + sens_str + "_YZ", "Hessian_" + sens_title + "_yz", "SENSOR_HESSIAN", "y-z-component of the " + sens_title + " Hessian");
+        AddVolumeOutput("HESSIAN_" + sens_str + "_ZZ", "Hessian_" + sens_title + "_zz", "SENSOR_HESSIAN", "z-z-component of the " + sens_title + " Hessian");
       }
     }
 
@@ -4184,28 +4200,28 @@ void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver
   if(config->GetCompute_Metric()) {
     // Gradients
     for (auto iSensor = 0u; iSensor < config->GetnMetric_Sensor(); iSensor++){
-      string sens_str = config->GetMetric_SensorString(iSensor);
+      string sens_str = config->GetMetric_Sensor(iSensor);
       // Common gradient vector components for both 2D and 3D
-      SetVolumeOutputValue("Gradient_" + sens_str + "_x", iPoint, Node_Flow->GetGradient_Adapt(iPoint, iSensor, 0));
-      SetVolumeOutputValue("Gradient_" + sens_str + "_y", iPoint, Node_Flow->GetGradient_Adapt(iPoint, iSensor, 1));
+      SetVolumeOutputValue("GRADIENT_" + sens_str + "_X", iPoint, Node_Flow->GetGradient_Adapt(iPoint, iSensor, 0));
+      SetVolumeOutputValue("GRADIENT_" + sens_str + "_Y", iPoint, Node_Flow->GetGradient_Adapt(iPoint, iSensor, 1));
       // Additional component for 3D
       if (nDim == 3) {
-        SetVolumeOutputValue("Gradient_" + sens_str + "_z", iPoint, Node_Flow->GetGradient_Adapt(iPoint, iSensor, 2));
+        SetVolumeOutputValue("GRADIENT_" + sens_str + "_Z", iPoint, Node_Flow->GetGradient_Adapt(iPoint, iSensor, 2));
       }
     }
 
     // Hessians
     for (auto iSensor = 0u; iSensor < config->GetnMetric_Sensor(); iSensor++){
-      string sens_str = config->GetMetric_SensorString(iSensor);
+      string sens_str = config->GetMetric_Sensor(iSensor);
       // Common Hessian tensor components for both 2D and 3D
-      SetVolumeOutputValue("Hessian_" + sens_str + "_xx", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 0));
-      SetVolumeOutputValue("Hessian_" + sens_str + "_xy", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 1));
-      SetVolumeOutputValue("Hessian_" + sens_str + "_yy", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 2));
+      SetVolumeOutputValue("HESSIAN_" + sens_str + "_XX", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 0));
+      SetVolumeOutputValue("HESSIAN_" + sens_str + "_XY", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 1));
+      SetVolumeOutputValue("HESSIAN_" + sens_str + "_YY", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 2));
       // Additional components for 3D
       if (nDim == 3) {
-        SetVolumeOutputValue("Hessian_" + sens_str + "_xz", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 3));
-        SetVolumeOutputValue("Hessian_" + sens_str + "_yz", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 4));
-        SetVolumeOutputValue("Hessian_" + sens_str + "_zz", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 5));
+        SetVolumeOutputValue("HESSIAN_" + sens_str + "_XZ", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 3));
+        SetVolumeOutputValue("HESSIAN_" + sens_str + "_YZ", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 4));
+        SetVolumeOutputValue("HESSIAN_" + sens_str + "_ZZ", iPoint, Node_Flow->GetHessian(iPoint, iSensor, 5));
       }
     }
 

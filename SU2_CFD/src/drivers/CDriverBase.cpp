@@ -436,3 +436,119 @@ map<string, unsigned short> CDriverBase::GetPrimitiveIndices() const {
       main_config->GetKind_Regime() == ENUM_REGIME::INCOMPRESSIBLE,
       main_config->GetNEMOProblem(), nDim, main_config->GetnSpecies()));
 }
+
+vector<string> CDriverBase::GetMetricSensorList() const {
+  return config_container[selected_zone]->GetMetricSensorList();
+}
+
+map<string, vector<string>> CDriverBase::GetSolverVariables() const {
+  map<string, vector<string>> result;
+
+  /*--- Loop through all potential solvers in the selected zone ---*/
+  for (unsigned short iSol = 0; iSol < MAX_SOLS; iSol++) {
+    if (solver_container[selected_zone][INST_0][MESH_0][iSol] == nullptr) continue;
+
+    string solver_name = solver_container[selected_zone][INST_0][MESH_0][iSol]->GetSolverName();
+    vector<string> var_names = solver_container[selected_zone][INST_0][MESH_0][iSol]->GetSolutionFields();
+
+    /*--- Remove the "PointID" entry if present (first entry) ---*/
+    if (!var_names.empty() && var_names[0].find("PointID") != string::npos) {
+      var_names.erase(var_names.begin());
+    }
+
+    /*--- Remove quotation marks from field names ---*/
+    for (auto& name : var_names) {
+      if (name.size() >= 2 && name.front() == '\"' && name.back() == '\"') {
+        name = name.substr(1, name.size() - 2);
+      }
+    }
+
+    result[solver_name] = var_names;
+  }
+
+  return result;
+}
+
+void CDriverBase::SetResolvedSensors(const vector<tuple<unsigned short, unsigned short, string>>& sensor_locations) {
+  vector<CConfig::MetricSensorLocation> resolved_sensors;
+
+  for (const auto& [solver_idx, var_idx, name] : sensor_locations) {
+    CConfig::MetricSensorLocation loc;
+    loc.solver_idx = solver_idx;
+    loc.var_idx = var_idx;
+    loc.name = name;
+    resolved_sensors.push_back(loc);
+  }
+
+  config_container[selected_zone]->SetResolvedMetricSensors(resolved_sensors);
+}
+
+void CDriverBase::ResolveSensors() {
+  /*--- Get sensor list from config ---*/
+  const auto sensor_list = config_container[selected_zone]->GetMetricSensorList();
+  if (sensor_list.empty()) return;
+
+  /*--- Get available variables from all solvers ---*/
+  auto solver_vars = GetSolverVariables();
+
+  if (rank == MASTER_NODE) {
+    cout << "\n--- Resolving Metric Sensors ---" << endl;
+    cout << "Available solver variables:" << endl;
+    for (const auto& [solver_name, var_names] : solver_vars) {
+      cout << "  " << solver_name << ": ";
+      for (size_t i = 0; i < var_names.size(); i++) {
+        cout << var_names[i];
+        if (i < var_names.size() - 1) cout << ", ";
+      }
+      cout << endl;
+    }
+  }
+
+  vector<tuple<unsigned short, unsigned short, string>> resolved;
+
+  /*--- Resolve each sensor by searching all solvers ---*/
+  for (const auto& sensor : sensor_list) {
+    bool found = false;
+    unsigned short solver_idx = 0;
+
+    for (const auto& [solver_name, var_list] : solver_vars) {
+      auto var_it = find(var_list.begin(), var_list.end(), sensor);
+      if (var_it != var_list.end()) {
+        unsigned short var_idx = distance(var_list.begin(), var_it);
+        resolved.push_back(make_tuple(solver_idx, var_idx, sensor));
+        found = true;
+
+        if (rank == MASTER_NODE) {
+          cout << "Resolved '" << sensor << "' -> Solver " << solver_idx
+               << " (" << solver_name << "), Variable " << var_idx
+               << " (" << sensor << ")" << endl;
+        }
+        break;
+      }
+      solver_idx++;
+    }
+
+    if (!found) {
+      SU2_MPI::Error("Could not resolve sensor '" + sensor + "' in any solver", CURRENT_FUNCTION);
+    }
+  }
+
+  /*--- Store resolved sensors in config ---*/
+  SetResolvedSensors(resolved);
+}
+
+void CDriverBase::AllocateMetricArrays() {
+  /*--- Get resolved sensors from config ---*/
+  const auto& resolved_sensors = config_container[ZONE_0]->GetResolvedMetricSensors();
+
+  /*--- Group sensors by solver to minimize solver calls ---*/
+  map<unsigned short, vector<unsigned short>> sensors_by_solver;
+  for (const auto& sensor : resolved_sensors) {
+    sensors_by_solver[sensor.solver_idx].push_back(sensor.var_idx);
+  }
+
+  /*--- Allocate arrays for each solver ---*/
+  for (const auto& entry : sensors_by_solver) {
+    solver_container[ZONE_0][INST_0][MESH_0][entry.first]->AllocateMetricArrays(entry.second);
+  }
+}

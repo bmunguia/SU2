@@ -613,11 +613,18 @@ public:
   void SetHessian_L2P(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
 
   /*!
-   * \brief A virtual member.
+   * \brief Set primitive variables for adaptation using resolved sensor locations.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
+   * \note Uses config->GetResolvedMetricSensors() to determine which variables to copy
    */
-  virtual void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) { }
+  virtual void SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config);
+
+  /*!
+   * \brief Allocate Gradient_Adapt and Hessian arrays for specified sensor variables.
+   * \param[in] sensor_indices - Vector of variable indices for this solver to allocate arrays for
+   */
+  virtual void AllocateMetricArrays(const vector<unsigned short>& sensor_indices);
 
   /*!
    * \brief Set the old solution variables to the current solution value for Runge-Kutta iteration.

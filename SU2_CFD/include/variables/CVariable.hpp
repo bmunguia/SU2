@@ -2459,6 +2459,24 @@ public:
   inline CVectorOfMatrix& GetHessian(void) { return Hessian; }
 
   /*!
+   * \brief Allocate Gradient_Adapt and Hessian arrays for specified sensor indices.
+   * \param[in] nSensors - Number of metric sensors
+   */
+  inline void AllocateMetricSensorArrays(unsigned short nSensors) {
+    if (nSensors == 0) return;
+    if (nDim == 0 || nPoint == 0)
+      SU2_MPI::Error("nDim and nPoint must be set before allocating metric arrays.", CURRENT_FUNCTION);
+
+    /*--- Allocate if not already allocated or resize if needed ---*/
+    if (Gradient_Adapt.size() == 0 || Gradient_Adapt.cols() != nSensors) {
+      Gradient_Adapt.resize(nPoint, nSensors, nDim, 0.0);
+    }
+    if (Hessian.size() == 0 || Hessian.cols() != nSensors) {
+      Hessian.resize(nPoint, nSensors, nSymMat, 0.0);
+    }
+  }
+
+  /*!
    * \brief Get the value of the hessian.
    * \param[in] iPoint - Point index.
    * \param[in] iVar - Index of the variable.

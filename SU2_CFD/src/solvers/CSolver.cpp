@@ -192,6 +192,27 @@ CSolver::~CSolver() {
   delete VerificationSolution;
 }
 
+void CSolver::AllocateMetricArrays(const vector<unsigned short>& sensor_indices) {
+  if (base_nodes == nullptr || sensor_indices.empty()) return;
+  base_nodes->AllocateMetricSensorArrays(sensor_indices.size());
+}
+
+void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
+  const auto& resolved_sensors = config->GetResolvedMetricSensors();
+
+  /*--- Copy each resolved sensor variable into Primitive_Adapt ---*/
+  for (size_t iSensor = 0; iSensor < resolved_sensors.size(); iSensor++) {
+    const auto& sensor = resolved_sensors[iSensor];
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+      const su2double prim_var = base_nodes->GetPrimitive(iPoint, sensor.var_idx);
+      base_nodes->SetPrimitive_Adapt(iPoint, iSensor, prim_var);
+    }
+    END_SU2_OMP_FOR
+  }
+}
+
 void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
                                           unsigned short commType,
                                           unsigned short &COUNT_PER_POINT,
@@ -2291,31 +2312,31 @@ void CSolver::SetSolution_Gradient_L2P(CGeometry *geometry, const CConfig *confi
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   const auto& solution = base_nodes->GetPrimitive_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  auto nHess = config->GetnMetric_Sensor();
+  const auto nSensors = config->GetResolvedMetricSensors().size();
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
-                             *geometry, *config, solution, 0, nHess, idxVel, gradient);
+                             *geometry, *config, solution, 0, nSensors, idxVel, gradient);
 
   auto& hessian = base_nodes->GetHessian();
 
   computeHessiansGreenGauss(this, MPI_QUANTITIES::HESSIAN, PERIODIC_HESSIAN,
-                            *geometry, *config, gradient, 0, nHess, idxVel, hessian);
+                            *geometry, *config, gradient, 0, nSensors, idxVel, hessian);
 }
 
 void CSolver::SetHessian_L2P(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   /*--- Calculate the gradient ---*/
   const auto& solution = base_nodes->GetPrimitive_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  auto nHess = config->GetnMetric_Sensor();
+  const auto nSensors = config->GetResolvedMetricSensors().size();
 
   computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
-                               *geometry, *config, solution, 0, nHess, idxVel, gradient);
+                               *geometry, *config, solution, 0, nSensors, idxVel, gradient);
 
   /*--- Calculate the Hessian ---*/
   auto& hessian = base_nodes->GetHessian();
 
   computeHessiansL2Projection(this, MPI_QUANTITIES::HESSIAN, PERIODIC_HESSIAN,
-                              *geometry, *config, gradient, 0, nHess, idxVel, hessian);
+                              *geometry, *config, gradient, 0, nSensors, idxVel, hessian);
 }
 
 void CSolver::SetUndivided_Laplacian(CGeometry *geometry, const CConfig *config) {
@@ -4574,7 +4595,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
       integrals.push_back(integral);
       if (rank == MASTER_NODE) {
         cout << "Global metric normalization integral for sensor ";
-        cout << config->GetMetric_SensorString(iSensor) << ": " << integral << endl;
+        cout << config->GetMetric_Sensor(iSensor) << ": " << integral << endl;
       }
     }
     END_SU2_OMP_MASTER
@@ -4612,7 +4633,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
         Integral_file << "VARIABLES = ";
       }
 
-      string sensor_string = config->GetMetric_SensorString(iSensor);
+      string sensor_string = config->GetMetric_Sensor(iSensor);
       Integral_file << "\"Time Iter\",\"" << sensor_string << " Metric Integral\"";
       if (tabTecplot)
         Integral_file << "\nZONE T= \"Metric integrals\"" << endl;

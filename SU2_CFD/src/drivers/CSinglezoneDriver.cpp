@@ -49,6 +49,12 @@ void CSinglezoneDriver::StartSolver() {
 
   config_container[ZONE_0]->Set_StartTime(StartTime);
 
+  /*--- Resolve metric sensors if metric computation is enabled ---*/
+  if (config_container[ZONE_0]->GetCompute_Metric()) {
+    ResolveSensors();
+    AllocateMetricArrays();
+  }
+
   /*--- Main external loop of the solver. Runs for the number of time steps required. ---*/
 
   if (rank == MASTER_NODE)

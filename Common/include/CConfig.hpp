@@ -60,6 +60,16 @@ using namespace std;
  */
 
 class CConfig {
+public:
+  /*!
+   * \brief Structure to store resolved metric sensor information
+   */
+  struct MetricSensorLocation {
+    unsigned short solver_idx;  /*!< \brief Index of the solver containing the variable */
+    unsigned short var_idx;     /*!< \brief Index of the variable within the solver */
+    string name;                /*!< \brief Name of the sensor */
+  };
+
 private:
   SU2_MPI::Comm SU2_Communicator; /*!< \brief MPI communicator of SU2.*/
   int rank, size;                 /*!< \brief MPI rank and size.*/
@@ -1265,7 +1275,9 @@ private:
   bool Normalize_Metric;                   /*!< \brief Determines if metric tensor normalization is taking place */
   unsigned short Kind_Hessian_Method;      /*!< \brief Numerical method for computation of Hessians. */
   unsigned short nMetric_Sensor;           /*!< \brief Number of sensors to use for adaptation. */
-  METRIC_SENSOR* Metric_Sensor;            /*!< \brief Sensors to use for adaptation. */
+  string* Metric_Sensor;                   /*!< \brief Sensors to use for adaptation (first entry is normalized, rest are Hessian-only). */
+  vector<MetricSensorLocation> Resolved_Metric_Sensors;  /*!< \brief Resolved sensor locations after processing */
+
   unsigned short Metric_Norm;              /*!< \brief Lp-norm for mesh adaptation */
   unsigned long Metric_Complexity;         /*!< \brief Constraint mesh complexity */
   unsigned short nAdapt_Time_Subinterval;  /*!< \brief Number of unsteady time sub-intervals for adaptation. */
@@ -10008,39 +10020,41 @@ public:
   unsigned short GetKind_Hessian_Method(void) const { return Kind_Hessian_Method; }
 
   /*!
-   * \brief Get adaptation sensor
+   * \brief Get adaptation sensor name by index
+   * \param[in] iSens - Index of the sensor
+   * \return Sensor name string
    */
-  METRIC_SENSOR GetMetric_Sensor(unsigned short iSens) const { return Metric_Sensor[iSens]; }
+  string GetMetric_Sensor(unsigned short iSens) const {
+    if (iSens >= nMetric_Sensor)
+      SU2_MPI::Error("Sensor index out of range.", CURRENT_FUNCTION);
+    return Metric_Sensor[iSens];
+  }
 
   /*!
-   * \brief Get corresponding string from metric sensor type
+   * \brief Get the complete list of metric sensor names
+   * \return Vector of sensor name strings
    */
-  string GetMetric_SensorString(unsigned short iSens) const {
-    string sensor_name;
-    switch (Metric_Sensor[iSens]) {
-      case METRIC_SENSOR::DENSITY:
-        sensor_name = "Density";
-        break;
-      case METRIC_SENSOR::MACH:
-        sensor_name = "Mach";
-        break;
-      case METRIC_SENSOR::PRESSURE:
-        sensor_name = "Pressure";
-        break;
-      case METRIC_SENSOR::TEMPERATURE:
-        sensor_name = "Temperature";
-        break;
-      default:
-        SU2_MPI::Error("Unsupported metric sensor.", CURRENT_FUNCTION);
-    }
-
-    return sensor_name;
+  vector<string> GetMetricSensorList() const {
+    return vector<string>(Metric_Sensor, Metric_Sensor + nMetric_Sensor);
   }
 
   /*!
    * \brief Get number of adaptation sensors
+   * \return Number of sensors
    */
-  unsigned short GetnMetric_Sensor(void) const { return nMetric_Sensor; }
+  unsigned short GetnMetric_Sensor() const { return nMetric_Sensor; }
+
+  /*!
+   * \brief Get the resolved sensor locations
+   * \return Vector of resolved sensor locations
+   */
+  const vector<MetricSensorLocation>& GetResolvedMetricSensors() const { return Resolved_Metric_Sensors; }
+
+  /*!
+   * \brief Set the resolved sensor locations after Python processing
+   * \param[in] sensors - Vector of resolved sensor locations
+   */
+  void SetResolvedMetricSensors(const vector<MetricSensorLocation>& sensors) { Resolved_Metric_Sensors = sensors; }
 
   /*!
    * \brief Get adaptation norm value (Lp)
