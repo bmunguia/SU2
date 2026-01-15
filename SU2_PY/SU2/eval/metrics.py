@@ -28,7 +28,7 @@
 from typing import Optional
 
 
-def resolve_sensors(
+def resolve_sensor_indices(
     driver, sensor_list: list[str], verbose: bool = True
 ) -> list[tuple[int, int, str]]:
     """
@@ -57,21 +57,30 @@ def resolve_sensors(
     if verbose:
         print("\n--- Python Sensor Resolution ---")
         print("Available solver variables:")
-        for solver_name, var_names in solver_vars.items():
-            print(
-                f"  {solver_name}: {', '.join(var_names) if var_names else '(empty)'}"
-            )
+        for solver_name, var_map in solver_vars.items():
+            # Sort by index for display
+            var_list = [
+                f"{name}[{idx}]"
+                for name, idx in sorted(var_map.items(), key=lambda x: x[1])
+            ]
+            print(f"  {solver_name}: {', '.join(var_list) if var_list else '(empty)'}")
 
     resolved = []
+
+    # Get solver name to index mapping
+    solver_indices = driver.GetSolverIndices()
 
     # Resolve each sensor by searching all solvers
     for sensor in sensor_list:
         found = False
-        solver_idx = 0
 
-        for solver_name, var_list in solver_vars.items():
-            if sensor in var_list:
-                var_idx = var_list.index(sensor)
+        for solver_name, var_map in solver_vars.items():
+            if sensor in var_map:
+                solver_idx = solver_indices.get(solver_name)
+                if solver_idx is None:
+                    continue
+
+                var_idx = var_map[sensor]
                 resolved.append((solver_idx, var_idx, sensor))
                 found = True
 
@@ -80,7 +89,6 @@ def resolve_sensors(
                         f"Resolved '{sensor}' -> Solver {solver_idx} ({solver_name}), Variable {var_idx}"
                     )
                 break
-            solver_idx += 1
 
         if not found:
             raise ValueError(
@@ -91,11 +99,11 @@ def resolve_sensors(
     return resolved
 
 
-def setup_metric_computation(
+def initialize_metric_sensor_indices(
     driver, verbose: bool = True
 ) -> list[tuple[int, int, str]]:
     """
-    Set up metric computation by resolving sensors and configuring the driver.
+    Set up metric computation by resolving sensor solver/variable indices and configuring the driver.
 
     This is the main entry point for setting up mesh adaptation metrics.
     It reads the METRIC_SENSOR config option, resolves sensor names,
@@ -113,7 +121,7 @@ def setup_metric_computation(
         Use variables like DENSITY, PRESSURE, VELOCITY_X, etc.
     """
     # Get sensor list from config
-    sensor_list = driver.GetMetricSensorList()
+    sensor_list = driver.GetMetric_SensorList()
 
     if not sensor_list:
         if verbose:
@@ -124,10 +132,15 @@ def setup_metric_computation(
         print(f"Requested sensors: {', '.join(sensor_list)}")
 
     # Resolve sensors to (solver_idx, var_idx, name) tuples
-    resolved = resolve_sensors(driver, sensor_list, verbose=verbose)
+    resolved = resolve_sensor_indices(driver, sensor_list, verbose=verbose)
 
-    # Pass resolved sensors back to C++ driver
-    driver.SetResolvedSensors(resolved)
+    # Unpack tuples into three separate lists for C++ API
+    solver_indices = [s[0] for s in resolved]
+    var_indices = [s[1] for s in resolved]
+    sensor_names = [s[2] for s in resolved]
+
+    # Pass resolved sensors back to C++ driver as three separate lists
+    driver.SetMetricSensorIndices(solver_indices, var_indices, sensor_names)
 
     if verbose:
         print(f"Successfully resolved {len(resolved)} sensor(s)")
@@ -142,7 +155,7 @@ def print_sensor_info(driver, resolved_sensors: Optional[list] = None):
 
     Args:
         driver: SU2 driver object
-        resolved_sensors: Optional list of resolved sensors from setup_metric_computation()
+        resolved_sensors: Optional list of resolved sensors from initialize_metric_sensor_indices()
     """
     print("\n=== Metric Sensor Information ===")
 

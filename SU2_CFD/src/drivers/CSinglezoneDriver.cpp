@@ -49,10 +49,17 @@ void CSinglezoneDriver::StartSolver() {
 
   config_container[ZONE_0]->Set_StartTime(StartTime);
 
-  /*--- Resolve metric sensors if metric computation is enabled ---*/
+  /*--- Allocate metric arrays if metric computation is enabled ---*/
+  /*--- NOTE: Sensor resolution should be done via Python wrapper initialize_metric_sensor_indices() ---*/
   if (config_container[ZONE_0]->GetCompute_Metric()) {
-    ResolveSensors();
-    AllocateMetricArrays();
+    /*--- Only allocate if sensor indices have been set (e.g., via Python wrapper) ---*/
+    const auto nSensors = config_container[ZONE_0]->GetnMetricSensorIndices();
+    if (nSensors > 0) {
+      AllocateMetricSensorArrays();
+    } else if (rank == MASTER_NODE) {
+      cout << "Warning: COMPUTE_METRIC is enabled but sensor indices not set." << endl;
+      cout << "         Call initialize_metric_sensor_indices() before StartSolver()." << endl;
+    }
   }
 
   /*--- Main external loop of the solver. Runs for the number of time steps required. ---*/

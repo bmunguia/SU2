@@ -519,30 +519,26 @@ class CDriverBase {
    * \brief Get the list of metric sensor strings from config.
    * \return Vector of sensor name strings
    */
-  vector<string> GetMetricSensorList() const;
+  vector<string> GetMetric_SensorList() const;
 
   /*!
-   * \brief Get all available solution variable names per solver.
-   * \return Map of solver_name -> vector of variable names
+   * \brief Get all available solution variable names and indices per solver.
+   * \return Map of solver_name -> map of variable_name -> index
    */
-  map<string, vector<string>> GetSolverVariables() const;
+  map<string, map<string, unsigned short>> GetSolverVariables() const;
 
   /*!
    * \brief Set resolved sensor locations after Python processing.
-   * \param[in] sensor_locations - Vector of (solver_idx, var_idx, name) tuples
+   * \param[in] solver_idx - Vector of solver indices
+   * \param[in] var_idx - Vector of variable indices
+   * \param[in] names - Vector of sensor names
    */
-  void SetResolvedSensors(const vector<tuple<unsigned short, unsigned short, string>>& sensor_locations);
-
-  /*!
-   * \brief Automatically resolve sensor names to (solver_idx, var_idx) by searching all solvers.
-   * Called during initialization when COMPUTE_METRIC is enabled.
-   */
-  void ResolveSensors();
+  void SetMetricSensorIndices(const vector<unsigned short>& solver_idx, const vector<unsigned short>& var_idx, const vector<string>& names);
 
   /*!
    * \brief Allocate Gradient_Adapt and Hessian arrays for resolved sensors in all solvers.
    */
-  void AllocateMetricArrays();
+  void AllocateMetricSensorArrays();
 
   /*!
    * \brief Get a read/write view of the current primitive variables on all mesh nodes of the flow solver.

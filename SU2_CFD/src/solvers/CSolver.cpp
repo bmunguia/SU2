@@ -192,22 +192,38 @@ CSolver::~CSolver() {
   delete VerificationSolution;
 }
 
-void CSolver::AllocateMetricArrays(const vector<unsigned short>& sensor_indices) {
+void CSolver::AllocateMetricSensorArrays(const vector<unsigned short>& sensor_indices) {
   if (base_nodes == nullptr || sensor_indices.empty()) return;
   base_nodes->AllocateMetricSensorArrays(sensor_indices.size());
 }
 
 void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
-  const auto& resolved_sensors = config->GetResolvedMetricSensors();
+  const auto nSensors = config->GetnMetricSensorIndices();
 
-  /*--- Copy each resolved sensor variable into Primitive_Adapt ---*/
-  for (size_t iSensor = 0; iSensor < resolved_sensors.size(); iSensor++) {
-    const auto& sensor = resolved_sensors[iSensor];
+  /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
+  for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
+    const auto var_idx = config->GetMetricSensorVarIdx(iSensor);
 
     SU2_OMP_FOR_STAT(omp_chunk_size)
     for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
-      const su2double prim_var = base_nodes->GetPrimitive(iPoint, sensor.var_idx);
-      base_nodes->SetPrimitive_Adapt(iPoint, iSensor, prim_var);
+      const su2double prim_var = base_nodes->GetPrimitive(iPoint, var_idx);
+      base_nodes->SetSensor_Adapt(iPoint, iSensor, prim_var);
+    }
+    END_SU2_OMP_FOR
+  }
+}
+
+void CSolver::SetSolution_Adapt(CGeometry *geometry, const CConfig *config) {
+  const auto nSensors = config->GetnMetricSensorIndices();
+
+  /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
+  for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
+    const auto var_idx = config->GetMetricSensorVarIdx(iSensor);
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+      const su2double prim_var = base_nodes->GetSolution(iPoint, var_idx);
+      base_nodes->SetSensor_Adapt(iPoint, iSensor, prim_var);
     }
     END_SU2_OMP_FOR
   }
@@ -2310,9 +2326,9 @@ void CSolver::SetSolution_Gradient_L2P(CGeometry *geometry, const CConfig *confi
 }
 
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
-  const auto& solution = base_nodes->GetPrimitive_Adapt();
+  const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = config->GetResolvedMetricSensors().size();
+  const auto nSensors = config->GetnMetricSensorIndices();
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                              *geometry, *config, solution, 0, nSensors, idxVel, gradient);
@@ -2325,9 +2341,9 @@ void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short id
 
 void CSolver::SetHessian_L2P(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   /*--- Calculate the gradient ---*/
-  const auto& solution = base_nodes->GetPrimitive_Adapt();
+  const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = config->GetResolvedMetricSensors().size();
+  const auto nSensors = config->GetnMetricSensorIndices();
 
   computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                                *geometry, *config, solution, 0, nSensors, idxVel, gradient);

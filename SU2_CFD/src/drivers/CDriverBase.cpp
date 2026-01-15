@@ -437,118 +437,78 @@ map<string, unsigned short> CDriverBase::GetPrimitiveIndices() const {
       main_config->GetNEMOProblem(), nDim, main_config->GetnSpecies()));
 }
 
-vector<string> CDriverBase::GetMetricSensorList() const {
-  return config_container[selected_zone]->GetMetricSensorList();
+vector<string> CDriverBase::GetMetric_SensorList() const {
+  return config_container[selected_zone]->GetMetric_SensorList();
 }
 
-map<string, vector<string>> CDriverBase::GetSolverVariables() const {
-  map<string, vector<string>> result;
+map<string, map<string, unsigned short>> CDriverBase::GetSolverVariables() const {
+  map<string, map<string, unsigned short>> result;
 
   /*--- Loop through all potential solvers in the selected zone ---*/
   for (unsigned short iSol = 0; iSol < MAX_SOLS; iSol++) {
     if (solver_container[selected_zone][INST_0][MESH_0][iSol] == nullptr) continue;
 
     string solver_name = solver_container[selected_zone][INST_0][MESH_0][iSol]->GetSolverName();
-    vector<string> var_names = solver_container[selected_zone][INST_0][MESH_0][iSol]->GetSolutionFields();
+    map<string, unsigned short> var_map;
 
-    /*--- Remove the "PointID" entry if present (first entry) ---*/
-    if (!var_names.empty() && var_names[0].find("PointID") != string::npos) {
-      var_names.erase(var_names.begin());
-    }
+    /*--- For flow solvers, get primitive variable names ---*/
+    auto* solver = solver_container[selected_zone][INST_0][MESH_0][iSol];
+    if (solver_name.find("FLOW") != string::npos || solver_name.find("EULER") != string::npos ||
+        solver_name.find("NAVIER_STOKES") != string::npos || solver_name.find("RANS") != string::npos ||
+        solver_name.find("INC") != string::npos || solver_name.find("NEMO") != string::npos) {
 
-    /*--- Remove quotation marks from field names ---*/
-    for (auto& name : var_names) {
-      if (name.size() >= 2 && name.front() == '\"' && name.back() == '\"') {
-        name = name.substr(1, name.size() - 2);
+      /*--- Get primitive variable indices and names ---*/
+      const auto nDim = geometry_container[selected_zone][INST_0][MESH_0]->GetnDim();
+      const auto nSpecies = config_container[selected_zone]->GetnSpecies();
+      const bool incompressible = config_container[selected_zone]->GetKind_Regime() == ENUM_REGIME::INCOMPRESSIBLE;
+      const bool nemo = config_container[selected_zone]->GetKind_FluidModel() == ENUM_FLUIDMODEL::MUTATIONPP ||
+                        config_container[selected_zone]->GetKind_FluidModel() == ENUM_FLUIDMODEL::SU2_NONEQ;
+
+      CPrimitiveIndices<unsigned short> indices(incompressible, nemo, nDim, nSpecies);
+      var_map = PrimitiveNameToIndexMap(indices);
+    } else {
+      /*--- For non-flow solvers, use solution fields with sequential indices ---*/
+      vector<string> var_names = solver->GetSolutionFields();
+
+      /*--- Remove the "PointID" entry if present (first entry) ---*/
+      if (!var_names.empty() && var_names[0].find("PointID") != string::npos) {
+        var_names.erase(var_names.begin());
+      }
+
+      /*--- Remove quotation marks from field names and build map ---*/
+      unsigned short idx = 0;
+      for (auto& name : var_names) {
+        if (name.size() >= 2 && name.front() == '\"' && name.back() == '\"') {
+          name = name.substr(1, name.size() - 2);
+        }
+        var_map[name] = idx++;
       }
     }
 
-    result[solver_name] = var_names;
+    result[solver_name] = var_map;
   }
 
   return result;
 }
 
-void CDriverBase::SetResolvedSensors(const vector<tuple<unsigned short, unsigned short, string>>& sensor_locations) {
-  vector<CConfig::MetricSensorLocation> resolved_sensors;
-
-  for (const auto& [solver_idx, var_idx, name] : sensor_locations) {
-    CConfig::MetricSensorLocation loc;
-    loc.solver_idx = solver_idx;
-    loc.var_idx = var_idx;
-    loc.name = name;
-    resolved_sensors.push_back(loc);
-  }
-
-  config_container[selected_zone]->SetResolvedMetricSensors(resolved_sensors);
+void CDriverBase::SetMetricSensorIndices(const vector<unsigned short>& solver_idx, const vector<unsigned short>& var_idx, const vector<string>& names) {
+  config_container[selected_zone]->SetMetricSensorIndices(solver_idx, var_idx, names);
 }
 
-void CDriverBase::ResolveSensors() {
-  /*--- Get sensor list from config ---*/
-  const auto sensor_list = config_container[selected_zone]->GetMetricSensorList();
-  if (sensor_list.empty()) return;
-
-  /*--- Get available variables from all solvers ---*/
-  auto solver_vars = GetSolverVariables();
-
-  if (rank == MASTER_NODE) {
-    cout << "\n--- Resolving Metric Sensors ---" << endl;
-    cout << "Available solver variables:" << endl;
-    for (const auto& [solver_name, var_names] : solver_vars) {
-      cout << "  " << solver_name << ": ";
-      for (size_t i = 0; i < var_names.size(); i++) {
-        cout << var_names[i];
-        if (i < var_names.size() - 1) cout << ", ";
-      }
-      cout << endl;
-    }
-  }
-
-  vector<tuple<unsigned short, unsigned short, string>> resolved;
-
-  /*--- Resolve each sensor by searching all solvers ---*/
-  for (const auto& sensor : sensor_list) {
-    bool found = false;
-    unsigned short solver_idx = 0;
-
-    for (const auto& [solver_name, var_list] : solver_vars) {
-      auto var_it = find(var_list.begin(), var_list.end(), sensor);
-      if (var_it != var_list.end()) {
-        unsigned short var_idx = distance(var_list.begin(), var_it);
-        resolved.push_back(make_tuple(solver_idx, var_idx, sensor));
-        found = true;
-
-        if (rank == MASTER_NODE) {
-          cout << "Resolved '" << sensor << "' -> Solver " << solver_idx
-               << " (" << solver_name << "), Variable " << var_idx
-               << " (" << sensor << ")" << endl;
-        }
-        break;
-      }
-      solver_idx++;
-    }
-
-    if (!found) {
-      SU2_MPI::Error("Could not resolve sensor '" + sensor + "' in any solver", CURRENT_FUNCTION);
-    }
-  }
-
-  /*--- Store resolved sensors in config ---*/
-  SetResolvedSensors(resolved);
-}
-
-void CDriverBase::AllocateMetricArrays() {
+void CDriverBase::AllocateMetricSensorArrays() {
   /*--- Get resolved sensors from config ---*/
-  const auto& resolved_sensors = config_container[ZONE_0]->GetResolvedMetricSensors();
+  const auto nSensors = config_container[ZONE_0]->GetnMetricSensorIndices();
 
   /*--- Group sensors by solver to minimize solver calls ---*/
   map<unsigned short, vector<unsigned short>> sensors_by_solver;
-  for (const auto& sensor : resolved_sensors) {
-    sensors_by_solver[sensor.solver_idx].push_back(sensor.var_idx);
+  for (unsigned short iSensor = 0; iSensor < nSensors; iSensor++) {
+    const auto solver_idx = config_container[ZONE_0]->GetMetricSensorSolverIdx(iSensor);
+    const auto var_idx = config_container[ZONE_0]->GetMetricSensorVarIdx(iSensor);
+    sensors_by_solver[solver_idx].push_back(var_idx);
   }
 
   /*--- Allocate arrays for each solver ---*/
   for (const auto& entry : sensors_by_solver) {
-    solver_container[ZONE_0][INST_0][MESH_0][entry.first]->AllocateMetricArrays(entry.second);
+    solver_container[ZONE_0][INST_0][MESH_0][entry.first]->AllocateMetricSensorArrays(entry.second);
   }
 }

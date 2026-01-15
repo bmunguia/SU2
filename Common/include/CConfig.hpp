@@ -61,15 +61,6 @@ using namespace std;
 
 class CConfig {
 public:
-  /*!
-   * \brief Structure to store resolved metric sensor information
-   */
-  struct MetricSensorLocation {
-    unsigned short solver_idx;  /*!< \brief Index of the solver containing the variable */
-    unsigned short var_idx;     /*!< \brief Index of the variable within the solver */
-    string name;                /*!< \brief Name of the sensor */
-  };
-
 private:
   SU2_MPI::Comm SU2_Communicator; /*!< \brief MPI communicator of SU2.*/
   int rank, size;                 /*!< \brief MPI rank and size.*/
@@ -1276,7 +1267,9 @@ private:
   unsigned short Kind_Hessian_Method;      /*!< \brief Numerical method for computation of Hessians. */
   unsigned short nMetric_Sensor;           /*!< \brief Number of sensors to use for adaptation. */
   string* Metric_Sensor;                   /*!< \brief Sensors to use for adaptation (first entry is normalized, rest are Hessian-only). */
-  vector<MetricSensorLocation> Resolved_Metric_Sensors;  /*!< \brief Resolved sensor locations after processing */
+  vector<unsigned short> Metric_Sensor_Solver_Idx;  /*!< \brief Solver indices for resolved sensors */
+  vector<unsigned short> Metric_Sensor_Var_Idx;     /*!< \brief Variable indices for resolved sensors */
+  vector<string> Metric_Sensor_Names;               /*!< \brief Names of resolved sensors */
 
   unsigned short Metric_Norm;              /*!< \brief Lp-norm for mesh adaptation */
   unsigned long Metric_Complexity;         /*!< \brief Constraint mesh complexity */
@@ -10020,7 +10013,15 @@ public:
   unsigned short GetKind_Hessian_Method(void) const { return Kind_Hessian_Method; }
 
   /*!
-   * \brief Get adaptation sensor name by index
+   * \brief Get complete array of metric sensor names
+   * \return Array of sensor names
+   */
+  string* GetMetric_Sensor() const {
+    return Metric_Sensor;
+  }
+
+  /*!
+   * \brief Get metric sensor name by index
    * \param[in] iSens - Index of the sensor
    * \return Sensor name string
    */
@@ -10034,7 +10035,7 @@ public:
    * \brief Get the complete list of metric sensor names
    * \return Vector of sensor name strings
    */
-  vector<string> GetMetricSensorList() const {
+  vector<string> GetMetric_SensorList() const {
     return vector<string>(Metric_Sensor, Metric_Sensor + nMetric_Sensor);
   }
 
@@ -10045,16 +10046,45 @@ public:
   unsigned short GetnMetric_Sensor() const { return nMetric_Sensor; }
 
   /*!
-   * \brief Get the resolved sensor locations
-   * \return Vector of resolved sensor locations
+   * \brief Get the number of resolved metric sensors.
+   * \return Number of sensors.
    */
-  const vector<MetricSensorLocation>& GetResolvedMetricSensors() const { return Resolved_Metric_Sensors; }
+  unsigned short GetnMetricSensorIndices() const { return Metric_Sensor_Solver_Idx.size(); }
 
   /*!
-   * \brief Set the resolved sensor locations after Python processing
-   * \param[in] sensors - Vector of resolved sensor locations
+   * \brief Get the solver index for a specific sensor.
+   * \param[in] iSensor - Sensor index.
+   * \return Solver index.
    */
-  void SetResolvedMetricSensors(const vector<MetricSensorLocation>& sensors) { Resolved_Metric_Sensors = sensors; }
+  unsigned short GetMetricSensorSolverIdx(unsigned short iSensor) const { return Metric_Sensor_Solver_Idx[iSensor]; }
+
+  /*!
+   * \brief Get the variable index for a specific sensor.
+   * \param[in] iSensor - Sensor index.
+   * \return Variable index.
+   */
+  unsigned short GetMetricSensorVarIdx(unsigned short iSensor) const { return Metric_Sensor_Var_Idx[iSensor]; }
+
+  /*!
+   * \brief Get the name of a specific sensor.
+   * \param[in] iSensor - Sensor index.
+   * \return Sensor name.
+   */
+  const string& GetMetricSensorName(unsigned short iSensor) const { return Metric_Sensor_Names[iSensor]; }
+
+  /*!
+   * \brief Set the resolved metric sensor indices.
+   * \param[in] solver_idx - Vector of solver indices.
+   * \param[in] var_idx - Vector of variable indices.
+   * \param[in] names - Vector of sensor names.
+   */
+  void SetMetricSensorIndices(const vector<unsigned short>& solver_idx,
+                              const vector<unsigned short>& var_idx,
+                              const vector<string>& names) {
+    Metric_Sensor_Solver_Idx = solver_idx;
+    Metric_Sensor_Var_Idx = var_idx;
+    Metric_Sensor_Names = names;
+  }
 
   /*!
    * \brief Get adaptation norm value (Lp)
