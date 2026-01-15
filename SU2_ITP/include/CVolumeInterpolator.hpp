@@ -196,13 +196,17 @@ class CVolumeInterpolator {
                              CSolver** solver_container_src, CSolver** solver_container_dst,
                              bool initial_interp) = 0;
 
+    /*!
+     * \brief Postprocess interpolated solution (compute primitives, gradients, Hessians, etc.)
+     * \param[in] config - Configuration object
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_container_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
+     */
+    virtual void Postprocess(CConfig* config, CGeometry* geometry_dst, CSolver** solver_container_dst,
+                            bool initial_interp) = 0;
+
   protected:
-    virtual void LinearInterpolation(const CConfig *config, CGeometry* geometry_src, CGeometry* geometry_dst,
-                                     CSolver* solver_src, CSolver* solver_dst) { }
-
-    virtual void VolumeInterpolation(CGeometry* geometry_src, CSolver* solver_src, CSolver* solver_dst,
-                                     const vector<su2double> &coor_corrected, vector<unsigned long> &uncontainedNodes) { }
-
     void SurfaceInterpolation(CGeometry* geometry_src, CGeometry* geometry_dst, CSolver* solver_src,
                               CSolver* solver_dst);
 

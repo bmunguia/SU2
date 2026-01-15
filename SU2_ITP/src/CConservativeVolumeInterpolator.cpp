@@ -32,6 +32,7 @@
 #include "../../Common/include/fem/fem_standard_element.hpp"
 #include "../../Common/include/adt/CADTPointsOnlyClass.hpp"
 #include "../../Common/include/toolboxes/geometry_toolbox.hpp"
+#include "../../SU2_CFD/include/metrics/metricUtils.hpp"
 
 CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) {}
@@ -67,6 +68,11 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
       initial_interp = false;
     }
   }
+}
+
+void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* geometry_dst,
+                                                  CSolver** solver_container_dst, bool initial_interp) {
+  const int rank = SU2_MPI::GetRank();
 
   /*--- Preprocess the solution to get the primitive variables ---*/
   /*--- TODO: other solver configurations                      ---*/
@@ -74,6 +80,57 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
                                                 false);
   if (config->GetKind_Turb_Model() != TURB_MODEL::NONE) {
     solver_container_dst[TURB_SOL]->Postprocessing(geometry_dst, solver_container_dst, config, 0);
+  }
+
+  /*--- Compute metric field if requested ---*/
+  if (config->GetCompute_Metric()) {
+    if (rank == MASTER_NODE) {
+      cout << "Computing metric field for interpolated solution." << endl;
+    }
+
+    /*--- Resolve sensor indices from sensor names (only on first interpolation) ---*/
+    if (initial_interp) {
+      if (rank == MASTER_NODE) {
+        cout << "Resolving metric sensor indices." << endl;
+      }
+
+      bool resolved = MetricUtils::ResolveSensorIndices(
+        config,
+        geometry_dst,
+        solver_container_dst
+      );
+
+      if (resolved) {
+        /*--- Allocate metric sensor arrays ---*/
+        MetricUtils::InitializeMetrics(solver_container_dst);
+      } else {
+        if (rank == MASTER_NODE) {
+          cout << "Warning: Failed to resolve sensor indices. Skipping metric computation." << endl;
+        }
+        return;
+      }
+    }
+
+    /*--- Get the flow solver index ---*/
+    const auto solver_index = config->GetContainerPosition(RUNTIME_FLOW_SYS);
+
+    /*--- Compute primitive gradients for adaptation ---*/
+    solver_container_dst[solver_index]->SetPrimitive_Adapt(geometry_dst, config);
+
+    /*--- Compute Hessians ---*/
+    int idxVel = -1;
+    if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {
+      if (rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
+      solver_container_dst[solver_index]->SetHessian_GG(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
+    }
+    else if (config->GetKind_Hessian_Method() == L2_PROJECTION) {
+      if (rank == MASTER_NODE) cout << "Computing Hessians using L2-projection." << endl;
+      solver_container_dst[solver_index]->SetHessian_L2P(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
+    }
+
+    if (rank == MASTER_NODE) {
+      cout << "Metric field computation complete." << endl;
+    }
   }
 }
 

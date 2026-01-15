@@ -80,6 +80,16 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                      CSolver** solver_container_src, CSolver** solver_container_dst,
                      bool initial_interp) override;
 
+    /*!
+     * \brief Postprocess interpolated solution (compute primitives, gradients, Hessians, metrics).
+     * \param[in] config - Configuration object
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_container_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
+     */
+    void Postprocess(CConfig* config, CGeometry* geometry_dst, CSolver** solver_container_dst,
+                    bool initial_interp) override;
+
   private:
     /*!
      * \brief Conservative interpolation (Alauzet 2015).
