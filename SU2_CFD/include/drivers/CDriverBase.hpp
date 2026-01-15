@@ -516,29 +516,22 @@ class CDriverBase {
   map<string, unsigned short> GetPrimitiveIndices() const;
 
   /*!
+   * \brief Get metric sensor indices from all solvers.
+   * \return Map of solver names to maps of sensor names to variable indices.
+   */
+  map<string, map<string, unsigned short>> GetMetricSensorIndices() const;
+
+  /*!
    * \brief Get the list of metric sensor strings from config.
    * \return Vector of sensor name strings
    */
-  vector<string> GetMetric_SensorList() const;
+  vector<string> GetMetricSensorList() const;
 
   /*!
    * \brief Get all available solution variable names and indices per solver.
    * \return Map of solver_name -> map of variable_name -> index
    */
   map<string, map<string, unsigned short>> GetSolverVariables() const;
-
-  /*!
-   * \brief Set resolved sensor locations after Python processing.
-   * \param[in] solver_idx - Vector of solver indices
-   * \param[in] var_idx - Vector of variable indices
-   * \param[in] names - Vector of sensor names
-   */
-  void SetMetricSensorIndices(const vector<unsigned short>& solver_idx, const vector<unsigned short>& var_idx, const vector<string>& names);
-
-  /*!
-   * \brief Allocate Gradient_Adapt and Hessian arrays for resolved sensors in all solvers.
-   */
-  void AllocateMetricSensorArrays();
 
   /*!
    * \brief Get a read/write view of the current primitive variables on all mesh nodes of the flow solver.

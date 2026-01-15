@@ -207,6 +207,10 @@ public:
 
   vector<string> fields;
 
+  /*--- Metric sensor indices for mesh adaptation ---*/
+  vector<unsigned short> MetricSensorIndices;  /*!< \brief Variable indices for metric sensors in this solver. */
+  vector<string> MetricSensorNames;            /*!< \brief Names of metric sensors in this solver. */
+
 #ifdef HAVE_LIBROM
   std::unique_ptr<CAROM::BasisGenerator> u_basis_generator;
 #endif
@@ -4282,6 +4286,35 @@ public:
    * \return A vector containing the solution fields.
    */
   inline vector<string> GetSolutionFields() const{return fields;}
+
+  /*!
+   * \brief Get the metric sensor variable indices for this solver.
+   * \return Vector of variable indices used as metric sensors.
+   */
+  inline const vector<unsigned short>& GetMetricSensorIndices() const { return MetricSensorIndices; }
+
+  /*!
+   * \brief Get the metric sensor names for this solver.
+   * \return Vector of sensor names.
+   */
+  inline const vector<string>& GetMetricSensorNames() const { return MetricSensorNames; }
+
+  /*!
+   * \brief Set the metric sensor indices for this solver.
+   * \param[in] indices - Variable indices for metric sensors.
+   * \param[in] names - Names of metric sensors.
+   */
+  inline void SetMetricSensorIndices(const vector<unsigned short>& indices) {
+    MetricSensorIndices = indices;
+  }
+
+  /*!
+   * \brief Set the metric sensor names for this solver.
+   * \param[in] names - Names of metric sensors.
+   */
+  inline void SetMetricSensorNames(const vector<string>& names) {
+    MetricSensorNames = names;
+  }
 
   /*!
    * \brief A virtual member.

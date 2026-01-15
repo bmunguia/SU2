@@ -198,11 +198,11 @@ void CSolver::AllocateMetricSensorArrays(const vector<unsigned short>& sensor_in
 }
 
 void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
-  const auto nSensors = config->GetnMetricSensorIndices();
+  const auto nSensors = MetricSensorIndices.size();
 
   /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
   for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
-    const auto var_idx = config->GetMetricSensorVarIdx(iSensor);
+    const auto var_idx = MetricSensorIndices[iSensor];
 
     SU2_OMP_FOR_STAT(omp_chunk_size)
     for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
@@ -214,11 +214,11 @@ void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
 }
 
 void CSolver::SetSolution_Adapt(CGeometry *geometry, const CConfig *config) {
-  const auto nSensors = config->GetnMetricSensorIndices();
+  const auto nSensors = MetricSensorIndices.size();
 
   /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
   for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
-    const auto var_idx = config->GetMetricSensorVarIdx(iSensor);
+    const auto var_idx = MetricSensorIndices[iSensor];
 
     SU2_OMP_FOR_STAT(omp_chunk_size)
     for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
@@ -2328,7 +2328,7 @@ void CSolver::SetSolution_Gradient_L2P(CGeometry *geometry, const CConfig *confi
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = config->GetnMetricSensorIndices();
+  const auto nSensors = MetricSensorIndices.size();
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                              *geometry, *config, solution, 0, nSensors, idxVel, gradient);
@@ -2343,7 +2343,7 @@ void CSolver::SetHessian_L2P(CGeometry *geometry, const CConfig *config, short i
   /*--- Calculate the gradient ---*/
   const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = config->GetnMetricSensorIndices();
+  const auto nSensors = MetricSensorIndices.size();
 
   computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                                *geometry, *config, solution, 0, nSensors, idxVel, gradient);

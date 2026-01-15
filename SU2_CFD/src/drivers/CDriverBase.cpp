@@ -437,7 +437,34 @@ map<string, unsigned short> CDriverBase::GetPrimitiveIndices() const {
       main_config->GetNEMOProblem(), nDim, main_config->GetnSpecies()));
 }
 
-vector<string> CDriverBase::GetMetric_SensorList() const {
+map<string, map<string, unsigned short>> CDriverBase::GetMetricSensorIndices() const {
+  map<string, map<string, unsigned short>> result;
+
+  /*--- Loop through all potential solvers in the selected zone ---*/
+  for (unsigned short iSol = 0; iSol < MAX_SOLS; iSol++) {
+    if (solver_container[selected_zone][INST_0][MESH_0][iSol] == nullptr) continue;
+
+    const auto* solver = solver_container[selected_zone][INST_0][MESH_0][iSol];
+    const auto& indices = solver->GetMetricSensorIndices();
+    const auto& names = solver->GetMetricSensorNames();
+
+    if (!indices.empty()) {
+      string solver_name = solver->GetSolverName();
+      map<string, unsigned short> sensor_map;
+
+      /*--- Build map of sensor names to variable indices ---*/
+      for (size_t i = 0; i < indices.size(); ++i) {
+        sensor_map[names[i]] = indices[i];
+      }
+
+      result[solver_name] = sensor_map;
+    }
+  }
+
+  return result;
+}
+
+vector<string> CDriverBase::GetMetricSensorList() const {
   return config_container[selected_zone]->GetMetric_SensorList();
 }
 
@@ -489,26 +516,4 @@ map<string, map<string, unsigned short>> CDriverBase::GetSolverVariables() const
   }
 
   return result;
-}
-
-void CDriverBase::SetMetricSensorIndices(const vector<unsigned short>& solver_idx, const vector<unsigned short>& var_idx, const vector<string>& names) {
-  config_container[selected_zone]->SetMetricSensorIndices(solver_idx, var_idx, names);
-}
-
-void CDriverBase::AllocateMetricSensorArrays() {
-  /*--- Get resolved sensors from config ---*/
-  const auto nSensors = config_container[ZONE_0]->GetnMetricSensorIndices();
-
-  /*--- Group sensors by solver to minimize solver calls ---*/
-  map<unsigned short, vector<unsigned short>> sensors_by_solver;
-  for (unsigned short iSensor = 0; iSensor < nSensors; iSensor++) {
-    const auto solver_idx = config_container[ZONE_0]->GetMetricSensorSolverIdx(iSensor);
-    const auto var_idx = config_container[ZONE_0]->GetMetricSensorVarIdx(iSensor);
-    sensors_by_solver[solver_idx].push_back(var_idx);
-  }
-
-  /*--- Allocate arrays for each solver ---*/
-  for (const auto& entry : sensors_by_solver) {
-    solver_container[ZONE_0][INST_0][MESH_0][entry.first]->AllocateMetricSensorArrays(entry.second);
-  }
 }

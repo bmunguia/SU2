@@ -29,6 +29,7 @@
 #include "../../include/definition_structure.hpp"
 #include "../../include/output/COutput.hpp"
 #include "../../include/iteration/CIteration.hpp"
+#include "../../include/metrics/metricUtils.hpp"
 
 CSinglezoneDriver::CSinglezoneDriver(char* confFile,
                        unsigned short val_nZone,
@@ -49,16 +50,36 @@ void CSinglezoneDriver::StartSolver() {
 
   config_container[ZONE_0]->Set_StartTime(StartTime);
 
-  /*--- Allocate metric arrays if metric computation is enabled ---*/
-  /*--- NOTE: Sensor resolution should be done via Python wrapper initialize_metric_sensor_indices() ---*/
+  /*--- Resolve and allocate metric arrays if metric computation is enabled ---*/
   if (config_container[ZONE_0]->GetCompute_Metric()) {
-    /*--- Only allocate if sensor indices have been set (e.g., via Python wrapper) ---*/
-    const auto nSensors = config_container[ZONE_0]->GetnMetricSensorIndices();
-    if (nSensors > 0) {
-      AllocateMetricSensorArrays();
+    /*--- Resolve sensor indices from sensor names and store in solvers ---*/
+    if (rank == MASTER_NODE) {
+      cout << "Resolving metric sensor indices..." << endl;
+    }
+
+    bool resolved = MetricUtils::ResolveSensorIndices(
+      config_container[ZONE_0],
+      geometry_container[ZONE_0][INST_0][MESH_0],
+      solver_container[ZONE_0][INST_0][MESH_0]
+    );
+
+    if (resolved) {
+      /*--- Allocate metric sensor arrays ---*/
+      MetricUtils::InitializeMetrics(solver_container[ZONE_0][INST_0][MESH_0]);
+
+      /*--- Count total sensors for reporting ---*/
+      unsigned long total_sensors = 0;
+      for (unsigned short iSol = 0; iSol < MAX_SOLS; iSol++) {
+        if (solver_container[ZONE_0][INST_0][MESH_0][iSol] != nullptr) {
+          total_sensors += solver_container[ZONE_0][INST_0][MESH_0][iSol]->GetMetricSensorIndices().size();
+        }
+      }
+
+      if (rank == MASTER_NODE && total_sensors > 0) {
+        cout << "Successfully resolved " << total_sensors << " metric sensors." << endl;
+      }
     } else if (rank == MASTER_NODE) {
-      cout << "Warning: COMPUTE_METRIC is enabled but sensor indices not set." << endl;
-      cout << "         Call initialize_metric_sensor_indices() before StartSolver()." << endl;
+      cout << "Warning: COMPUTE_METRIC is enabled but no valid sensors found." << endl;
     }
   }
 
@@ -352,6 +373,10 @@ void CSinglezoneDriver::ComputeMetricField(bool restartMetric) {
 
   if (rank == MASTER_NODE){
     cout << endl <<"----------------------------- Compute Metric ----------------------------" << endl;
+  }
+
+  /*--- Sensor indices should already be resolved in StartSolver() ---*/
+  if (rank == MASTER_NODE) {
     cout << "Storing primitive variables needed for gradients in metric." << endl;
   }
   solver_flow->InitiateComms(geometry, config, MPI_QUANTITIES::SOLUTION);
