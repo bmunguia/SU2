@@ -73,11 +73,15 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
 void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* geometry_dst,
                                                   CSolver** solver_container_dst, bool initial_interp) {
   const int rank = SU2_MPI::GetRank();
+  const auto solver_index = config->GetContainerPosition(RUNTIME_FLOW_SYS);
+  auto* solver_flow = solver_container_dst[solver_index];
 
   /*--- Preprocess the solution to get the primitive variables ---*/
   /*--- TODO: other solver configurations                      ---*/
-  solver_container_dst[FLOW_SOL]->Preprocessing(geometry_dst, solver_container_dst, config, 0, 0, RUNTIME_FLOW_SYS,
-                                                false);
+  solver_flow->InitiateComms(geometry_dst, config, MPI_QUANTITIES::SOLUTION);
+  solver_flow->CompleteComms(geometry_dst, config, MPI_QUANTITIES::SOLUTION);
+  solver_flow->Preprocessing(geometry_dst, solver_container_dst, config, 0, 0, RUNTIME_FLOW_SYS,
+                             true);
   if (config->GetKind_Turb_Model() != TURB_MODEL::NONE) {
     solver_container_dst[TURB_SOL]->Postprocessing(geometry_dst, solver_container_dst, config, 0);
   }
@@ -100,32 +104,34 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
         solver_container_dst
       );
 
-      if (resolved) {
-        /*--- Allocate metric sensor arrays ---*/
-        MetricUtils::InitializeMetrics(solver_container_dst);
-      } else {
-        if (rank == MASTER_NODE) {
-          cout << "Warning: Failed to resolve sensor indices. Skipping metric computation." << endl;
-        }
-        return;
+    if (resolved) {
+      /*--- Allocate metric sensor arrays ---*/
+      MetricUtils::InitializeMetrics(solver_container_dst);
+      unsigned long total_num_sensor = MetricUtils::TotalNumSensors(solver_container_dst);
+
+      if (rank == MASTER_NODE && total_num_sensor > 0) {
+        cout << "Successfully resolved " << total_num_sensor << " metric sensors." << endl;
       }
+    } else {
+      /*--- No sensors resolved so return ---*/
+      if (rank == MASTER_NODE)
+        cout << "Warning: COMPUTE_METRIC is enabled but no valid sensors found." << endl;
+      return;
+    }
     }
 
-    /*--- Get the flow solver index ---*/
-    const auto solver_index = config->GetContainerPosition(RUNTIME_FLOW_SYS);
-
     /*--- Compute primitive gradients for adaptation ---*/
-    solver_container_dst[solver_index]->SetPrimitive_Adapt(geometry_dst, config);
+    solver_flow->SetPrimitive_Adapt(geometry_dst, config);
 
     /*--- Compute Hessians ---*/
     int idxVel = -1;
     if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {
       if (rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
-      solver_container_dst[solver_index]->SetHessian_GG(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
+      solver_flow->SetHessian_GG(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
     }
     else if (config->GetKind_Hessian_Method() == L2_PROJECTION) {
       if (rank == MASTER_NODE) cout << "Computing Hessians using L2-projection." << endl;
-      solver_container_dst[solver_index]->SetHessian_L2P(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
+      solver_flow->SetHessian_L2P(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
     }
 
     if (rank == MASTER_NODE) {

@@ -198,7 +198,7 @@ void CSolver::AllocateMetricSensorArrays(const vector<unsigned short>& sensor_in
 }
 
 void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
-  const auto nSensors = MetricSensorIndices.size();
+  const auto nSensors = GetnMetricSensor();
 
   /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
   for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
@@ -214,7 +214,7 @@ void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
 }
 
 void CSolver::SetSolution_Adapt(CGeometry *geometry, const CConfig *config) {
-  const auto nSensors = MetricSensorIndices.size();
+  const auto nSensors = GetnMetricSensor();
 
   /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
   for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
@@ -317,13 +317,13 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       ICOUNT           = nVar;
       break;
     case PERIODIC_GRAD_ADAPT:
-      ICOUNT          = config->GetnMetric_Sensor();
+      ICOUNT          = GetnMetricSensor();
       JCOUNT          = nDim;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
       break;
     case PERIODIC_HESSIAN:
-      ICOUNT          = config->GetnMetric_Sensor();
+      ICOUNT          = GetnMetricSensor();
       JCOUNT          = nSymMat;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
@@ -1500,11 +1500,11 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::GRADIENT_ADAPT:
-      COUNT_PER_POINT  = config->GetnMetric_Sensor()*nDim;
+      COUNT_PER_POINT  = GetnMetricSensor()*nDim;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::HESSIAN:
-      COUNT_PER_POINT  = config->GetnMetric_Sensor()*nSymMat;
+      COUNT_PER_POINT  = GetnMetricSensor()*nSymMat;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::METRIC:
@@ -2328,7 +2328,7 @@ void CSolver::SetSolution_Gradient_L2P(CGeometry *geometry, const CConfig *confi
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = MetricSensorIndices.size();
+  const auto nSensors = GetnMetricSensor();
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                              *geometry, *config, solution, 0, nSensors, idxVel, gradient);
@@ -2343,7 +2343,7 @@ void CSolver::SetHessian_L2P(CGeometry *geometry, const CConfig *config, short i
   /*--- Calculate the gradient ---*/
   const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = MetricSensorIndices.size();
+  const auto nSensors = GetnMetricSensor();
 
   computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                                *geometry, *config, solution, 0, nSensors, idxVel, gradient);
@@ -4573,8 +4573,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
   const unsigned long nPointDomain = geometry->GetnPointDomain();
 
   const bool normalize = (config->GetNormalize_Metric());
-
-  unsigned short nSensor = config->GetnMetric_Sensor();
+  unsigned short nSensor = GetnMetricSensor();
 
   const unsigned long time_iter = config->GetTimeIter();
   const bool steady = (config->GetTime_Marching() == TIME_MARCHING::STEADY);
@@ -4672,7 +4671,6 @@ void CSolver::AddMetrics(CSolver **solver, const CGeometry*geometry, const CConf
 
   const unsigned long nPointDomain = geometry->GetnPointDomain();
   const unsigned short nSymMat = 3*(nDim-1);
-  const unsigned short nVarFlo = solver[FLOW_SOL]->GetnVar();
 
   const unsigned long time_iter = config->GetTimeIter();
   const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||

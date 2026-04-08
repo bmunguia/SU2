@@ -1260,7 +1260,7 @@ private:
   /*--- Additional flamelet solver options ---*/
   FluidFlamelet_ParsedOptions flamelet_ParsedOptions; /*!< \brief Additional flamelet solver options */
 
-    /*--- Mesh adaptation options ---*/
+  /*--- Mesh adaptation options ---*/
   bool Compute_Metric;                     /*!< \brief Determines if error estimation is taking place */
   bool Compute_Metric_Geo;                 /*!< \brief Determines if surface geometry metric calculation is taking place */
   bool Normalize_Metric;                   /*!< \brief Determines if metric tensor normalization is taking place */

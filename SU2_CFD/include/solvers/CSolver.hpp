@@ -4288,6 +4288,12 @@ public:
   inline vector<string> GetSolutionFields() const{return fields;}
 
   /*!
+   * \brief Get the number of metric sensors assigned to this solver.
+   * \return Number of metric sensors in this solver.
+   */
+  inline unsigned short GetnMetricSensor() const { return static_cast<unsigned short>(MetricSensorIndices.size()); }
+
+  /*!
    * \brief Get the metric sensor variable indices for this solver.
    * \return Vector of variable indices used as metric sensors.
    */

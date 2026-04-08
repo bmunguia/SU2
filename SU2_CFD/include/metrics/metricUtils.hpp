@@ -2,7 +2,7 @@
  * \file metricUtils.hpp
  * \brief Utility functions for mesh adaptation metric computation.
  * \author B. Munguía
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -144,7 +144,12 @@ inline bool ResolveSensorIndices(
     solver_container[iSol]->SetMetricSensorNames(sensor_names_by_solver[iSol]);
   }
 
-  return all_resolved;
+  /*--- Return true if at least one sensor was resolved ---*/
+  const bool any_resolved = !sensor_indices_by_solver.empty();
+  if (!all_resolved && rank == MASTER_NODE) {
+    std::cerr << "Warning: Some sensors could not be resolved (see above). Proceeding with resolved sensors." << std::endl;
+  }
+  return any_resolved;
 }
 
 /*!
@@ -166,6 +171,21 @@ inline void InitializeMetrics(CSolver** solver_container) {
       solver_container[iSol]->AllocateMetricSensorArrays(indices);
     }
   }
+}
+
+/*!
+ * \brief Get total number of sensors in all solvers.
+ * \param[in] solver_container - Array of solvers [iSol]
+ * \return Number of sensors in all solvers.
+ */
+inline unsigned short TotalNumSensors(CSolver** solver_container) {
+  unsigned short num_sensor = 0;
+  for (unsigned short iSol = 0; iSol < MAX_SOLS; iSol++) {
+    if (solver_container[iSol] != nullptr) {
+      num_sensor += solver_container[iSol]->GetMetricSensorIndices().size();
+    }
+  }
+  return num_sensor;
 }
 
 } // namespace MetricUtils

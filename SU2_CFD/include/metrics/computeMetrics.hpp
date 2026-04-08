@@ -159,7 +159,7 @@ void setPositiveDefiniteMetrics(CGeometry& geometry, const CConfig& config,
   ScalarType A[nDim][nDim], EigVec[nDim][nDim], EigVal[nDim], work[nDim];
 
   /*--- Minimum eigenvalue threshold ---*/
-  const ScalarType eps = 1e-12;
+  const ScalarType eps = 1e-20;
 
   for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
     /*--- Get full metric tensor ---*/
