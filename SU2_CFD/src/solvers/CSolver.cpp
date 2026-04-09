@@ -29,7 +29,6 @@
 #include "../../include/solvers/CSolver.hpp"
 #include "../../include/gradients/computeGradientsGreenGauss.hpp"
 #include "../../include/gradients/computeGradientsLeastSquares.hpp"
-#include "../../include/gradients/computeGradientsL2Projection.hpp"
 #include "../../include/limiters/computeLimiters.hpp"
 #include "../../include/metrics/computeMetrics.hpp"
 #include "../../../Common/include/toolboxes/MMS/CIncTGVSolution.hpp"
@@ -190,43 +189,6 @@ CSolver::~CSolver() {
   Restart_Data = decltype(Restart_Data){};
 
   delete VerificationSolution;
-}
-
-void CSolver::AllocateMetricSensorArrays(const vector<unsigned short>& sensor_indices) {
-  if (base_nodes == nullptr || sensor_indices.empty()) return;
-  base_nodes->AllocateMetricSensorArrays(sensor_indices.size());
-}
-
-void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
-  const auto nSensors = GetnMetricSensor();
-
-  /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
-  for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
-    const auto var_idx = MetricSensorIndices[iSensor];
-
-    SU2_OMP_FOR_STAT(omp_chunk_size)
-    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
-      const su2double prim_var = base_nodes->GetPrimitive(iPoint, var_idx);
-      base_nodes->SetSensor_Adapt(iPoint, iSensor, prim_var);
-    }
-    END_SU2_OMP_FOR
-  }
-}
-
-void CSolver::SetSolution_Adapt(CGeometry *geometry, const CConfig *config) {
-  const auto nSensors = GetnMetricSensor();
-
-  /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
-  for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
-    const auto var_idx = MetricSensorIndices[iSensor];
-
-    SU2_OMP_FOR_STAT(omp_chunk_size)
-    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
-      const su2double prim_var = base_nodes->GetSolution(iPoint, var_idx);
-      base_nodes->SetSensor_Adapt(iPoint, iSensor, prim_var);
-    }
-    END_SU2_OMP_FOR
-  }
 }
 
 void CSolver::GetPeriodicCommCountAndType(const CConfig* config,

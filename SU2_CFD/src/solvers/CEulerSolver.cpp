@@ -1695,8 +1695,6 @@ void CEulerSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
       case LEAST_SQUARES:
       case WEIGHTED_LEAST_SQUARES:
         SetPrimitive_Gradient_LS(geometry, config, true); break;
-      case L2_PROJECTION:
-        SetPrimitive_Gradient_L2P(geometry, config, true); break;
       default: break;
     }
 

@@ -1635,14 +1635,12 @@ enum ENUM_FLOW_GRADIENT {
   GREEN_GAUSS            = 1,   /*!< \brief Gradient computation using Green-Gauss theorem. */
   LEAST_SQUARES          = 2,   /*!< \brief Gradient computation using unweighted least squares. */
   WEIGHTED_LEAST_SQUARES = 3,   /*!< \brief Gradients computation using inverse-distance weighted least squares. */
-  L2_PROJECTION          = 4    /*!< \brief Gradients computation using L2-projection. */
 };
 static const MapType<std::string, ENUM_FLOW_GRADIENT> Gradient_Map = {
   MakePair("NONE", NO_GRADIENT)
   MakePair("GREEN_GAUSS", GREEN_GAUSS)
   MakePair("LEAST_SQUARES", LEAST_SQUARES)
   MakePair("WEIGHTED_LEAST_SQUARES", WEIGHTED_LEAST_SQUARES)
-  MakePair("L2_PROJECTION", L2_PROJECTION)
 };
 
 /*!

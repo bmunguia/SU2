@@ -5923,7 +5923,7 @@ public:
       historyFilename = GetMultizone_FileName(historyFilename, GetiZone(), "");
 
     /*--- Append the restart iteration ---*/
-    if (GetTime_Domain() && GetRestart()) {
+    if (GetTime_Domain() && GetRestart() && GetRestart_Iter() > 0) { // BCM: hack for unsteady adaptation restart
       historyFilename = GetUnsteady_FileName(historyFilename, GetRestart_Iter(), "");
     }
 

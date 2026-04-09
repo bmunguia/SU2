@@ -129,10 +129,6 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
       if (rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
       solver_flow->SetHessian_GG(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
     }
-    else if (config->GetKind_Hessian_Method() == L2_PROJECTION) {
-      if (rank == MASTER_NODE) cout << "Computing Hessians using L2-projection." << endl;
-      solver_flow->SetHessian_L2P(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
-    }
 
     if (rank == MASTER_NODE) {
       cout << "Metric field computation complete." << endl;
