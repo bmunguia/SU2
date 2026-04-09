@@ -2,14 +2,14 @@
  * \file CDriverBase.hpp
  * \brief Base class for all drivers.
  * \author H. Patel, A. Gastaldi
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -516,22 +516,28 @@ class CDriverBase {
   map<string, unsigned short> GetPrimitiveIndices() const;
 
   /*!
-   * \brief Get metric sensor indices from all solvers.
-   * \return Map of solver names to maps of sensor names to variable indices.
+   * \brief Get the local index of a named metric sensor in the flow solver.
+   * Used by Python custom sensor registries to cache indices before the run loop.
+   * \param[in] sensor_name - Name as listed in METRIC_SENSOR config.
+   * \return Sensor index, or -1 if not found.
    */
-  map<string, map<string, unsigned short>> GetMetricSensorIndices() const;
+  short GetMetricSensorIndex(const std::string& sensor_name) const;
 
   /*!
-   * \brief Get the list of metric sensor strings from config.
-   * \return Vector of sensor name strings
+   * \brief Set the value of a metric sensor for a single node.
+   * \param[in] iPoint  - Node index.
+   * \param[in] iSensor - Local sensor index (from GetMetricSensorIndex).
+   * \param[in] value   - Sensor value at this node.
    */
-  vector<string> GetMetricSensorList() const;
+  void SetSensorAdapt(unsigned long iPoint, unsigned short iSensor, passivedouble value);
 
   /*!
-   * \brief Get all available solution variable names and indices per solver.
-   * \return Map of solver_name -> map of variable_name -> index
+   * \brief Get the value of a metric sensor at a single node.
+   * \param[in] iPoint  - Node index.
+   * \param[in] iSensor - Local sensor index (from GetMetricSensorIndex).
+   * \return Sensor value at this node.
    */
-  map<string, map<string, unsigned short>> GetSolverVariables() const;
+  passivedouble GetSensorAdapt(unsigned long iPoint, unsigned short iSensor) const;
 
   /*!
    * \brief Get a read/write view of the current primitive variables on all mesh nodes of the flow solver.
@@ -582,6 +588,18 @@ class CDriverBase {
    */
   inline void SetMarkerCustomNormalHeatFlux(unsigned short iMarker, unsigned long iVertex, passivedouble WallHeatFlux) {
     main_geometry->SetCustomBoundaryHeatFlux(iMarker, iVertex, WallHeatFlux);
+  }
+
+    /*!
+   * \brief Set the wall normal scalar values at a vertex on a specified marker (MARKER_PYTHON_CUSTOM).
+   * \note This can be the input of a scalar transport equation.
+   * \param[in] iMarker - Marker identifier.
+   * \param[in] iVertex - Vertex identifier.
+   * \param[in] WallScalar - Value of the normal heat flux.
+   */
+   inline void SetMarkerCustomScalar(unsigned short iMarker, unsigned long iVertex, vector<passivedouble> WallScalar) {
+    auto* solver = solver_container[selected_zone][INST_0][MESH_0][SPECIES_SOL];
+    solver->SetCustomBoundaryScalar(iMarker, iVertex, WallScalar);
   }
 
   /*!

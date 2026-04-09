@@ -17,6 +17,7 @@ class DivergenceFailure(EvaluationFailure):
 from SU2 import run
 from SU2 import io
 from SU2 import eval
+from SU2 import metric
 from SU2 import opt
 from SU2 import util
 
@@ -28,5 +29,5 @@ try:
         readline.parse_and_bind("bind ^I rl_complete")
     else:
         readline.parse_and_bind("tab: complete")
-except:
-    pass
+except Exception:
+    pass  # readline is optional, continue without it

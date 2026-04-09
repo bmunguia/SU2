@@ -2,14 +2,14 @@
  * \file CNEMOCompOutput.cpp
  * \brief Main subroutines for compressible flow output
  * \author W. Maier, R. Sanchez
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -298,6 +298,9 @@ void CNEMOCompOutput::SetVolumeOutputFields(CConfig *config){
 
   AddCommonFVMOutputs(config);
 
+  // Sensor value/gradient/Hessian, metric tensor, and dual-cell volume
+  AddMeshAdaptationOutputs(config);
+
   if (config->GetTime_Domain()) {
     SetTimeAveragedFields();
   }
@@ -383,6 +386,8 @@ void CNEMOCompOutput::LoadVolumeData(CConfig *config, CGeometry *geometry, CSolv
   LoadVolumeDataScalar(config, solver, geometry, iPoint);
 
   LoadCommonFVMOutputs(config, geometry, iPoint);
+
+  LoadMeshAdaptationOutputs(config, solver, geometry, iPoint);
 
   if (config->GetTime_Domain()) {
     LoadTimeAveragedData(iPoint, Node_Flow);

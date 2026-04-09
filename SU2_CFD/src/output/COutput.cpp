@@ -2,14 +2,14 @@
  * \file COutput.cpp
  * \brief Main subroutines for output solver information
  * \author F. Palacios, T. Economon
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -72,6 +72,8 @@ COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
   us_units(config->GetSystemMeasurements() == US) {
 
   cauchyTimeConverged = false;
+  maxTimeDelayActive = false;
+  PrevStopTime = 0.0;
 
   convergenceTable = new PrintingToolbox::CTablePrinter(&std::cout);
   multiZoneHeaderTable = new PrintingToolbox::CTablePrinter(&std::cout);
@@ -85,24 +87,9 @@ COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
   restartFilename = "restart";
   metricGeoFilename = "metric_geo";
 
-  /*--- Retrieve the history filename ---*/
+  /*--- Retrieve the history filename, including extension ---*/
 
-  historyFilename = config->GetConv_FileName();
-
-  /*--- Add the correct file extension depending on the file format ---*/
-
-  string hist_ext = ".csv";
-  if (config->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT) hist_ext = ".dat";
-
-  /*--- Append the zone ID ---*/
-
-  historyFilename = config->GetMultizone_HistoryFileName(historyFilename, config->GetiZone(), hist_ext);
-
-  /*--- Append the restart iteration ---*/
-
-  if (config->GetTime_Domain() && config->GetRestart() && config->GetRestart_Iter() > 0) { // BCM: hack for unsteady adaptation restart
-    historyFilename = config->GetUnsteady_FileName(historyFilename, config->GetRestart_Iter(), hist_ext);
-  }
+  historyFilename = config->GetHistory_FileName();
 
   historySep = ",";
 
@@ -403,17 +390,13 @@ void COutput::LoadData(CGeometry *geometry, CConfig *config, CSolver** solver_co
 
 }
 
-void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE format, string fileName){
+void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE format, string fileName) {
 
   /*--- File writer that will later be used to write the file to disk. Created below in the "switch" ---*/
   CFileWriter *fileWriter = nullptr;
 
   /*--- Set current time iter even if history file is not written ---*/
   curTimeIter = config->GetTimeIter();
-
-  /*--- If it is still present, strip the extension (suffix) from the filename ---*/
-  const auto lastindex = fileName.find_last_of('.');
-  fileName = fileName.substr(0, lastindex);
 
   /*--- If the filename with appended iteration is set (depending on the WRT_*_OVERWRITE options)
    *    two files are writen, the normal one and a copy to avoid overwriting previous outputs. ---*/
@@ -893,6 +876,7 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
 }
 
 bool COutput::GetCauchyCorrectedTimeConvergence(const CConfig *config){
+  // Handle Cauchy convergence delay for 2nd order time stepping
   if(!cauchyTimeConverged && TimeConvergence && config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND){
     // Change flags for 2nd order Time stepping: In case of convergence, this iter and next iter gets written out. then solver stops
     cauchyTimeConverged = TimeConvergence;
@@ -901,6 +885,25 @@ bool COutput::GetCauchyCorrectedTimeConvergence(const CConfig *config){
   else if(cauchyTimeConverged){
     TimeConvergence = cauchyTimeConverged;
   }
+
+  // Handle max time delay for 2nd order time stepping
+  // Delay stopping at max_time to ensure both timestep N and N-1 are written for proper restart
+  if(config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND){
+    const su2double cur_time = GetHistoryFieldValue("CUR_TIME");
+    const su2double max_time = config->GetMax_Time();
+    const bool final_time_reached = (cur_time >= max_time);
+
+    // If max_time is reached on first detection, delay the stop
+    if(final_time_reached && !maxTimeDelayActive){
+      maxTimeDelayActive = true;
+      TimeConvergence = false;  // Delay stop to run one more iteration
+    }
+    else if(maxTimeDelayActive){
+      TimeConvergence = true;   // Now allow stop
+      maxTimeDelayActive = false;   // Reset for next run
+    }
+  }
+
   return TimeConvergence;
 }
 
@@ -2200,8 +2203,12 @@ void COutput::SetCommonHistoryFields() {
   /// Description: The current time step
   AddHistoryOutput("TIME_STEP", "Time_Step", ScreenOutputFormat::SCIENTIFIC, "TIME_DOMAIN", "Current time step (s)");
 
+  /// BEGIN_GROUP: WALL_TIME, DESCRIPTION: Wall-clock timing information.
+  /// DESCRIPTION: The current iteration wall-clock time.
+  AddHistoryOutput("ITER_TIME", "Time(sec)", ScreenOutputFormat::FIXED, "WALL_TIME", "Time per iteration (s)");
   /// DESCRIPTION: Currently used wall-clock time.
   AddHistoryOutput("WALL_TIME", "Time(sec)", ScreenOutputFormat::SCIENTIFIC, "WALL_TIME", "Average wall-clock time since the start of inner iterations.");
+  /// END_GROUP
 
   AddHistoryOutput("NONPHYSICAL_POINTS", "Nonphysical_Points", ScreenOutputFormat::INTEGER, "NONPHYSICAL_POINTS", "The number of non-physical points in the solution");
 
@@ -2393,13 +2400,21 @@ void COutput::LoadCommonHistoryData(const CConfig *config) {
   SetHistoryOutputValue("INNER_ITER", curInnerIter);
   SetHistoryOutputValue("OUTER_ITER", curOuterIter);
 
-  su2double StopTime, UsedTime;
+  su2double StopTime, UsedTime, IterTime;
 
   StopTime = SU2_MPI::Wtime();
 
   UsedTime = (StopTime - config->Get_StartTime())/(curInnerIter+1);
 
+  if (curInnerIter == 0) {
+    IterTime = StopTime - config->Get_StartTime(); // First iteration measured from start
+  } else {
+    IterTime = StopTime - PrevStopTime;
+  }
+  PrevStopTime = StopTime;
+
   SetHistoryOutputValue("WALL_TIME", UsedTime);
+  SetHistoryOutputValue("ITER_TIME", IterTime);
 
   SetHistoryOutputValue("NONPHYSICAL_POINTS", config->GetNonphysical_Points());
 }

@@ -2,14 +2,14 @@
  * \file CFlowOutput.hpp
  * \brief  Headers of the flow output.
  * \author F. Palacios, T. Economon, M. Colonno
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -366,6 +366,6 @@ protected:
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] iPoint - Index of the point.
    */
-  void LoadMeshAdaptationOutputs(const CConfig* config, const CSolver* const* solver, const CGeometry* geometry, 
+  void LoadMeshAdaptationOutputs(const CConfig* config, const CSolver* const* solver, const CGeometry* geometry,
                                  unsigned long iPoint);
 };

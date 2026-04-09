@@ -30,6 +30,9 @@
 [submodule "externals/FADO"]
 	path = externals/FADO
 	url = https://github.com/pcarruscag/FADO.git
+[submodule "externals/eigen"]
+	path = externals/eigen
+	url = https://gitlab.com/libeigen/eigen.git
 [submodule "subprojects/libmeshb"]
 	path = subprojects/libmeshb
 	url = https://github.com/LoicMarechal/libMeshb.git

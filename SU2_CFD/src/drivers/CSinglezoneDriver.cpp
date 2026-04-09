@@ -2,14 +2,14 @@
  * \file driver_direct_singlezone.cpp
  * \brief The main subroutines for driving single-zone problems.
  * \author R. Sanchez
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -40,6 +40,29 @@ CSinglezoneDriver::CSinglezoneDriver(char* confFile,
 
   /*--- Initialize the counter for TimeIter ---*/
   TimeIter = 0;
+
+  /*--- Resolve and allocate metric sensor arrays if metric computation is enabled.
+   *    Done here so the arrays are ready regardless of whether the C++ StartSolver()
+   *    main loop or the Python wrapper (Preprocess/Run/Postprocess) is used. ---*/
+  if (config_container[ZONE_0]->GetCompute_Metric()) {
+    if (rank == MASTER_NODE)
+      cout << "Resolving metric sensor indices." << endl;
+
+    bool resolved = MetricUtils::ResolveSensorIndices(
+      config_container[ZONE_0],
+      geometry_container[ZONE_0][INST_0][MESH_0],
+      solver_container[ZONE_0][INST_0][MESH_0]
+    );
+
+    if (resolved) {
+      MetricUtils::InitializeMetrics(solver_container[ZONE_0][INST_0][MESH_0]);
+      unsigned long total_num_sensor = MetricUtils::TotalNumSensors(solver_container[ZONE_0][INST_0][MESH_0]);
+      if (rank == MASTER_NODE && total_num_sensor > 0)
+        cout << "Successfully resolved " << total_num_sensor << " metric sensors." << endl;
+    } else if (rank == MASTER_NODE) {
+      cout << "Warning: COMPUTE_METRIC is enabled but no valid sensors found." << endl;
+    }
+  }
 }
 
 CSinglezoneDriver::~CSinglezoneDriver() = default;
@@ -366,31 +389,23 @@ void CSinglezoneDriver::ComputeMetricField(bool restartMetric) {
 
   if (rank == MASTER_NODE){
     cout << endl <<"----------------------------- Compute Metric ----------------------------" << endl;
-  }
-
-  /*--- Sensor indices should already be resolved in StartSolver() ---*/
-  if (rank == MASTER_NODE) {
     cout << "Storing primitive variables needed for gradients in metric." << endl;
   }
-  solver_flow->InitiateComms(geometry, config, MPI_QUANTITIES::SOLUTION);
-  solver_flow->CompleteComms(geometry, config, MPI_QUANTITIES::SOLUTION);
-  solver_flow->Preprocessing(geometry, solver, config, MESH_0, NO_RK_ITER,
-                             RUNTIME_FLOW_SYS, true);
+
+  /*--- Set primitive variable adaptation sensors ---*/
+  /*--- Custom sensors should have already been set via python wrapper ---*/
   solver_flow->SetPrimitive_Adapt(geometry, config);
+  solver_flow->InitiateComms(geometry, config, MPI_QUANTITIES::SENSOR_ADAPT);
+  solver_flow->CompleteComms(geometry, config, MPI_QUANTITIES::SENSOR_ADAPT);
 
   if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {
     if(rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
     solver_flow->SetHessian_GG(geometry, config, idxVel, RUNTIME_FLOW_SYS);
   }
-  else if (config->GetKind_Hessian_Method() == L2_PROJECTION) {
-    if(rank == MASTER_NODE) cout << "Computing Hessians using L2-projection." << endl;
-    solver_flow->SetHessian_L2P(geometry, config, idxVel, RUNTIME_FLOW_SYS);
-  }
   else {
     SU2_MPI::Error("Unsupported Hessian method.", CURRENT_FUNCTION);
   }
 
-  //--- Metric
   if(rank == MASTER_NODE) cout << "Computing feature-based metric tensor." << endl;
   solver_flow->ComputeMetric(solver, geometry, config, restartMetric);
 }

@@ -2,14 +2,14 @@
  * \file CSolver.hpp
  * \brief Headers of the CSolver class which is inherited by all of the other solvers
  * \author F. Palacios, T. Economon
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -56,6 +56,8 @@
 #include "../../../Common/include/linear_algebra/blas_structure.hpp"
 #include "../../../Common/include/graph_coloring_structure.hpp"
 #include "../../../Common/include/toolboxes/MMS/CVerificationSolution.hpp"
+#include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
+#include "../limiters/CLimiterDetails.hpp"
 #include "../variables/CVariable.hpp"
 
 #ifdef HAVE_LIBROM
@@ -210,6 +212,7 @@ public:
   /*--- Metric sensor indices for mesh adaptation ---*/
   vector<unsigned short> MetricSensorIndices;  /*!< \brief Variable indices for metric sensors in this solver. */
   vector<string> MetricSensorNames;            /*!< \brief Names of metric sensors in this solver. */
+
 
 #ifdef HAVE_LIBROM
   std::unique_ptr<CAROM::BasisGenerator> u_basis_generator;
@@ -599,24 +602,6 @@ public:
   inline virtual void SetPrimitive_Limiter(CGeometry *geometry, const CConfig *config) { }
 
   /*!
-   * \brief Compute the Green-Gauss Hessian of the solution.
-   * \param[in] geometry - Geometrical definition of the problem.
-   * \param[in] config - Definition of the particular problem.
-   * \param[in] idxVel - Index to velocity, -1 if no velocity is present in the solver.
-   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
-   */
-  void SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
-
-  /*!
-   * \brief Compute the double L2-projection Hessian of the solution.
-   * \param[in] geometry - Geometrical definition of the problem.
-   * \param[in] config - Definition of the particular problem.
-   * \param[in] idxVel - Index to velocity, -1 if no velocity is present in the solver.
-   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
-   */
-  void SetHessian_L2P(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
-
-  /*!
    * \brief Set primitive variables for adaptation using resolved sensor locations.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
@@ -630,11 +615,36 @@ public:
    */
   virtual void SetSolution_Adapt(CGeometry *geometry, const CConfig *config);
 
-  /*!
+    /*!
    * \brief Allocate Gradient_Adapt and Hessian arrays for specified sensor variables.
    * \param[in] sensor_indices - Vector of variable indices for this solver to allocate arrays for
    */
   virtual void AllocateMetricSensorArrays(const vector<unsigned short>& sensor_indices);
+
+  /*!
+   * \brief Compute the Green-Gauss Hessian of the solution.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] idxVel - Index to velocity, -1 if no velocity is present in the solver.
+   * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
+   */
+  void SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
+
+  /*!
+   * \brief Compute the projection of a variable for MUSCL reconstruction.
+   * \note The result should be halved when added to i (or subtracted from j).
+   * \param[in] grad - Gradient vector.
+   * \param[in] vector_ij - Distance vector.
+   * \param[in] delta_ij - Centered difference.
+   * \param[in] kappa - Blending coefficient for U-MUSCL reconstruction.
+   * \param[in] ramp_val - Value of the 1st-2nd order MUSCL ramp.
+   * \return - Projected variable.
+   */
+  FORCEINLINE su2double MUSCL_Reconstruction(const su2double* grad, const su2double* vector_ij, su2double delta_ij,
+                                             su2double kappa, su2double ramp_val) const {
+    su2double project_grad = GeometryToolbox::DotProduct(nDim, grad, vector_ij);
+    return ramp_val * LimiterHelpers<>::umusclProjection(project_grad, delta_ij, kappa);
+  }
 
   /*!
    * \brief Set the old solution variables to the current solution value for Runge-Kutta iteration.
@@ -843,6 +853,16 @@ public:
                                     CNumerics      *visc_numerics,
                                     CConfig        *config,
                                     unsigned short val_marker) { }
+
+  /*!
+   * \brief Enforce Euler wall BC on a restricted or prolongated multigrid solution by
+   *        projecting the momentum to the tangent plane of the wall.
+   * \param[in] geometry - Coarse grid geometry.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] use_solution_old - If true, project Solution_Old (corrections); if false, project Solution.
+   */
+  inline virtual void MultigridProjectEulerWall(CGeometry* /*geometry*/, const CConfig* /*config*/,
+                                                bool /*use_solution_old*/) {}
 
   /*!
    * \brief A virtual member.
@@ -2908,6 +2928,16 @@ public:
                                            unsigned long val_vertex,
                                            unsigned short val_dim) const { return 0; }
 
+
+  /*!
+   * \brief Set the value of the customized normal scalar values/flux at a specified vertex on a specified marker.
+   * \param[in] val_marker - Marker value
+   * \param[in] val_vertex - Boundary vertex value
+   */
+  inline virtual void SetCustomBoundaryScalar(unsigned short val_marker, unsigned long val_vertex,
+    vector<passivedouble> val_customBoundaryScalar) {  }
+
+
   /*!
    * \brief A virtual member
    * \param[in] val_marker - Surface marker where the total temperature is set.
@@ -4436,24 +4466,24 @@ public:
     END_SU2_OMP_FOR
   }
 
-inline void CustomSourceResidual(CGeometry *geometry, CSolver **solver_container,
-                                 CNumerics **numerics_container, CConfig *config, unsigned short iMesh) {
+  inline void CustomSourceResidual(CGeometry *geometry, CSolver **solver_container,
+                                  CNumerics **numerics_container, CConfig *config, unsigned short iMesh) {
 
-  AD::StartNoSharedReading();
+    AD::StartNoSharedReading();
 
-  SU2_OMP_FOR_STAT(roundUpDiv(nPointDomain,2*omp_get_max_threads()))
-  for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
-    /*--- Get control volume size. ---*/
-    su2double Volume = geometry->nodes->GetVolume(iPoint);
-    /*--- Compute the residual for this control volume and subtract. ---*/
-    for (auto iVar = 0ul; iVar < nVar; iVar++) {
-      LinSysRes(iPoint,iVar) -= base_nodes->GetUserDefinedSource()(iPoint, iVar) * Volume;
+    SU2_OMP_FOR_STAT(roundUpDiv(nPointDomain,2*omp_get_max_threads()))
+    for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
+      /*--- Get control volume size. ---*/
+      su2double Volume = geometry->nodes->GetVolume(iPoint);
+      /*--- Compute the residual for this control volume and subtract. ---*/
+      for (auto iVar = 0ul; iVar < nVar; iVar++) {
+        LinSysRes(iPoint,iVar) -= base_nodes->GetUserDefinedSource()(iPoint, iVar) * Volume;
+      }
     }
-  }
-  END_SU2_OMP_FOR
+    END_SU2_OMP_FOR
 
-  AD::EndNoSharedReading();
-}
+    AD::EndNoSharedReading();
+  }
 
   /*!
    * \brief Compute the goal-oriented metric.

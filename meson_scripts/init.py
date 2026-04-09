@@ -4,14 +4,14 @@
 #  \brief Initializes necessary dependencies for SU2 either using git or it
 #         fetches zip files.
 #  \author T. Albring and F. Poli
-#  \version 8.2.0 "Harrier"
+#  \version 8.4.0 "Harrier"
 #
 # SU2 Project Website: https://su2code.github.io
 #
 # The SU2 Project is maintained by the SU2 Foundation
 # (http://su2foundation.org)
 #
-# Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+# Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
 #
 # SU2 is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -50,6 +50,7 @@ def init_submodules(
     own_mel=True,
     own_fado=True,
     own_mlpcpp=True,
+    own_eigen=True,
     own_libmeshb=True,
 ):
     cur_dir = sys.path[0]
@@ -60,7 +61,7 @@ def init_submodules(
     github_repo_codi = "https://github.com/scicompkl/CoDiPack"
     sha_version_medi = "0cfaf96e7a31a5a8941b97f84198da03a8f8bd7a"
     github_repo_medi = "https://github.com/SciCompKL/MeDiPack"
-    sha_version_opdi = "a5e2ac47035b6b3663f60d5f80b7a9fe62084867"
+    sha_version_opdi = "294807b0111ce241cda97db62f80cdd5012d9381"
     github_repo_opdi = "https://github.com/SciCompKL/OpDiLib"
     sha_version_meson = "5a82ea0501736a666ca9cc003ea0774f8219fd65"
     github_repo_meson = "https://github.com/mesonbuild/meson"
@@ -74,8 +75,15 @@ def init_submodules(
     github_repo_mel = "https://github.com/pcarruscag/MEL"
     sha_version_fado = "ce7ee018e4e699af5028d69baa1939fea290e18a"
     github_repo_fado = "https://github.com/pcarruscag/FADO"
-    sha_version_mlpcpp = "e19ca0cafb28c4b7ba5b8cffef42883259b00dc0"
+    sha_version_mlpcpp = "02f2cb9dde791074858e11ac091f7c4df9c6af65"
     github_repo_mlpcpp = "https://github.com/EvertBunschoten/MLPCpp"
+    sha_version_eigen = "d71c30c47858effcbd39967097a2d99ee48db464"
+    github_repo_eigen = "https://gitlab.com/libeigen/eigen.git"
+    # The download paths for gitlab are different than github so we need this ad-hoc fix.
+    # NOTE: Update the Eigen version in download_module when changing this.
+    download_eigen = (
+        "https://gitlab.com/libeigen/eigen/-/archive/3.4/eigen-3.4.zip?ref_type=heads"
+    )
     sha_version_libmeshb = "c3e8d187ced5aa231d50b5bef55158af0870ec63"
     github_repo_libmeshb = "https://github.com/LoicMarechal/libMeshb"
 
@@ -89,6 +97,7 @@ def init_submodules(
     mel_name = "MEL"
     fado_name = "FADO"
     mlpcpp_name = "MLPCpp"
+    eigen_name = "Eigen"
     libmeshb_name = "libmeshb"
 
     base_path = cur_dir + os.path.sep + "externals" + os.path.sep
@@ -99,6 +108,7 @@ def init_submodules(
     alt_name_ninja = base_path + "ninja"
     alt_name_mel = base_path + "mel"
     alt_name_fado = base_path + "FADO"
+    alt_name_eigen = base_path + "eigen"
     alt_name_libmeshb = cur_dir + os.path.sep + "subprojects" + os.path.sep + "libmeshb"
     alt_name_mpp = cur_dir + os.path.sep + "subprojects" + os.path.sep + "Mutationpp"
     alt_name_coolprop = cur_dir + os.path.sep + "subprojects" + os.path.sep + "CoolProp"
@@ -136,6 +146,8 @@ def init_submodules(
             submodule_status(alt_name_fado, sha_version_fado)
         if own_mlpcpp:
             submodule_status(alt_name_mlpcpp, sha_version_mlpcpp)
+        if own_eigen:
+            submodule_status(alt_name_eigen, sha_version_eigen)
         if own_libmeshb:
             submodule_status(alt_name_libmeshb, sha_version_libmeshb)
     # Otherwise download the zip file from git
@@ -177,6 +189,14 @@ def init_submodules(
         if own_mlpcpp:
             download_module(
                 mlpcpp_name, alt_name_mlpcpp, github_repo_mlpcpp, sha_version_mlpcpp
+            )
+        if own_eigen:
+            download_module(
+                eigen_name,
+                alt_name_eigen,
+                github_repo_eigen,
+                sha_version_eigen,
+                download_eigen,
             )
         if own_libmeshb:
             download_module(
@@ -263,7 +283,7 @@ def submodule_status(path, sha_commit):
             )
 
 
-def download_module(name, alt_name, git_repo, commit_sha):
+def download_module(name, alt_name, git_repo, commit_sha, download_url=None):
     # ZipFile does not preserve file permissions.
     # This is a workaround for that problem:
     # https://stackoverflow.com/questions/39296101/python-zipfile-removes-execute-permissions-from-binaries
@@ -299,11 +319,11 @@ def download_module(name, alt_name, git_repo, commit_sha):
             alt_filename = name + "-" + filename
             alt_filepath = os.path.join(sys.path[0], alt_filename)
 
-            url = git_repo + "/archive/" + filename
+            url = download_url or (git_repo + "/archive/" + filename)
 
             if not os.path.exists(filepath) and not os.path.exists(alt_filepath):
                 try:
-                    urllib.request.urlretrieve(url, commit_sha + ".zip")
+                    urllib.request.urlretrieve(url, filename)
                 except Exception as e:
                     print(e)
                     print("Download of module " + name + " failed.")
@@ -317,14 +337,20 @@ def download_module(name, alt_name, git_repo, commit_sha):
                 filepath = alt_filepath
 
             # Unzip file
-            zipf = MyZipFile(filepath)
-            zipf.extractall(target_dir)
+            with MyZipFile(filepath) as zipf:
+                zipf.extractall(target_dir)
 
             # Remove directory if exists
             if os.path.exists(alt_name):
                 os.rmdir(alt_name)
 
-            os.rename(os.path.join(target_dir, name + "-" + commit_sha), alt_name)
+            try:
+                os.rename(os.path.join(target_dir, name + "-" + commit_sha), alt_name)
+            except FileNotFoundError:
+                if "eigen" in url:
+                    os.rename(os.path.join(target_dir, "eigen-3.4"), alt_name)
+                else:
+                    raise
 
             # Delete zip file
             remove_file(filepath)

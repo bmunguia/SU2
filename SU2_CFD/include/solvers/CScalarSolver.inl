@@ -1,14 +1,14 @@
 /*!
  * \file CScalarSolver.inl
  * \brief Main subroutines of CScalarSolver class
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -144,6 +144,11 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
                            (config->GetKind_SlopeLimit_Flow() != LIMITER::VAN_ALBADA_EDGE) &&
                            (config->GetKind_SlopeLimit_Flow() != LIMITER::PIPERNO);
 
+  /*--- U-MUSCL reconstruction ---*/
+  const su2double kappa     = config->GetMUSCL_Kappa();
+  const su2double kappaFlow = config->GetMUSCL_Kappa_Flow();
+  const su2double musclRamp = config->GetMUSCLRampValue();
+
   auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
   const auto& edgeMassFluxes = *(solver_container[FLOW_SOL]->GetEdgeMassFluxes());
 
@@ -171,8 +176,6 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
     SU2_OMP_FOR_DYN(nextMultiple(OMP_MIN_SIZE, color.groupSize))
     for (auto k = 0ul; k < color.size; ++k) {
       auto iEdge = color.indices[k];
-
-      unsigned short iDim, iVar;
 
       /*--- Points in edge and normal vectors ---*/
 
@@ -204,9 +207,7 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
         const auto Coord_j = geometry->nodes->GetCoord(jPoint);
 
         su2double Vector_ij[MAXNDIM] = {0.0};
-        for (iDim = 0; iDim < nDim; iDim++) {
-          Vector_ij[iDim] = 0.5 * (Coord_j[iDim] - Coord_i[iDim]);
-        }
+        GeometryToolbox::Distance(nDim, Coord_j, Coord_i, Vector_ij);
 
         if (musclFlow && !bounded_scalar) {
           /*--- Reconstruct mean flow primitive variables, note that in bounded scalar mode this is
@@ -221,19 +222,19 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
             Limiter_j = flowNodes->GetLimiter_Primitive(jPoint);
           }
 
-          for (iVar = 0; iVar < solver_container[FLOW_SOL]->GetnPrimVarGrad(); iVar++) {
-            su2double Project_Grad_i = 0.0;
-            su2double Project_Grad_j = 0.0;
-            for (iDim = 0; iDim < nDim; iDim++) {
-              Project_Grad_i += Vector_ij[iDim] * Gradient_i[iVar][iDim];
-              Project_Grad_j -= Vector_ij[iDim] * Gradient_j[iVar][iDim];
-            }
+          for (auto iVar = 0u; iVar < solver_container[FLOW_SOL]->GetnPrimVarGrad(); iVar++) {
+            const su2double V_ij = V_j[iVar] - V_i[iVar];
+
+            su2double Project_Grad_i = MUSCL_Reconstruction(Gradient_i[iVar], Vector_ij, V_ij, kappaFlow, musclRamp);
+            su2double Project_Grad_j = MUSCL_Reconstruction(Gradient_j[iVar], Vector_ij, V_ij, kappaFlow, musclRamp);
+
             if (limiterFlow) {
               Project_Grad_i *= Limiter_i[iVar];
               Project_Grad_j *= Limiter_j[iVar];
             }
-            flowPrimVar_i[iVar] = V_i[iVar] + Project_Grad_i;
-            flowPrimVar_j[iVar] = V_j[iVar] + Project_Grad_j;
+
+            flowPrimVar_i[iVar] = V_i[iVar] + 0.5 * Project_Grad_i;
+            flowPrimVar_j[iVar] = V_j[iVar] - 0.5 * Project_Grad_j;
           }
 
           numerics->SetPrimitive(flowPrimVar_i, flowPrimVar_j);
@@ -250,18 +251,19 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
             Limiter_j = nodes->GetLimiter(jPoint);
           }
 
-          for (iVar = 0; iVar < nVar; iVar++) {
-            su2double Project_Grad_i = 0.0, Project_Grad_j = 0.0;
-            for (iDim = 0; iDim < nDim; iDim++) {
-              Project_Grad_i += Vector_ij[iDim] * Gradient_i[iVar][iDim];
-              Project_Grad_j -= Vector_ij[iDim] * Gradient_j[iVar][iDim];
-            }
+          for (auto iVar = 0u; iVar < nVar; iVar++) {
+            const su2double U_ij = Scalar_j[iVar] - Scalar_i[iVar];
+
+            su2double Project_Grad_i = MUSCL_Reconstruction(Gradient_i[iVar], Vector_ij, U_ij, kappa, musclRamp);
+            su2double Project_Grad_j = MUSCL_Reconstruction(Gradient_j[iVar], Vector_ij, U_ij, kappa, musclRamp);
+
             if (limiter) {
               Project_Grad_i *= Limiter_i[iVar];
               Project_Grad_j *= Limiter_j[iVar];
             }
-            solution_i[iVar] = Scalar_i[iVar] + Project_Grad_i;
-            solution_j[iVar] = Scalar_j[iVar] + Project_Grad_j;
+
+            solution_i[iVar] = Scalar_i[iVar] + 0.5 * Project_Grad_i;
+            solution_j[iVar] = Scalar_j[iVar] - 0.5 * Project_Grad_j;
           }
 
           numerics->SetScalarVar(solution_i, solution_j);
@@ -481,12 +483,11 @@ void CScalarSolver<VariableType>::PrepareImplicitIteration(CGeometry* geometry, 
     /*--- Right hand side of the system (-Residual) and initial guess (x = 0) ---*/
 
     for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-      unsigned long total_index = iPoint * nVar + iVar;
-      LinSysRes[total_index] = -LinSysRes[total_index];
-      LinSysSol[total_index] = 0.0;
+      LinSysRes(iPoint, iVar) = -LinSysRes(iPoint, iVar);
+      LinSysSol(iPoint, iVar) = 0.0;
 
       /*--- "Add" residual at (iPoint,iVar) to local residual variables. ---*/
-      ResidualReductions_PerThread(iPoint, iVar, LinSysRes[total_index], resRMS, resMax, idxMax);
+      ResidualReductions_PerThread(iPoint, iVar, LinSysRes(iPoint, iVar), resRMS, resMax, idxMax);
     }
   }
   END_SU2_OMP_FOR
@@ -498,7 +499,7 @@ void CScalarSolver<VariableType>::PrepareImplicitIteration(CGeometry* geometry, 
 template <class VariableType>
 void CScalarSolver<VariableType>::CompleteImplicitIteration(CGeometry* geometry, CSolver** solver_container,
                                                             CConfig* config) {
-  ComputeUnderRelaxationFactor(config);
+  ComputeUnderRelaxationFactor(solver_container, config);
 
   /*--- Update solution (system written in terms of increments) ---*/
 
@@ -833,4 +834,34 @@ void CScalarSolver<VariableType>::SetResidual_DualTime(CGeometry* geometry, CSol
     AD::EndNoSharedReading();
 
   }  // end dynamic grid
+}
+
+
+template <class VariableType>
+void CScalarSolver<VariableType>::PushSolutionBackInTime(unsigned long TimeIter, bool
+                                                         restart,CSolver*** solver_container,
+                                                         CGeometry** geometry, CConfig* config) {
+  const bool dual_time = config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST ||
+                         config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND;
+  const bool isRestartIter = restart && TimeIter == config->GetRestart_Iter();
+
+  /*--- The value of the solution for the first iteration of the dual time. ---*/
+
+  if (dual_time && (TimeIter == 0 || isRestartIter)) {
+    /*--- Push back the initial condition to previous solution containers
+     for a 1st-order restart or when simply initializing to freestream. ---*/
+
+    nodes->Set_Solution_time_n();
+    nodes->Set_Solution_time_n1();
+
+    if (isRestartIter && config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) {
+      /*--- Load an additional restart file for a 2nd-order restart ---*/
+
+      LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetRestart_Iter()-1), true);
+
+      /*--- Push back this new solution to time level N. ---*/
+
+      nodes->Set_Solution_time_n();
+    }
+  }
 }

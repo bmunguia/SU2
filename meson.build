@@ -1,6 +1,6 @@
 
 project('SU2', 'c', 'cpp',
-        version: '8.2.0 "Harrier"',
+        version: '8.4.0 "Harrier"',
         meson_version: '>=1.8.2',
         license: 'LGPL2',
         default_options: ['buildtype=release',
@@ -40,7 +40,10 @@ if build_machine.system() != 'windows'
                       '-Wno-error=missing-field-initializers',
                       '-Wno-missing-field-initializers',
                       '-Wno-error=class-memaccess',
-                      '-Wno-class-memaccess']
+                      '-Wno-class-memaccess',
+                      '-Wno-overloaded-virtual',
+                      '-Wno-array-bounds',
+                      '-Wno-dangling-pointer']
   foreach flag : desired_warnings
     if meson.get_compiler('cpp').has_argument(flag)
       default_warning_flags += flag
@@ -85,6 +88,8 @@ if omp
   omp_dep = dependency('openmp', language:'cpp')
 endif
 
+su2_deps += declare_dependency(include_directories: 'externals/eigen')
+
 if get_option('enable-autodiff') or get_option('enable-directdiff')
   codi_dep = [declare_dependency(include_directories: 'externals/codi/include')]
   codi_rev_args = ['-DCODI_REVERSE_TYPE']
@@ -119,6 +124,19 @@ if get_option('enable-autodiff') and not omp
     warning('The tape choice @0@ is not tested regularly in SU2'.format(get_option('codi-tape')))
   endif
 endif
+
+# Add Tracy dependency if enabled
+if get_option('enable-tracy')
+    tracy_dep = dependency('tracy', static: true)
+    su2_deps += tracy_dep
+    su2_cpp_args += '-DHAVE_TRACY'
+
+    # Add build type check
+    if get_option('buildtype') != 'debugoptimized'
+        warning('For optimal Tracy profiling, use --buildtype=debugoptimized')
+    endif
+endif
+
 
 # add cgns library
 if get_option('enable-cgns')
@@ -210,18 +228,10 @@ if get_option('enable-pastix')
          'PaStiX support requires either mkl or openblas')
 
   su2_cpp_args += '-DHAVE_PASTIX'
-
-  pastix_dep = dependency('pastix', required: false)
-
-  if not pastix_dep.found()
-    pastix_root = get_option('pastix_root')+'/install'
-    scotch_root = get_option('scotch_root')+'/lib'
-    pastix_dep  = declare_dependency(include_directories: pastix_root,
-                                    link_args: [ '-L../'+pastix_root, '-L../'+scotch_root,
-                                    '-lpastix', '-lscotch', '-lptscotch', '-lptscotcherr',
-                                    '-lm', '-lrt', '-lpthread'])
-  endif
-  su2_deps += pastix_dep
+  su2_deps += dependency('pastix')
+  su2_deps += meson.get_compiler('cpp').find_library('scotch', required: true)
+  su2_deps += meson.get_compiler('cpp').find_library('scotcherr', required: true)
+  su2_deps += meson.get_compiler('cpp').find_library('ptscotch', required: true)
 endif
 
 # CUDA dependencies
@@ -252,9 +262,11 @@ elif get_option('enable-openblas')
 
   su2_cpp_args += '-DHAVE_BLAS'
   su2_cpp_args += '-DHAVE_LAPACK'
-  blas_dep = dependency(get_option('blas-name'))
-  su2_deps += blas_dep
-
+  su2_deps += dependency(get_option('blas-name'))
+  su2_deps += dependency('lapack')
+  if get_option('enable-pastix')
+    su2_deps += dependency('lapacke')
+  endif
 endif
 
 if get_option('enable-librom')
@@ -367,7 +379,7 @@ endif
 
 message('''-------------------------------------------------------------------------
          |    ___ _   _ ___                                                      |
-         |   / __| | | |_  )   Release 8.2.0 "Harrier"                           |
+         |   / __| | | |_  )   Release 8.4.0 "Harrier"                           |
          |   \__ \ |_| |/ /                                                      |
          |   |___/\___//___|   Meson Configuration Summary                       |
          |                                                                       |
@@ -387,7 +399,8 @@ message('''---------------------------------------------------------------------
          libROM:         @11@
          CoolProp:       @12@
          MLPCpp:         @13@
-         GMF:            @14@
+         Tracy Profiler: @14@
+         GMF:            @15@
 
          Please be sure to add the $SU2_HOME and $SU2_RUN environment variables,
          and update your $PATH (and $PYTHONPATH if applicable) with $SU2_RUN
@@ -399,11 +412,11 @@ message('''---------------------------------------------------------------------
          export PATH=$PATH:$SU2_RUN
          export PYTHONPATH=$PYTHONPATH:$SU2_RUN
 
-         Use './ninja -C @14@ install' to compile and install SU2
+         Use './ninja -C @15@ install' to compile and install SU2
 '''.format(get_option('prefix')+'/bin', meson.project_source_root(), get_option('enable-tecio'), get_option('enable-cgns'),
            get_option('enable-autodiff'), get_option('enable-directdiff'), get_option('enable-pywrapper'), get_option('enable-mkl'),
            get_option('enable-openblas'), get_option('enable-pastix'), get_option('enable-mixedprec'), get_option('enable-librom'), get_option('enable-coolprop'),
-           get_option('enable-mlpcpp'), get_option('enable-gmf'),
+           get_option('enable-mlpcpp'), get_option('enable-tracy'), get_option('enable-gmf'),
            meson.project_build_root().startswith(meson.project_source_root()) ? meson.project_build_root().split('/')[-1] : meson.project_build_root()))
 
 if get_option('enable-mpp')

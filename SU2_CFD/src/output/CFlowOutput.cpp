@@ -2,14 +2,14 @@
  * \file CFlowOutput.cpp
  * \brief Common functions for flow output.
  * \author R. Sanchez
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -33,6 +33,7 @@
 #include "../../include/output/CFlowOutput.hpp"
 
 #include "../../../Common/include/geometry/CGeometry.hpp"
+#include "../../../Common/include/adt/CADTPointsOnlyClass.hpp"
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
 #include "../../include/solvers/CSolver.hpp"
 #include "../../include/variables/CPrimitiveIndices.hpp"
@@ -241,7 +242,7 @@ void CFlowOutput::SetAnalyzeSurface(const CSolver* const*solver, const CGeometry
               sqrt(config->GetBulk_Modulus()/(flow_nodes->GetDensity(iPoint)));
             }
             Temperature       = flow_nodes->GetTemperature(iPoint);
-            Enthalpy          = flow_nodes->GetSpecificHeatCp(iPoint)*Temperature;
+            Enthalpy          = flow_nodes->GetEnthalpy(iPoint);
             TotalTemperature  = Temperature + 0.5*Velocity2/flow_nodes->GetSpecificHeatCp(iPoint);
             TotalPressure     = Pressure + 0.5*Density*Velocity2;
           }
@@ -819,6 +820,56 @@ void CFlowOutput::SetCustomOutputs(const CSolver* const* solver, const CGeometry
   const bool axisymmetric = config->GetAxisymmetric();
   const auto* flowNodes = su2staticcast_p<const CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
 
+  /*--- Prepares the functor that maps symbol indices to values at a given point
+   * (see ConvertVariableSymbolsToIndices). ---*/
+  auto MakeFunctor = [&](const auto& output, unsigned long iPoint) {
+    return [&, iPoint](unsigned long i) {
+      if (i < CustomOutput::NOT_A_VARIABLE) {
+        const auto solIdx = i / CustomOutput::MAX_VARS_PER_SOLVER;
+        const auto varIdx = i % CustomOutput::MAX_VARS_PER_SOLVER;
+        if (solIdx == FLOW_SOL) {
+          return flowNodes->GetPrimitive(iPoint, varIdx);
+        }
+        return solver[solIdx]->GetNodes()->GetSolution(iPoint, varIdx);
+      }
+      return *output.otherOutputs[i - CustomOutput::NOT_A_VARIABLE];
+    };
+  };
+
+  /*--- Count probes that need processing and use heuristic to decide ADT vs linear search.
+        ADT overhead is only worth it for larger numbers of probes. ---*/
+  unsigned long nProbes = 0;
+  for (const auto& output : customOutputs) {
+    if (!output.skip && output.type == OperationType::PROBE) {
+      ++nProbes;
+    }
+  }
+
+  /*--- Heuristic: Build ADT if we have more than 10 probes. For small numbers of probes,
+        the overhead of building the ADT may not be worth it compared to linear search.
+        Note: If this threshold is increased, the regression test (probe_performance_11)
+        must be updated to ensure the ADT path is still tested. ---*/
+  const unsigned long ADT_THRESHOLD = 10;
+  const bool useADT = (nProbes > ADT_THRESHOLD);
+
+  /*--- Build ADT for probe nearest neighbor search if heuristic suggests it. ---*/
+  std::unique_ptr<CADTPointsOnlyClass> probeADT;
+  if (useADT) {
+    const unsigned long nPointDomain = geometry->GetnPointDomain();
+    vector<su2double> coords(nDim * nPointDomain);
+    vector<unsigned long> pointIDs(nPointDomain);
+
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; ++iPoint) {
+      pointIDs[iPoint] = iPoint;
+      for (unsigned short iDim = 0; iDim < nDim; ++iDim) {
+        coords[iPoint * nDim + iDim] = geometry->nodes->GetCoord(iPoint, iDim);
+      }
+    }
+
+    /*--- Build global ADT to find nearest nodes across all ranks. ---*/
+    probeADT = std::make_unique<CADTPointsOnlyClass>(nDim, nPointDomain, coords.data(), pointIDs.data(), true);
+  }
+
   for (auto& output : customOutputs) {
     if (output.skip) continue;
 
@@ -849,19 +900,34 @@ void CFlowOutput::SetCustomOutputs(const CSolver* const* solver, const CGeometry
         }
         su2double coord[3] = {};
         for (auto iDim = 0u; iDim < nDim; ++iDim) coord[iDim] = std::stod(output.markers[iDim]);
+        /*--- Use ADT for efficient nearest neighbor search instead of brute force. ---*/
         su2double minDist = std::numeric_limits<su2double>::max();
         unsigned long minPoint = 0;
-        for (auto iPoint = 0ul; iPoint < geometry->GetnPointDomain(); ++iPoint) {
-          const su2double dist = GeometryToolbox::SquaredDistance(nDim, coord, geometry->nodes->GetCoord(iPoint));
-          if (dist < minDist) {
-            minDist = dist;
-            minPoint = iPoint;
+        int rankID = -1;
+        int rank;
+        SU2_MPI::Comm_rank(SU2_MPI::GetComm(), &rank);
+
+        if (useADT && probeADT && !probeADT->IsEmpty()) {
+          /*--- Use ADT to find the nearest node efficiently (O(log n) instead of O(n)). ---*/
+          probeADT->DetermineNearestNode(coord, minDist, minPoint, rankID);
+          minDist = pow(minDist, 2);
+
+          /*--- Check if this rank owns the nearest point. ---*/
+          output.iPoint = (rankID == rank) ? minPoint : CustomOutput::PROBE_NOT_OWNED;
+        } else {
+          /*--- Use linear search for small numbers of probes or when ADT is not available. ---*/
+          for (auto iPoint = 0ul; iPoint < geometry->GetnPointDomain(); ++iPoint) {
+            const su2double dist = GeometryToolbox::SquaredDistance(nDim, coord, geometry->nodes->GetCoord(iPoint));
+            if (dist < minDist) {
+              minDist = dist;
+              minPoint = iPoint;
+            }
           }
+          /*--- Decide which rank owns the probe using Allreduce. ---*/
+          su2double globMinDist;
+          SU2_MPI::Allreduce(&minDist, &globMinDist, 1, MPI_DOUBLE, MPI_MIN, SU2_MPI::GetComm());
+          output.iPoint = fabs(minDist - globMinDist) < EPS ? minPoint : CustomOutput::PROBE_NOT_OWNED;
         }
-        /*--- Decide which rank owns the probe. ---*/
-        su2double globMinDist;
-        SU2_MPI::Allreduce(&minDist, &globMinDist, 1, MPI_DOUBLE, MPI_MIN, SU2_MPI::GetComm());
-        output.iPoint = fabs(minDist - globMinDist) < EPS ? minPoint : CustomOutput::PROBE_NOT_OWNED;
         if (output.iPoint != CustomOutput::PROBE_NOT_OWNED) {
           std::cout << "Probe " << output.name << " is using global point "
                     << geometry->nodes->GetGlobalIndex(output.iPoint)
@@ -879,33 +945,8 @@ void CFlowOutput::SetCustomOutputs(const CSolver* const* solver, const CGeometry
       continue;
     }
 
-    /*--- Prepares the functor that maps symbol indices to values at a given point
-     * (see ConvertVariableSymbolsToIndices). ---*/
-
-    auto MakeFunctor = [&](unsigned long iPoint) {
-      /*--- This returns another lambda that captures iPoint by value. ---*/
-      return [&, iPoint](unsigned long i) {
-        if (i < CustomOutput::NOT_A_VARIABLE) {
-          const auto solIdx = i / CustomOutput::MAX_VARS_PER_SOLVER;
-          const auto varIdx = i % CustomOutput::MAX_VARS_PER_SOLVER;
-          if (solIdx == FLOW_SOL) {
-            return flowNodes->GetPrimitive(iPoint, varIdx);
-          }
-          return solver[solIdx]->GetNodes()->GetSolution(iPoint, varIdx);
-        } else {
-          return *output.otherOutputs[i - CustomOutput::NOT_A_VARIABLE];
-        }
-      };
-    };
-
     if (output.type == OperationType::PROBE) {
-      su2double value = std::numeric_limits<su2double>::max();
-      if (output.iPoint != CustomOutput::PROBE_NOT_OWNED) {
-        value = output.Eval(MakeFunctor(output.iPoint));
-      }
-      su2double tmp = value;
-      SU2_MPI::Allreduce(&tmp, &value, 1, MPI_DOUBLE, MPI_MIN, SU2_MPI::GetComm());
-      SetHistoryOutputValue(output.name, value);
+      /*--- Probe evaluation will be done after all outputs are processed, with batched AllReduce. ---*/
       continue;
     }
 
@@ -934,16 +975,12 @@ void CFlowOutput::SetCustomOutputs(const CSolver* const* solver, const CGeometry
           }
           weight *= GetAxiFactor(axisymmetric, *geometry->nodes, iPoint, iMarker);
           local_integral[1] += weight;
-          local_integral[0] += weight * output.Eval(MakeFunctor(iPoint));
+          local_integral[0] += weight * output.Eval(MakeFunctor(output, iPoint));
         }
         END_SU2_OMP_FOR
       }
-
-      SU2_OMP_CRITICAL {
-        integral[0] += local_integral[0];
-        integral[1] += local_integral[1];
-      }
-      END_SU2_OMP_CRITICAL
+      atomicAdd(local_integral[0], integral[0]);
+      atomicAdd(local_integral[1], integral[1]);
     }
     END_SU2_OMP_PARALLEL
 
@@ -953,6 +990,33 @@ void CFlowOutput::SetCustomOutputs(const CSolver* const* solver, const CGeometry
       integral[0] /= integral[1];
     }
     SetHistoryOutputValue(output.name, integral[0]);
+  }
+
+  /*--- Batch AllReduce for all probe values to reduce MPI communication overhead. ---*/
+  if (nProbes > 0) {
+    /*--- Evaluate all probe values locally first. ---*/
+    vector<su2double> probeValues;
+    probeValues.reserve(nProbes);
+    for (auto& output : customOutputs) {
+      if (output.skip || output.type != OperationType::PROBE) continue;
+      su2double value = std::numeric_limits<su2double>::max();
+      if (output.iPoint != CustomOutput::PROBE_NOT_OWNED) {
+        value = output.Eval(MakeFunctor(output, output.iPoint));
+      }
+      probeValues.push_back(value);
+    }
+
+    /*--- Single AllReduce for all probe values. ---*/
+    unsigned long nProbesActual = probeValues.size();
+    vector<su2double> probeValuesGlobal(nProbesActual);
+    SU2_MPI::Allreduce(probeValues.data(), probeValuesGlobal.data(), nProbesActual, MPI_DOUBLE, MPI_MIN, SU2_MPI::GetComm());
+
+    /*--- Set history output values for all probes. ---*/
+    unsigned long iProbe = 0;
+    for (auto& output : customOutputs) {
+      if (output.skip || output.type != OperationType::PROBE) continue;
+      SetHistoryOutputValue(output.name, probeValuesGlobal[iProbe++]);
+    }
   }
 }
 
@@ -1721,6 +1785,9 @@ void CFlowOutput::AddAerodynamicCoefficients(const CConfig* config) {
   AddHistoryOutput("AOA", "AoA", ScreenOutputFormat::FIXED, "AOA", "Angle of attack");
 
   AddHistoryOutput("COMBO", "ComboObj", ScreenOutputFormat::SCIENTIFIC, "COMBO", "Combined obj. function value.", HistoryFieldType::COEFFICIENT);
+  // CUSTOM_OBJFUNC is added here so historyMap.py knows how to get its
+  // value, the actual output is COMBO.
+  if (false) AddHistoryOutput("CUSTOM_OBJFUNC", "ComboObj", ScreenOutputFormat::SCIENTIFIC, "COMBO", "Custom obj. function value.", HistoryFieldType::COEFFICIENT);
 }
 
 void CFlowOutput::SetAerodynamicCoefficients(const CConfig* config, const CSolver* flow_solver){
@@ -2442,13 +2509,9 @@ void CFlowOutput::WriteForcesBreakdown(const CConfig* config, const CSolver* flo
   const auto Ref_NonDim = config->GetRef_NonDim();
   const auto nMonitoring = config->GetnMarker_Monitoring();
 
-  auto fileName = config->GetBreakdown_FileName();
-  if (unsteady) {
-    const auto lastindex = fileName.find_last_of('.');
-    const auto ext = fileName.substr(lastindex, fileName.size());
-    fileName = fileName.substr(0, lastindex);
-    fileName = config->GetFilename(fileName, ext, curTimeIter);
-  }
+  string fileName = config->GetBreakdown_FileName();
+  fileName = config->GetFilename(fileName, ".dat", config->GetTimeIter());
+
 
   /*--- Output the mean flow solution using only the master node ---*/
 
@@ -2619,7 +2682,7 @@ void CFlowOutput::WriteForcesBreakdown(const CConfig* config, const CSolver* flo
   file << "\n";
   file << "-------------------------------------------------------------------------\n";
   file << "|    ___ _   _ ___                                                      |\n";
-  file << "|   / __| | | |_  )   Release 8.2.0 \"Harrier\"                           |\n";
+  file << "|   / __| | | |_  )   Release 8.4.0 \"Harrier\"                           |\n";
   file << "|   \\__ \\ |_| |/ /                                                      |\n";
   file << "|   |___/\\___//___|   Suite (Computational Fluid Dynamics Code)         |\n";
   file << "|                                                                       |\n";
@@ -2629,7 +2692,7 @@ void CFlowOutput::WriteForcesBreakdown(const CConfig* config, const CSolver* flo
   file << "| The SU2 Project is maintained by the SU2 Foundation                   |\n";
   file << "| (http://su2foundation.org)                                            |\n";
   file << "-------------------------------------------------------------------------\n";
-  file << "| Copyright 2012-2025, SU2 Contributors                                 |\n";
+  file << "| Copyright 2012-2026, SU2 Contributors                                 |\n";
   file << "|                                                                       |\n";
   file << "| SU2 is free software; you can redistribute it and/or                  |\n";
   file << "| modify it under the terms of the GNU Lesser General Public            |\n";
@@ -4126,6 +4189,13 @@ void CFlowOutput::AddMeshAdaptationOutputs(const CConfig* config) {
 
   // Anisotropic metric tensor, sensor gradients/Hessians, and dual-cell volume
   if(config->GetCompute_Metric()) {
+    // Sensor values (primitive and custom)
+    for (auto iSensor = 0u; iSensor < config->GetnMetric_Sensor(); iSensor++){
+      string sens_str = config->GetMetric_Sensor(iSensor);
+      string sens_title = ToTitleCase(sens_str);
+      AddVolumeOutput("SENSOR_" + sens_str, "Sensor_" + sens_title, "SENSOR_VALUE", "Value of sensor " + sens_title);
+    }
+
     // Gradients
     for (auto iSensor = 0u; iSensor < config->GetnMetric_Sensor(); iSensor++){
       string sens_str = config->GetMetric_Sensor(iSensor);
@@ -4171,19 +4241,6 @@ void CFlowOutput::AddMeshAdaptationOutputs(const CConfig* config) {
     AddVolumeOutput("VOLUME", "Volume", "VOLUME", "Dual-cell volume");
     AddVolumeOutput("TOTAL_VOLUME", "Total_Volume", "PERIODIC_VOLUME", "Dual-cell volume, including periodic volume");
   }
-
-  if(config->GetCompute_Metric_Geo()) {
-    // Common metric tensor components for both 2D and 3D
-    AddVolumeOutput("METRIC_GEO_XX", "Metric_Geo_xx", "METRIC_GEO", "x-x-component of the surface metric");
-    AddVolumeOutput("METRIC_GEO_XY", "Metric_Geo_xy", "METRIC_GEO", "x-y-component of the surface metric");
-    AddVolumeOutput("METRIC_GEO_YY", "Metric_Geo_yy", "METRIC_GEO", "y-y-component of the surface metric");
-    // Additional components for 3D
-    if (nDim == 3) {
-      AddVolumeOutput("METRIC_GEO_XZ", "Metric_Geo_xz", "METRIC_GEO", "x-z-component of the surface metric");
-      AddVolumeOutput("METRIC_GEO_YZ", "Metric_Geo_yz", "METRIC_GEO", "y-z-component of the surface metric");
-      AddVolumeOutput("METRIC_GEO_ZZ", "Metric_Geo_zz", "METRIC_GEO", "z-z-component of the surface metric");
-    }
-  }
 }
 
 void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver* const* solver, const CGeometry* geometry,
@@ -4194,6 +4251,12 @@ void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver
   if(config->GetCompute_Metric()) {
     const auto& Sensor_Names = solver[FLOW_SOL]->GetMetricSensorNames();
     const auto nSensor = solver[FLOW_SOL]->GetnMetricSensor();
+
+    // Sensor values (primitive and custom)
+    for (auto iSensor = 0u; iSensor < nSensor; iSensor++) {
+      const string& sens_str = Sensor_Names[iSensor];
+      SetVolumeOutputValue("SENSOR_" + sens_str, iPoint, Node_Flow->GetSensor_Adapt(iPoint, iSensor));
+    }
 
     // Gradients
     for (auto iSensor = 0u; iSensor < nSensor; iSensor++){
@@ -4238,19 +4301,5 @@ void CFlowOutput::LoadMeshAdaptationOutputs(const CConfig* config, const CSolver
     // Dual-cell volume
     SetVolumeOutputValue("VOLUME", iPoint, Node_Geo->GetVolume(iPoint));
     SetVolumeOutputValue("TOTAL_VOLUME", iPoint, Node_Geo->GetVolume(iPoint) + Node_Geo->GetPeriodicVolume(iPoint));
-  }
-
-  if(config->GetCompute_Metric_Geo()) {
-    // Common metric tensor components for both 2D and 3D
-    SetVolumeOutputValue("METRIC_GEO_XX", iPoint, Node_Geo->GetMetric(iPoint, 0));
-    SetVolumeOutputValue("METRIC_GEO_XY", iPoint, Node_Geo->GetMetric(iPoint, 1));
-    SetVolumeOutputValue("METRIC_GEO_YY", iPoint, Node_Geo->GetMetric(iPoint, 2));
-
-    // Additional components for 3D
-    if (nDim == 3) {
-      SetVolumeOutputValue("METRIC_GEO_XZ", iPoint, Node_Geo->GetMetric(iPoint, 3));
-      SetVolumeOutputValue("METRIC_GEO_YZ", iPoint, Node_Geo->GetMetric(iPoint, 4));
-      SetVolumeOutputValue("METRIC_GEO_ZZ", iPoint, Node_Geo->GetMetric(iPoint, 5));
-    }
   }
 }

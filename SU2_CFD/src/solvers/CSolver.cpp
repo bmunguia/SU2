@@ -2,14 +2,14 @@
  * \file CSolver.cpp
  * \brief Main subroutines for CSolver class.
  * \author F. Palacios, T. Economon
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -730,44 +730,46 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
             break;
 
-          case PERIODIC_SENSOR:
+          case PERIODIC_SENSOR: {
+            const bool msw = config->GetKind_Upwind_Flow() == UPWIND::MSW;
 
             /*--- For the centered schemes, the sensor must be computed
              consistently using info from the entire control volume
              on both sides of the periodic face. ---*/
 
-            Sensor_i = 0.0; Sensor_j = 0.0;
+            Sensor_i = 0; Sensor_j = 0;
             for (auto jPoint : geometry->nodes->GetPoints(iPoint)) {
 
               /*--- Avoid halos and boundary points so that we don't
                duplicate edges on both sides of the periodic BC. ---*/
 
-              if (!geometry->nodes->GetPeriodicBoundary(jPoint)) {
+              if (geometry->nodes->GetPeriodicBoundary(jPoint)) continue;
 
-                /*--- Use density instead of pressure for incomp. flows. ---*/
+              /*--- Use density instead of pressure for incomp. flows. ---*/
 
-                if ((config->GetKind_Regime() == ENUM_REGIME::INCOMPRESSIBLE)) {
-                  Pressure_i = base_nodes->GetDensity(iPoint);
-                  Pressure_j = base_nodes->GetDensity(jPoint);
-                } else {
-                  Pressure_i = base_nodes->GetPressure(iPoint);
-                  Pressure_j = base_nodes->GetPressure(jPoint);
-                }
-
-                boundary_i = geometry->nodes->GetPhysicalBoundary(iPoint);
-                boundary_j = geometry->nodes->GetPhysicalBoundary(jPoint);
-
-                /*--- Both points inside domain, or both on boundary ---*/
-                /*--- iPoint inside the domain, jPoint on the boundary ---*/
-
-                if (!boundary_i || boundary_j) {
-                  if (geometry->nodes->GetDomain(iPoint)) {
-                    Sensor_i += (Pressure_j - Pressure_i);
-                    Sensor_j += (Pressure_i + Pressure_j);
-                  }
-                }
-
+              if (config->GetKind_Regime() == ENUM_REGIME::INCOMPRESSIBLE) {
+                Pressure_i = base_nodes->GetDensity(iPoint);
+                Pressure_j = base_nodes->GetDensity(jPoint);
+              } else {
+                Pressure_i = base_nodes->GetPressure(iPoint);
+                Pressure_j = base_nodes->GetPressure(jPoint);
               }
+
+              boundary_i = geometry->nodes->GetPhysicalBoundary(iPoint);
+              boundary_j = geometry->nodes->GetPhysicalBoundary(jPoint);
+
+              /*--- Both points inside domain, or both on boundary ---*/
+              /*--- iPoint inside the domain, jPoint on the boundary ---*/
+
+              if ((!boundary_i || boundary_j) && geometry->nodes->GetDomain(iPoint)) {
+                if (msw) {
+                  Sensor_i = fmax(Sensor_i, fabs(Pressure_j - Pressure_i)) / fmin(Pressure_i, Pressure_j);
+                } else {
+                  Sensor_i += (Pressure_j - Pressure_i);
+                  Sensor_j += (Pressure_i + Pressure_j);
+                }
+              }
+
             }
 
             /*--- Store the sensor increments to buffer. After summing
@@ -777,7 +779,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
             buf_offset++;
             bufDSend[buf_offset] = Sensor_j;
 
-            break;
+          } break;
 
           case PERIODIC_SOL_GG:
           case PERIODIC_SOL_GG_R:
@@ -1112,7 +1114,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
   unsigned short nPeriodic = config->GetnMarker_Periodic();
   unsigned short iDim, jDim, iVar, jVar, iMat, iPeriodic, nNeighbor;
 
-  unsigned long iPoint, iRecv, nRecv, msg_offset, buf_offset, total_index;
+  unsigned long iPoint, iRecv, nRecv, msg_offset, buf_offset;
 
   int source, iMessage, jRecv;
 
@@ -1257,8 +1259,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
                 if (iPeriodic == val_periodic_index + nPeriodic/2) {
                   for (iVar = 0; iVar < nVar; iVar++) {
                     LinSysRes(iPoint, iVar) = 0.0;
-                    total_index = iPoint*nVar+iVar;
-                    Jacobian.DeleteValsRowi(total_index);
+                    Jacobian.DeleteValsRowi(iPoint, iVar);
                   }
                 }
 
@@ -1313,8 +1314,13 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
 
               /*--- Simple accumulation of the sensors on periodic faces. ---*/
 
-              iPoint_UndLapl[iPoint] += bufDRecv[buf_offset]; buf_offset++;
-              jPoint_UndLapl[iPoint] += bufDRecv[buf_offset];
+              if (config->GetKind_Upwind_Flow() == UPWIND::MSW) {
+                iPoint_UndLapl[iPoint] = fmax(iPoint_UndLapl[iPoint], bufDRecv[buf_offset++]);
+                jPoint_UndLapl[iPoint] = 1;
+              } else {
+                iPoint_UndLapl[iPoint] += bufDRecv[buf_offset++];
+                jPoint_UndLapl[iPoint] += bufDRecv[buf_offset];
+              }
 
               break;
 
@@ -1499,16 +1505,16 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = nVar;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
+    case MPI_QUANTITIES::SENSOR_ADAPT:
+      COUNT_PER_POINT  = GetnMetricSensor();
+      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      break;
     case MPI_QUANTITIES::GRADIENT_ADAPT:
       COUNT_PER_POINT  = GetnMetricSensor()*nDim;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     case MPI_QUANTITIES::HESSIAN:
       COUNT_PER_POINT  = GetnMetricSensor()*nSymMat;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
-      break;
-    case MPI_QUANTITIES::METRIC:
-      COUNT_PER_POINT  = nSymMat;
       MPI_TYPE         = COMM_TYPE_DOUBLE;
       break;
     default:
@@ -1633,6 +1639,10 @@ void CSolver::InitiateComms(CGeometry *geometry,
           case MPI_QUANTITIES::SENSOR:
             bufDSend[buf_offset] = base_nodes->GetSensor(iPoint);
             break;
+          case MPI_QUANTITIES::SENSOR_ADAPT:
+            for (iVar = 0; iVar < GetnMetricSensor(); iVar++)
+              bufDSend[buf_offset+iVar] = base_nodes->GetSensor_Adapt(iPoint, iVar);
+            break;
           case MPI_QUANTITIES::SOLUTION_GRADIENT:
           case MPI_QUANTITIES::PRIMITIVE_GRADIENT:
           case MPI_QUANTITIES::SOLUTION_GRAD_REC:
@@ -1647,10 +1657,6 @@ void CSolver::InitiateComms(CGeometry *geometry,
             for (iVar = 0; iVar < nVarHess; iVar++)
               for (iMat = 0; iMat < nSymMat; iMat++)
                 bufDSend[buf_offset+iVar*nSymMat+iMat] = gradient(iPoint, iVar, iMat);
-            break;
-          case MPI_QUANTITIES::METRIC:
-            for (iMat = 0; iMat < nSymMat; iMat++)
-              bufDSend[buf_offset+iMat] = base_nodes->GetMetric(iPoint, iMat);
             break;
           case MPI_QUANTITIES::SOLUTION_FEA:
             for (iVar = 0; iVar < nVar; iVar++) {
@@ -1792,6 +1798,10 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::SENSOR:
             base_nodes->SetSensor(iPoint,bufDRecv[buf_offset]);
             break;
+          case MPI_QUANTITIES::SENSOR_ADAPT:
+            for (iVar = 0; iVar < GetnMetricSensor(); iVar++)
+               base_nodes->SetSensor_Adapt(iPoint, iVar, bufDRecv[buf_offset+iVar]);
+            break;
           case MPI_QUANTITIES::SOLUTION_GRADIENT:
           case MPI_QUANTITIES::PRIMITIVE_GRADIENT:
           case MPI_QUANTITIES::SOLUTION_GRAD_REC:
@@ -1806,10 +1816,6 @@ void CSolver::CompleteComms(CGeometry *geometry,
             for (iVar = 0; iVar < nVarHess; iVar++)
               for (iMat = 0; iMat < nSymMat; iMat++)
                 gradient(iPoint, iVar, iMat) = bufDRecv[buf_offset+iVar*nSymMat+iMat];
-            break;
-          case MPI_QUANTITIES::METRIC:
-            for (iMat = 0; iMat < nSymMat; iMat++)
-              base_nodes->SetMetric(iPoint, iMat, SU2_TYPE::GetValue(bufDRecv[buf_offset+iMat]));
             break;
           case MPI_QUANTITIES::SOLUTION_FEA:
             for (iVar = 0; iVar < nVar; iVar++) {
@@ -1935,19 +1941,24 @@ void CSolver::AdaptCFLNumber(CGeometry **geometry,
       /* Sum the RMS residuals for all equations. */
 
       New_Func = 0.0;
+      unsigned short totalVars = 0;
       for (unsigned short iVar = 0; iVar < solverFlow->GetnVar(); iVar++) {
         New_Func += log10(solverFlow->GetRes_RMS(iVar));
+        ++totalVars;
       }
       if ((iMesh == MESH_0) && solverTurb) {
         for (unsigned short iVar = 0; iVar < solverTurb->GetnVar(); iVar++) {
           New_Func += log10(solverTurb->GetRes_RMS(iVar));
+          ++totalVars;
         }
       }
       if ((iMesh == MESH_0) && solverSpecies) {
         for (unsigned short iVar = 0; iVar < solverSpecies->GetnVar(); iVar++) {
           New_Func += log10(solverSpecies->GetRes_RMS(iVar));
+          ++totalVars;
         }
       }
+      New_Func /= totalVars;
 
       /* Compute the difference in the nonlinear residuals between the
        current and previous iterations, taking care with very low initial
@@ -2076,13 +2087,9 @@ void CSolver::AdaptCFLNumber(CGeometry **geometry,
     /* Reduce the min/max/avg local CFL numbers. */
 
     if ((iMesh == MESH_0) && fullComms) {
-      SU2_OMP_CRITICAL
-      { /* OpenMP reduction. */
-        Min_CFL_Local = min(Min_CFL_Local,myCFLMin);
-        Max_CFL_Local = max(Max_CFL_Local,myCFLMax);
-        Avg_CFL_Local += myCFLSum;
-      }
-      END_SU2_OMP_CRITICAL
+      atomicMin(myCFLMin, Min_CFL_Local);
+      atomicMax(myCFLMax, Max_CFL_Local);
+      atomicAdd(myCFLSum, Avg_CFL_Local);
 
       BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
       { /* MPI reduction. */
@@ -2316,43 +2323,58 @@ void CSolver::SetSolution_Gradient_LS(CGeometry *geometry, const CConfig *config
   computeGradientsLeastSquares(this, comm, commPer, *geometry, *config, weighted, solution, 0, nVar, idxVel, gradient, rmatrix);
 }
 
-void CSolver::SetSolution_Gradient_L2P(CGeometry *geometry, const CConfig *config, short idxVel, bool reconstruction) {
+void CSolver::AllocateMetricSensorArrays(const vector<unsigned short>& sensor_indices) {
+  if (base_nodes == nullptr || sensor_indices.empty()) return;
+  base_nodes->AllocateMetricSensorArrays(sensor_indices.size());
+}
 
-  const auto& solution = base_nodes->GetSolution();
-  auto& gradient = reconstruction? base_nodes->GetGradient_Reconstruction() : base_nodes->GetGradient();
-  const auto comm = reconstruction? MPI_QUANTITIES::SOLUTION_GRAD_REC : MPI_QUANTITIES::SOLUTION_GRADIENT;
-  const auto commPer = reconstruction? PERIODIC_SOL_GG_R : PERIODIC_SOL_GG;
-  computeGradientsL2Projection(this, comm, commPer, *geometry, *config, solution, 0, nVar, idxVel, gradient);
+void CSolver::SetPrimitive_Adapt(CGeometry *geometry, const CConfig *config) {
+  const auto nSensors = GetnMetricSensor();
+
+  /*--- Copy each resolved sensor variable into Sensor_Adapt.
+   *    Slots with index == USHRT_MAX are custom (Python-defined) sensors
+   *    and must be filled externally via CDriverBase::SetSensorAdapt. ---*/
+  for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
+    const auto var_idx = MetricSensorIndices[iSensor];
+    if (var_idx == std::numeric_limits<unsigned short>::max()) continue;
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+      const su2double prim_var = base_nodes->GetPrimitive(iPoint, var_idx);
+      base_nodes->SetSensor_Adapt(iPoint, iSensor, prim_var);
+    }
+    END_SU2_OMP_FOR
+  }
+}
+
+void CSolver::SetSolution_Adapt(CGeometry *geometry, const CConfig *config) {
+  const auto nSensors = GetnMetricSensor();
+
+  /*--- Copy each resolved sensor variable into Sensor_Adapt ---*/
+  for (size_t iSensor = 0; iSensor < nSensors; iSensor++) {
+    const auto var_idx = MetricSensorIndices[iSensor];
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+      const su2double prim_var = base_nodes->GetSolution(iPoint, var_idx);
+      base_nodes->SetSensor_Adapt(iPoint, iSensor, prim_var);
+    }
+    END_SU2_OMP_FOR
+  }
 }
 
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = GetnMetricSensor();
+  auto nHess = GetnMetricSensor();
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
-                             *geometry, *config, solution, 0, nSensors, idxVel, gradient);
+                             *geometry, *config, solution, 0, nHess, idxVel, gradient);
 
   auto& hessian = base_nodes->GetHessian();
 
   computeHessiansGreenGauss(this, MPI_QUANTITIES::HESSIAN, PERIODIC_HESSIAN,
-                            *geometry, *config, gradient, 0, nSensors, idxVel, hessian);
-}
-
-void CSolver::SetHessian_L2P(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
-  /*--- Calculate the gradient ---*/
-  const auto& solution = base_nodes->GetSensor_Adapt();
-  auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nSensors = GetnMetricSensor();
-
-  computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
-                               *geometry, *config, solution, 0, nSensors, idxVel, gradient);
-
-  /*--- Calculate the Hessian ---*/
-  auto& hessian = base_nodes->GetHessian();
-
-  computeHessiansL2Projection(this, MPI_QUANTITIES::HESSIAN, PERIODIC_HESSIAN,
-                              *geometry, *config, gradient, 0, nSensors, idxVel, hessian);
+                            *geometry, *config, gradient, 0, nHess, idxVel, hessian);
 }
 
 void CSolver::SetUndivided_Laplacian(CGeometry *geometry, const CConfig *config) {
@@ -2457,6 +2479,7 @@ void CSolver::SetGridVel_Gradient(CGeometry *geometry, const CConfig *config) co
 void CSolver::SetSolution_Limiter(CGeometry *geometry, const CConfig *config) {
 
   const auto kindLimiter = config->GetKind_SlopeLimit();
+  const auto umusclKappa = config->GetMUSCL_Kappa();
   const auto& solution = base_nodes->GetSolution();
   const auto& gradient = base_nodes->GetGradient_Reconstruction();
   auto& solMin = base_nodes->GetSolution_Min();
@@ -2464,7 +2487,7 @@ void CSolver::SetSolution_Limiter(CGeometry *geometry, const CConfig *config) {
   auto& limiter = base_nodes->GetLimiter();
 
   computeLimiters(kindLimiter, this, MPI_QUANTITIES::SOLUTION_LIMITER, PERIODIC_LIM_SOL_1, PERIODIC_LIM_SOL_2,
-                  *geometry, *config, 0, nVar, solution, gradient, solMin, solMax, limiter);
+                  *geometry, *config, 0, nVar, umusclKappa, solution, gradient, solMin, solMax, limiter);
 }
 
 void CSolver::Gauss_Elimination(su2double** A, su2double* rhs, unsigned short nVar) {
@@ -2957,7 +2980,6 @@ void CSolver::Read_SU2_Restart_ASCII(CGeometry *geometry, const CConfig *config,
   /*--- First, check that this is not a binary restart file. ---*/
 
   char fname[100];
-  val_filename += ".csv";
   strcpy(fname, val_filename.c_str());
   int magic_number;
 
@@ -3106,7 +3128,6 @@ void CSolver::Read_SU2_Restart_ASCII(CGeometry *geometry, const CConfig *config,
 void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config, string val_filename) {
 
   char str_buf[CGNS_STRING_SIZE], fname[100];
-  val_filename += ".dat";
   strcpy(fname, val_filename.c_str());
   const int nRestart_Vars = 5;
   Restart_Vars.resize(nRestart_Vars);
@@ -3574,7 +3595,7 @@ void CSolver::Read_SU2_Restart_Metadata(CGeometry *geometry, CConfig *config, bo
 
       position = text_line.find ("ITER=",0);
       if (position != string::npos) {
-        // TODO: 'ITER=' has 5 chars, not 9!
+       // TODO: 'ITER=' has 5 chars, not 9!
         text_line.erase (0,9); InnerIter_ = atoi(text_line.c_str());
       }
 
@@ -3757,12 +3778,6 @@ void CSolver::LoadInletProfile(CGeometry **geometry,
   const auto KIND_SOLVER = val_kind_solver;
   const auto KIND_MARKER = val_kind_marker;
 
-  const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||
-                             (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) ||
-                             (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING);
-
-  const auto iZone = config->GetiZone();
-  const auto nZone = config->GetnZone();
 
   auto profile_filename = config->GetInlet_FileName();
 
@@ -3791,17 +3806,6 @@ void CSolver::LoadInletProfile(CGeometry **geometry,
   //if (config->GetEnergy_Equation() ==false)
   //nCol_InletFile = nCol_InletFile -1;
 
-  /*--- Multizone problems require the number of the zone to be appended. ---*/
-
-  if (nZone > 1)
-    profile_filename = config->GetMultizone_FileName(profile_filename, iZone, ".dat");
-
-  /*--- Modify file name for an unsteady restart ---*/
-
-  if (time_stepping)
-    profile_filename = config->GetUnsteady_FileName(profile_filename, val_iter, ".dat");
-
-
   // create vector of column names
   for (unsigned short iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
 
@@ -3818,7 +3822,7 @@ void CSolver::LoadInletProfile(CGeometry **geometry,
     // are stored in p_value and t_value and the flow direction in flow_dir_or_vel, while for a
     // supersonic inlet the static conditions are stored in p_value and t_value and the flow
     // velocity in flow_dir_or_vel.
-    su2double p_value, t_value;
+    su2double p_value{}, t_value{};
     const su2double* flow_dir_or_vel = nullptr;
 
     if (KIND_MARKER == INLET_FLOW) {
@@ -4251,7 +4255,7 @@ void CSolver::ComputeVertexTractions(CGeometry *geometry, const CConfig *config)
         // Calculate tn in the fluid nodes for the viscous term
         if (viscous_flow) {
           const su2double Viscosity = base_nodes->GetLaminarViscosity(iPoint);
-          su2double Tau[3][3];
+          su2double Tau[3][3] = {{}};
           CNumerics::ComputeStressTensor(nDim, Tau, base_nodes->GetVelocityGradient(iPoint), Viscosity);
           for (unsigned short iDim = 0; iDim < nDim; iDim++) {
             auxForce[iDim] += GeometryToolbox::DotProduct(nDim, Tau[iDim], Normal);
@@ -4429,14 +4433,6 @@ void CSolver::BasicLoadRestart(CGeometry *geometry, const CConfig *config, const
 
 //  Read_SU2_Restart_Metadata(geometry[MESH_0], config, true, filename);
 
-  /*--- Read the restart data from either an ASCII or binary SU2 file. ---*/
-
-  if (config->GetRead_Binary_Restart()) {
-    Read_SU2_Restart_Binary(geometry, config, filename);
-  } else {
-    Read_SU2_Restart_ASCII(geometry, config, filename);
-  }
-
   /*--- Load data from the restart into correct containers. ---*/
 
   unsigned long iPoint_Global_Local = 0;
@@ -4567,13 +4563,12 @@ void CSolver::SavelibROM(CGeometry *geometry, CConfig *config, bool converged) {
 
 }
 
+
 void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config, bool restartMetric) {
   /*--- TODO: - goal-oriented metric ---*/
   /*---       - metric intersection  ---*/
   const unsigned long nPointDomain = geometry->GetnPointDomain();
-
-  const bool normalize = (config->GetNormalize_Metric());
-  unsigned short nSensor = GetnMetricSensor();
+  const unsigned short nSensor = GetnMetricSensor();
 
   const unsigned long time_iter = config->GetTimeIter();
   const bool steady = (config->GetTime_Marching() == TIME_MARCHING::STEADY);
@@ -4581,12 +4576,13 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
                              (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) ||
                              (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING);
   const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1) || (steady);
+  const bool normalize = (config->GetNormalize_Metric());
 
   /*--- Integrate and normalize the metric tensor field ---*/
   vector<double> integrals;
   for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
     SU2_OMP_MASTER
-    /*--- Make the Hessian eigenvalues positive definite, and add to the metric tensor ---*/
+    /*--- Make the Hessian eigenvalues positive definite ---*/
     auto& hessians = base_nodes->GetHessian();
     setPositiveDefiniteMetrics<su2double, tensor::hessian>(*geometry, *config, iSensor, hessians);
 
@@ -4609,8 +4605,9 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
     if (is_last_iter) {
       integrals.push_back(integral);
       if (rank == MASTER_NODE) {
+        const string& sensor_name = (iSensor < MetricSensorNames.size()) ? MetricSensorNames[iSensor] : "unknown";
         cout << "Global metric normalization integral for sensor ";
-        cout << config->GetMetric_Sensor(iSensor) << ": " << integral << endl;
+        cout << sensor_name << ": " << integral << endl;
       }
     }
     END_SU2_OMP_MASTER

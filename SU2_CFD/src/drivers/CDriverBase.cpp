@@ -2,14 +2,14 @@
  * \file CDriverBase.hpp
  * \brief Base class template for all drivers.
  * \author H. Patel, A. Gastaldi
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser/ General Public
@@ -437,83 +437,35 @@ map<string, unsigned short> CDriverBase::GetPrimitiveIndices() const {
       main_config->GetNEMOProblem(), nDim, main_config->GetnSpecies()));
 }
 
-map<string, map<string, unsigned short>> CDriverBase::GetMetricSensorIndices() const {
-  map<string, map<string, unsigned short>> result;
-
-  /*--- Loop through all potential solvers in the selected zone ---*/
-  for (unsigned short iSol = 0; iSol < MAX_SOLS; iSol++) {
-    if (solver_container[selected_zone][INST_0][MESH_0][iSol] == nullptr) continue;
-
-    const auto* solver = solver_container[selected_zone][INST_0][MESH_0][iSol];
-    const auto& indices = solver->GetMetricSensorIndices();
-    const auto& names = solver->GetMetricSensorNames();
-
-    if (!indices.empty()) {
-      string solver_name = solver->GetSolverName();
-      map<string, unsigned short> sensor_map;
-
-      /*--- Build map of sensor names to variable indices ---*/
-      for (size_t i = 0; i < indices.size(); ++i) {
-        sensor_map[names[i]] = indices[i];
-      }
-
-      result[solver_name] = sensor_map;
-    }
-  }
-
-  return result;
+short CDriverBase::GetMetricSensorIndex(const string& sensor_name) const {
+  auto* flow_solver = solver_container[selected_zone][INST_0][MESH_0][FLOW_SOL];
+  if (flow_solver == nullptr) return -1;
+  const auto& names = flow_solver->GetMetricSensorNames();
+  auto it = std::find(names.begin(), names.end(), sensor_name);
+  if (it == names.end()) return -1;
+  return static_cast<short>(it - names.begin());
 }
 
-vector<string> CDriverBase::GetMetricSensorList() const {
-  return config_container[selected_zone]->GetMetric_SensorList();
+void CDriverBase::SetSensorAdapt(unsigned long iPoint, unsigned short iSensor, passivedouble value) {
+  auto* flow_solver = solver_container[selected_zone][INST_0][MESH_0][FLOW_SOL];
+  if (flow_solver == nullptr)
+    SU2_MPI::Error("Flow solver does not exist.", CURRENT_FUNCTION);
+  if (iSensor >= flow_solver->GetnMetricSensor())
+    SU2_MPI::Error("Sensor index " + to_string(iSensor) + " out of range.", CURRENT_FUNCTION);
+  if (iPoint >= main_geometry->GetnPoint())
+    SU2_MPI::Error("Node index " + to_string(iPoint) + " out of range.", CURRENT_FUNCTION);
+
+  flow_solver->GetNodes()->SetSensor_Adapt(iPoint, iSensor, value);
 }
 
-map<string, map<string, unsigned short>> CDriverBase::GetSolverVariables() const {
-  map<string, map<string, unsigned short>> result;
+passivedouble CDriverBase::GetSensorAdapt(unsigned long iPoint, unsigned short iSensor) const {
+  auto* flow_solver = solver_container[selected_zone][INST_0][MESH_0][FLOW_SOL];
+  if (flow_solver == nullptr)
+    SU2_MPI::Error("Flow solver does not exist.", CURRENT_FUNCTION);
+  if (iSensor >= flow_solver->GetnMetricSensor())
+    SU2_MPI::Error("Sensor index " + to_string(iSensor) + " out of range.", CURRENT_FUNCTION);
+  if (iPoint >= main_geometry->GetnPoint())
+    SU2_MPI::Error("Node index " + to_string(iPoint) + " out of range.", CURRENT_FUNCTION);
 
-  /*--- Loop through all potential solvers in the selected zone ---*/
-  for (unsigned short iSol = 0; iSol < MAX_SOLS; iSol++) {
-    if (solver_container[selected_zone][INST_0][MESH_0][iSol] == nullptr) continue;
-
-    string solver_name = solver_container[selected_zone][INST_0][MESH_0][iSol]->GetSolverName();
-    map<string, unsigned short> var_map;
-
-    /*--- For flow solvers, get primitive variable names ---*/
-    auto* solver = solver_container[selected_zone][INST_0][MESH_0][iSol];
-    if (solver_name.find("FLOW") != string::npos || solver_name.find("EULER") != string::npos ||
-        solver_name.find("NAVIER_STOKES") != string::npos || solver_name.find("RANS") != string::npos ||
-        solver_name.find("INC") != string::npos || solver_name.find("NEMO") != string::npos) {
-
-      /*--- Get primitive variable indices and names ---*/
-      const auto nDim = geometry_container[selected_zone][INST_0][MESH_0]->GetnDim();
-      const auto nSpecies = config_container[selected_zone]->GetnSpecies();
-      const bool incompressible = config_container[selected_zone]->GetKind_Regime() == ENUM_REGIME::INCOMPRESSIBLE;
-      const bool nemo = config_container[selected_zone]->GetKind_FluidModel() == ENUM_FLUIDMODEL::MUTATIONPP ||
-                        config_container[selected_zone]->GetKind_FluidModel() == ENUM_FLUIDMODEL::SU2_NONEQ;
-
-      CPrimitiveIndices<unsigned short> indices(incompressible, nemo, nDim, nSpecies);
-      var_map = PrimitiveNameToIndexMap(indices);
-    } else {
-      /*--- For non-flow solvers, use solution fields with sequential indices ---*/
-      vector<string> var_names = solver->GetSolutionFields();
-
-      /*--- Remove the "PointID" entry if present (first entry) ---*/
-      if (!var_names.empty() && var_names[0].find("PointID") != string::npos) {
-        var_names.erase(var_names.begin());
-      }
-
-      /*--- Remove quotation marks from field names and build map ---*/
-      unsigned short idx = 0;
-      for (auto& name : var_names) {
-        if (name.size() >= 2 && name.front() == '\"' && name.back() == '\"') {
-          name = name.substr(1, name.size() - 2);
-        }
-        var_map[name] = idx++;
-      }
-    }
-
-    result[solver_name] = var_map;
-  }
-
-  return result;
+  return SU2_TYPE::GetValue(flow_solver->GetNodes()->GetSensor_Adapt(iPoint, iSensor));
 }

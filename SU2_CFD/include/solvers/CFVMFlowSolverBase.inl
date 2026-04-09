@@ -1,14 +1,14 @@
 /*!
  * \file CFVMFlowSolverBase.inl
  * \brief Base class template for all FVM flow solvers.
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
  * The SU2 Project is maintained by the SU2 Foundation
  * (http://su2foundation.org)
  *
- * Copyright 2012-2025, SU2 Contributors (cf. AUTHORS.md)
+ * Copyright 2012-2026, SU2 Contributors (cf. AUTHORS.md)
  *
  * SU2 is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -94,7 +94,8 @@ void CFVMFlowSolverBase<V, R>::Allocate(const CConfig& config) {
 
   /*--- Define some auxiliar vector related with the undivided lapalacian computation ---*/
 
-  if ((config.GetKind_ConvNumScheme_Flow() == SPACE_CENTERED) && (MGLevel == MESH_0)) {
+  if ((config.GetKind_ConvNumScheme_Flow() == SPACE_CENTERED && MGLevel == MESH_0) ||
+      config.GetKind_Upwind_Flow() == UPWIND::MSW) {
     iPoint_UndLapl.resize(nPointDomain);
     jPoint_UndLapl.resize(nPointDomain);
   }
@@ -429,14 +430,15 @@ void CFVMFlowSolverBase<V, R>::SetPrimitive_Gradient_L2P(CGeometry* geometry, co
 template <class V, ENUM_REGIME R>
 void CFVMFlowSolverBase<V, R>::SetPrimitive_Limiter(CGeometry* geometry, const CConfig* config) {
   const auto kindLimiter = config->GetKind_SlopeLimit_Flow();
+  const auto umusclKappa = config->GetMUSCL_Kappa_Flow();
   const auto& primitives = nodes->GetPrimitive();
   const auto& gradient = nodes->GetGradient_Reconstruction();
   auto& primMin = nodes->GetSolution_Min();
   auto& primMax = nodes->GetSolution_Max();
   auto& limiter = nodes->GetLimiter_Primitive();
 
-  computeLimiters(kindLimiter, this, MPI_QUANTITIES::PRIMITIVE_LIMITER, PERIODIC_LIM_PRIM_1, PERIODIC_LIM_PRIM_2, *geometry, *config, 0,
-                  nPrimVarGrad, primitives, gradient, primMin, primMax, limiter);
+  computeLimiters(kindLimiter, this, MPI_QUANTITIES::PRIMITIVE_LIMITER, PERIODIC_LIM_PRIM_1, PERIODIC_LIM_PRIM_2,
+                  *geometry, *config, 0, nPrimVarGrad, umusclKappa, primitives, gradient, primMin, primMax, limiter);
 }
 
 template <class V, ENUM_REGIME R>
@@ -570,7 +572,7 @@ void CFVMFlowSolverBase<V, R>::ComputeUnderRelaxationFactor(const CConfig* confi
   /* Loop over the solution update given by relaxing the linear
    system for this nonlinear iteration. */
 
-  const su2double allowableRatio = 0.2;
+  const su2double allowableRatio = config->GetMaxUpdateFractionFlow();
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
@@ -694,11 +696,8 @@ void CFVMFlowSolverBase<V, R>::ComputeVorticityAndStrainMag(const CConfig& confi
   END_SU2_OMP_FOR
 
   if ((iMesh == MESH_0) && (config.GetComm_Level() == COMM_FULL)) {
-    SU2_OMP_CRITICAL {
-      StrainMag_Max = max(StrainMag_Max, strainMax);
-      Omega_Max = max(Omega_Max, omegaMax);
-    }
-    END_SU2_OMP_CRITICAL
+    atomicMax(strainMax, StrainMag_Max);
+    atomicMax(omegaMax, Omega_Max);
 
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
     {
@@ -837,7 +836,7 @@ void CFVMFlowSolverBase<V, R>::LoadRestart_impl(CGeometry **geometry, CSolver **
                                                 unsigned short nVar_Restart) {
   /*--- Restart the solution from file information ---*/
 
-  const string restart_filename = config->GetFilename(config->GetSolution_FileName(), "", iter);
+  string restart_filename = config->GetSolution_FileName();
   const bool static_fsi = ((config->GetTime_Marching() == TIME_MARCHING::STEADY) && config->GetFSI_Simulation());
 
   /*--- To make this routine safe to call in parallel most of it can only be executed by one thread. ---*/
@@ -850,10 +849,11 @@ void CFVMFlowSolverBase<V, R>::LoadRestart_impl(CGeometry **geometry, CSolver **
     unsigned short skipVars = nDim;
 
     /*--- Read the restart data from either an ASCII or binary SU2 file. ---*/
-
     if (config->GetRead_Binary_Restart()) {
+      restart_filename = config->GetFilename(restart_filename, ".dat", iter);
       Read_SU2_Restart_Binary(geometry[MESH_0], config, restart_filename);
     } else {
+      restart_filename = config->GetFilename(restart_filename, ".csv", iter);
       Read_SU2_Restart_ASCII(geometry[MESH_0], config, restart_filename);
     }
 
@@ -1468,7 +1468,7 @@ void CFVMFlowSolverBase<V, R>::BC_Custom(CGeometry* geometry, CSolver** solver_c
 
   if (VerificationSolution) {
     unsigned short iVar;
-    unsigned long iVertex, iPoint, total_index;
+    unsigned long iVertex, iPoint;
 
     bool implicit = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
 
@@ -1510,8 +1510,7 @@ void CFVMFlowSolverBase<V, R>::BC_Custom(CGeometry* geometry, CSolver** solver_c
 
         if (implicit) {
           for (iVar = 0; iVar < nVar; iVar++) {
-            total_index = iPoint * nVar + iVar;
-            Jacobian.DeleteValsRowi(total_index);
+            Jacobian.DeleteValsRowi(iPoint, iVar);
           }
         }
       }
@@ -2401,7 +2400,7 @@ void CFVMFlowSolverBase<V, FlowRegime>::Friction_Forces(const CGeometry* geometr
   unsigned long iVertex, iPoint, iPointNormal;
   unsigned short iMarker, iMarker_Monitoring, iDim, jDim;
   su2double Viscosity = 0.0, Area, Density = 0.0, FrictionVel,
-            UnitNormal[3] = {0.0}, TauElem[3] = {0.0}, Tau[3][3] = {{0.0}}, Cp,
+            UnitNormal[3] = {0.0}, TauElem[3] = {0.0}, Tau[3][3] = {{0.0}},
             thermal_conductivity, MaxNorm = 8.0, Grad_Vel[3][3] = {{0.0}}, Grad_Temp[3] = {0.0},
             Grad_Temp_ve[3] = {0.0}, AxiFactor;
   const su2double *Coord = nullptr, *Coord_Normal = nullptr, *Normal = nullptr;
@@ -2412,10 +2411,8 @@ void CFVMFlowSolverBase<V, FlowRegime>::Friction_Forces(const CGeometry* geometr
   const su2double RefLength = config->GetRefLength();
   const su2double RefHeatFlux = config->GetHeat_Flux_Ref();
   const su2double RefTemperature = config->GetTemperature_Ref();
-  const su2double Gas_Constant = config->GetGas_ConstantND();
   auto Origin = config->GetRefOriginMoment(0);
 
-  const su2double Prandtl_Lam = config->GetPrandtl_Lam();
   const bool energy = config->GetEnergy_Equation();
   const bool QCR = config->GetSAParsedOptions().qcr2000;
   const bool axisymmetric = config->GetAxisymmetric();
@@ -2556,11 +2553,7 @@ void CFVMFlowSolverBase<V, FlowRegime>::Friction_Forces(const CGeometry* geometr
       /*--- Compute total and maximum heat flux on the wall ---*/
 
       if (!nemo) {
-        if (FlowRegime == ENUM_REGIME::COMPRESSIBLE) {
-          Cp = (Gamma / Gamma_Minus_One) * Gas_Constant;
-          thermal_conductivity = Cp * Viscosity / Prandtl_Lam;
-        }
-        if (FlowRegime == ENUM_REGIME::INCOMPRESSIBLE) {
+        if ((FlowRegime == ENUM_REGIME::COMPRESSIBLE) || (FlowRegime == ENUM_REGIME::INCOMPRESSIBLE)) {
           thermal_conductivity = nodes->GetThermalConductivity(iPoint);
         }
 
@@ -3018,5 +3011,60 @@ void CFVMFlowSolverBase<V, FlowRegime>::ComputeAxisymmetricAuxGradients(CGeometr
   }
   if (config->GetKind_Gradient_Method() == WEIGHTED_LEAST_SQUARES) {
     SetAuxVar_Gradient_LS(geometry, config);
+  }
+}
+
+template <class V, ENUM_REGIME FlowRegime>
+void CFVMFlowSolverBase<V, FlowRegime>::MultigridProjectEulerWall(CGeometry* geometry, const CConfig* config,
+                                                                   bool use_solution_old) {
+  const auto iVel = prim_idx.Velocity();
+  const auto nDim = geometry->GetnDim();
+
+  for (auto iMarker = 0u; iMarker < config->GetnMarker_All(); iMarker++) {
+    if (config->GetMarker_All_KindBC(iMarker) != EULER_WALL) continue;
+
+    SU2_OMP_FOR_STAT(32)
+    for (auto iVertex = 0ul; iVertex < geometry->nVertex[iMarker]; iVertex++) {
+      const auto iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
+
+      if (!geometry->nodes->GetDomain(iPoint)) continue;
+
+      /*--- Use the Gram-Schmidt corrected normal for nodes on intersecting walls,
+       *    consistent with BC_Sym_Plane.  Fall back to the raw marker normal otherwise. ---*/
+      su2double UnitNormal[MAXNDIM] = {0.0};
+      const auto it = geometry->symmetryNormals[iMarker].find(iVertex);
+      if (it != geometry->symmetryNormals[iMarker].end()) {
+        for (auto iDim = 0u; iDim < nDim; iDim++) UnitNormal[iDim] = it->second[iDim];
+      } else {
+        su2double Normal[MAXNDIM] = {0.0};
+        geometry->vertex[iMarker][iVertex]->GetNormal(Normal);
+        const su2double Area = GeometryToolbox::Norm(nDim, Normal);
+        if (Area < EPS) continue;
+        for (auto iDim = 0u; iDim < nDim; iDim++) UnitNormal[iDim] = Normal[iDim] / Area;
+      }
+
+      su2double* sol = use_solution_old ? nodes->GetSolution_Old(iPoint) : nodes->GetSolution(iPoint);
+
+      /*--- Compute normal component of the velocity / momentum vector.
+       *    For dynamic grids subtract the grid velocity to enforce (v - v_grid).n = 0,
+       *    multiplying by density for compressible flow (conservative variables). ---*/
+      su2double gridVel[MAXNDIM] = {};
+      if (dynamic_grid && !use_solution_old) {
+        for (auto iDim = 0u; iDim < nDim; iDim++)
+          gridVel[iDim] = geometry->nodes->GetGridVel(iPoint)[iDim];
+        if constexpr (FlowRegime == ENUM_REGIME::COMPRESSIBLE) {
+          for (auto iDim = 0u; iDim < nDim; iDim++)
+            gridVel[iDim] *= nodes->GetDensity(iPoint);
+        }
+      }
+
+      su2double momentum_n = 0.0;
+      for (auto iDim = 0u; iDim < nDim; iDim++)
+        momentum_n += (sol[iVel + iDim] - gridVel[iDim]) * UnitNormal[iDim];
+
+      /*--- Project to tangent plane. ---*/
+      for (auto iDim = 0u; iDim < nDim; iDim++) sol[iVel + iDim] -= momentum_n * UnitNormal[iDim];
+    }
+    END_SU2_OMP_FOR
   }
 }
