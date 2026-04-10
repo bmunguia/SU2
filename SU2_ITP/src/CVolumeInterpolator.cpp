@@ -26,7 +26,7 @@
  * License along with SU2. If not, see <http://www.gnu.org/licenses/>.
  */
 
- #include "../include/CVolumeInterpolator.hpp"
+#include "../include/CVolumeInterpolator.hpp"
 
 CVolumeInterpolator::CVolumeInterpolator(SU2_Comm MPICommunicator) {
   /*--- Set up MPI ---*/

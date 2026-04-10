@@ -81,11 +81,21 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                      bool initial_interp) override;
 
     /*!
-     * \brief Postprocess interpolated solution (compute primitives, gradients, Hessians, metrics).
+     * \brief Compute MPI communications and primitive variables from the interpolated conserved solution.
      * \param[in] config - Configuration object
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_container_dst - Destination mesh solver
      * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
+     */
+    void PostprocessPrimitives(CConfig* config, CGeometry* geometry_dst, CSolver** solver_container_dst,
+                               bool initial_interp) override;
+
+    /*!
+     * \brief Postprocess interpolated solution: compute metric field (gradients, Hessians, metrics).
+     * \param[in] config - Configuration object
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_container_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first metric computation for the zone
      */
     void Postprocess(CConfig* config, CGeometry* geometry_dst, CSolver** solver_container_dst,
                     bool initial_interp) override;

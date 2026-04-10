@@ -44,6 +44,7 @@ threads="1"
 #include "../../SU2_CFD/include/drivers/CMultizoneDriver.hpp"
 #include "../../SU2_CFD/include/drivers/CSinglezoneDriver.hpp"
 #include "../../SU2_DEF/include/drivers/CDeformationDriver.hpp"
+#include "../../SU2_ITP/include/CInterpolatorDriver.hpp"
 %}
 
 // ----------- USED MODULES ------------
@@ -84,6 +85,7 @@ enum class SU2_COMPONENT {
   SU2_DEF, /*!< \brief Running the SU2_DEF software. */
   SU2_DOT, /*!< \brief Running the SU2_DOT software. */
   SU2_GEO, /*!< \brief Running the SU2_GEO software. */
+  SU2_ITP, /*!< \brief Running the SU2_ITP software. */
   SU2_SOL  /*!< \brief Running the SU2_SOL software. */
 };
 
@@ -99,3 +101,4 @@ const unsigned int ZONE_1 = 1; /*!< \brief Definition of the first grid domain. 
 %include "../../SU2_CFD/include/drivers/CMultizoneDriver.hpp"
 %include "../../SU2_CFD/include/drivers/CDiscAdjSinglezoneDriver.hpp"
 %include "../../SU2_DEF/include/drivers/CDeformationDriver.hpp"
+%include "../../SU2_ITP/include/CInterpolatorDriver.hpp"

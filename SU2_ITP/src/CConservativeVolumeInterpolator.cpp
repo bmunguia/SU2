@@ -70,9 +70,8 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
   }
 }
 
-void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* geometry_dst,
-                                                  CSolver** solver_container_dst, bool initial_interp) {
-  const int rank = SU2_MPI::GetRank();
+void CConservativeVolumeInterpolator::PostprocessPrimitives(CConfig* config, CGeometry* geometry_dst,
+                                                            CSolver** solver_container_dst, bool /*initial_interp*/) {
   const auto solver_index = config->GetContainerPosition(RUNTIME_FLOW_SYS);
   auto* solver_flow = solver_container_dst[solver_index];
 
@@ -80,11 +79,15 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
   /*--- TODO: other solver configurations                      ---*/
   solver_flow->InitiateComms(geometry_dst, config, MPI_QUANTITIES::SOLUTION);
   solver_flow->CompleteComms(geometry_dst, config, MPI_QUANTITIES::SOLUTION);
-  solver_flow->Preprocessing(geometry_dst, solver_container_dst, config, 0, 0, RUNTIME_FLOW_SYS,
-                             true);
+  solver_flow->Preprocessing(geometry_dst, solver_container_dst, config, 0, 0, RUNTIME_FLOW_SYS, true);
   if (config->GetKind_Turb_Model() != TURB_MODEL::NONE) {
     solver_container_dst[TURB_SOL]->Postprocessing(geometry_dst, solver_container_dst, config, 0);
   }
+}
+
+void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* geometry_dst,
+                                                  CSolver** solver_container_dst, bool initial_interp) {
+  const int rank = SU2_MPI::GetRank();
 
   /*--- Compute metric field if requested ---*/
   if (config->GetCompute_Metric()) {
@@ -121,6 +124,8 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
     }
 
     /*--- Compute primitive gradients for adaptation ---*/
+    const auto solver_index = config->GetContainerPosition(RUNTIME_FLOW_SYS);
+    auto* solver_flow = solver_container_dst[solver_index];
     solver_flow->SetPrimitive_Adapt(geometry_dst, config);
 
     /*--- Compute Hessians ---*/

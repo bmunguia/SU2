@@ -197,11 +197,24 @@ class CVolumeInterpolator {
                              bool initial_interp) = 0;
 
     /*!
-     * \brief Postprocess interpolated solution (compute primitives, gradients, Hessians, etc.)
+     * \brief Compute MPI communications and primitive variables from the interpolated conserved solution.
+     *        Must be called before custom sensor population. Pure virtual.
      * \param[in] config - Configuration object
      * \param[in] geometry_dst - Destination mesh geometry
      * \param[in] solver_container_dst - Destination mesh solver
      * \param[in] initial_interp - <code>TRUE</code> means this is the first interpolation for the zone
+     */
+    virtual void PostprocessPrimitives(CConfig* config, CGeometry* geometry_dst,
+                                       CSolver** solver_container_dst,
+                                       bool initial_interp) = 0;
+
+    /*!
+     * \brief Postprocess interpolated solution: compute metric field (gradients, Hessians, etc.)
+     *        Must be called after custom sensor population.
+     * \param[in] config - Configuration object
+     * \param[in] geometry_dst - Destination mesh geometry
+     * \param[in] solver_container_dst - Destination mesh solver
+     * \param[in] initial_interp - <code>TRUE</code> means this is the first metric computation for the zone
      */
     virtual void Postprocess(CConfig* config, CGeometry* geometry_dst, CSolver** solver_container_dst,
                             bool initial_interp) = 0;

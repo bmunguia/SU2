@@ -1,5 +1,10 @@
 su2_itp_src = ['SU2_ITP.cpp']
-itp_lib_src = ['CVolumeInterpolator.cpp', 'CLinearVolumeInterpolator.cpp', 'CConservativeVolumeInterpolator.cpp']
+itp_lib_src = [
+  'CVolumeInterpolator.cpp',
+  'CLinearVolumeInterpolator.cpp',
+  'CConservativeVolumeInterpolator.cpp',
+  'CInterpolatorDriver.cpp',
+]
 if get_option('enable-normal')
 
   su2_itp_lib = static_library('su2_itp', itp_lib_src,
@@ -9,9 +14,9 @@ if get_option('enable-normal')
                                   include_directories: include_directories('..', '../include'))
 
   su2_itp = executable('SU2_ITP',
-                      su2_itp_src + itp_lib_src,
+                      su2_itp_src,
                       install: true,
-                      dependencies: [su2_deps, common_dep, su2_cfd_dep],
+                      dependencies: [su2_deps, common_dep, su2_cfd_dep, su2_itp_dep],
                       cpp_args :[default_warning_flags, su2_cpp_args])
 
 endif

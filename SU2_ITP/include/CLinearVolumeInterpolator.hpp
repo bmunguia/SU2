@@ -61,6 +61,11 @@ class CLinearVolumeInterpolator : public CVolumeInterpolator {
                      bool initial_interp) override;
 
     /*!
+     * \brief No-op: linear interpolation does not require primitive recomputation.
+     */
+    void PostprocessPrimitives(CConfig*, CGeometry*, CSolver**, bool) override {}
+
+    /*!
      * \brief Postprocess interpolated solution (no-op for linear interpolation).
      * \param[in] config - Configuration object
      * \param[in] geometry_dst - Destination mesh geometry
