@@ -25,6 +25,7 @@
  */
 
 #include "../include/CInterpolatorDriver.hpp"
+#include "../../SU2_CFD/include/metrics/metricUtils.hpp"
 
 using namespace std;
 
@@ -46,9 +47,18 @@ CInterpolatorDriver::CInterpolatorDriver(char* confFile, SU2_Comm MPICommunicato
   /*--- Build source and destination geometries ---*/
   InitializeGeometry();
 
-  /*--- Solvers + output are lazy-initialized in the first Preprocess() call ---*/
+  /*--- Allocate init-state flags ---*/
   solution_instantiated_ = new bool[nZone]();  // zero-init -> false
+  interpolation_initialized_ = new bool[nZone]();  // zero-init -> false
   metrics_initialized_   = new bool[nZone]();  // zero-init -> false
+
+  /*--- Eagerly initialize destination/source solvers, sensor arrays, and output
+   *    so the Python API can query metric sensors immediately after construction.
+   *    Sensor resolution happens inside InitializeSolversAndOutput, between
+   *    solver creation and output creation, so the output sees the full sensor list. ---*/
+  for (auto iZone = 0u; iZone < nZone; iZone++) {
+    InitializeSolversAndOutput(iZone);
+  }
 }
 
 CInterpolatorDriver::~CInterpolatorDriver() {
@@ -150,6 +160,29 @@ void CInterpolatorDriver::InitializeSolversAndOutput(unsigned short iZone) {
                                          solver_container[iZone][iInst][MESH_0],
                                          iZone, iInst, nZone);
 
+  /*--- Resolve metric sensor indices and allocate sensor arrays before
+   *    initializing the output, so the output object sees the full sensor list
+   *    and registers Hessian fields with the correct names and indices. ---*/
+  if (config_container[iZone]->GetCompute_Metric()) {
+    if (rank == MASTER_NODE)
+      cout << "Resolving metric sensor indices." << endl;
+
+    bool resolved = MetricUtils::ResolveSensorIndices(
+      config_container[iZone],
+      geometry_container[iZone][iInst][MESH_0],
+      solver_container[iZone][iInst][MESH_0]
+    );
+
+    if (resolved) {
+      MetricUtils::InitializeMetrics(solver_container[iZone][iInst][MESH_0]);
+      const auto total = MetricUtils::TotalNumSensors(solver_container[iZone][iInst][MESH_0]);
+      if (rank == MASTER_NODE && total > 0)
+        cout << "Successfully resolved " << total << " metric sensors." << endl;
+    } else if (rank == MASTER_NODE) {
+      cout << "Warning: COMPUTE_METRIC is enabled but no valid sensors found." << endl;
+    }
+  }
+
   /*--- Initialize and preprocess the output for the destination mesh ---*/
   interpolator_[iZone]->InitializeOutput(config_container[iZone],
                                          geometry_container[iZone][iInst][MESH_0],
@@ -171,8 +204,7 @@ void CInterpolatorDriver::Preprocess(unsigned long TimeIter) {
     config_src_[iZone]->SetTimeIter(TimeIter);
     config_container[iZone]->SetTimeIter(TimeIter);
 
-    const bool initial_interp = !solution_instantiated_[iZone];
-    if (initial_interp) InitializeSolversAndOutput(iZone);
+    const bool initial_interp = !interpolation_initialized_[iZone];
 
     /*--- Load source restart ---*/
     interpolator_[iZone]->LoadRestarts(config_src_[iZone],
@@ -187,6 +219,8 @@ void CInterpolatorDriver::Preprocess(unsigned long TimeIter) {
                                       solver_src_[iZone][INST_0],
                                       solver_container[iZone][INST_0][MESH_0],
                                       initial_interp);
+
+    interpolation_initialized_[iZone] = true;
 
     /*--- Compute primitive variables so the caller can read them (e.g. to populate custom sensors) ---*/
     interpolator_[iZone]->PostprocessPrimitives(config_container[iZone],
@@ -270,6 +304,8 @@ void CInterpolatorDriver::Finalize() {
 
   delete[] solution_instantiated_;
   solution_instantiated_ = nullptr;
+  delete[] interpolation_initialized_;
+  interpolation_initialized_ = nullptr;
   delete[] metrics_initialized_;
   metrics_initialized_ = nullptr;
 

@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
   if (rank == MASTER_NODE)
     cout << endl << "------------------------- Solution Postprocessing -----------------------" << endl;
 
-  /*--- Initialize the driver: reads config, builds geometry, lazy-inits solvers ---*/
+  /*--- Initialize the driver: reads config, builds geometry, and initializes solvers/output ---*/
 
   CInterpolatorDriver driver(config_file_name, MPICommunicator);
 

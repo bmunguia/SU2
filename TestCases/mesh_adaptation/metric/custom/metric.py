@@ -8,20 +8,25 @@ from SU2.metric import CustomSensorRegistry
 comm = MPI.COMM_WORLD
 
 
-def mach_number(driver, iNode: int) -> float:
-    """Compute local Mach number at a single node for compressible flow."""
+def mach_number(driver) -> list[float]:
+    """Compute local Mach number at all nodes for compressible flow."""
     prim_idx = driver.GetPrimitiveIndices()
     nDim = driver.GetNumberDimensions()
     primVars = driver.Primitives()
+    nNodes = driver.GetNumberNodes() - driver.GetNumberHaloNodes()
 
     vel_cols = [prim_idx["VELOCITY_X"], prim_idx["VELOCITY_Y"]]
     if nDim == 3:
         vel_cols.append(prim_idx["VELOCITY_Z"])
     a_col = prim_idx["SOUND_SPEED"]
 
-    vel2 = sum(primVars.Get(iNode, k) ** 2 for k in vel_cols)
-    a = primVars.Get(iNode, a_col)
-    return math.sqrt(vel2) / max(a, 1e-20)
+    mach = [0.0] * nNodes
+    for iNode in range(nNodes):
+        row = primVars(iNode)
+        vel2 = sum(row[k] ** 2 for k in vel_cols)
+        a = row[a_col]
+        mach[iNode] = math.sqrt(vel2) / max(abs(a), 1e-20)
+    return mach
 
 
 def main():

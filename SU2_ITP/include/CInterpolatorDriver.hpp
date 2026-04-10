@@ -53,7 +53,7 @@
  *   custom_sensors = CustomSensorRegistry({"MACH": mach_fn})
  *   custom_sensors.initialize(driver)   # GetMetricSensorIndex — from CDriverBase
  *   driver.Preprocess(0)               # LoadRestarts + Interpolate + PostprocessPrimitives
- *   custom_sensors.populate(driver)    # SetSensorAdapt per node
+ *   custom_sensors.populate(driver)    # store adaptation sensor
  *   driver.Postprocess()               # metric field computation
  *   driver.Output(0)
  *   driver.Finalize()
@@ -71,8 +71,9 @@ class CInterpolatorDriver : public CDriverBase {
   /*--- Interpolator instances, one per zone ---*/
   CVolumeInterpolator** interpolator_ = nullptr;  /*!< \brief Volume interpolator [nZone]. */
 
-  /*--- Lazy-init and first-call tracking ---*/
+  /*--- Init-state and first-call tracking ---*/
   bool* solution_instantiated_ = nullptr;  /*!< \brief Whether solvers/output are initialized per zone. */
+  bool* interpolation_initialized_ = nullptr;  /*!< \brief Whether interpolation setup has run per zone. */
   bool* metrics_initialized_   = nullptr;  /*!< \brief Whether first Postprocess has run per zone. */
 
   bool is_unsteady_ = false;  /*!< \brief True for time-domain simulations. */
@@ -80,8 +81,8 @@ class CInterpolatorDriver : public CDriverBase {
  public:
   /*!
    * \brief Constructor. Reads config, builds all source and destination containers,
-   *        and initialises geometries. Solvers and output are initialized lazily on
-   *        the first Preprocess() call.
+   *        initializes geometries, then eagerly initializes source/destination
+   *        solvers, output, and metric sensor arrays.
    * \param[in] confFile        - Configuration file name.
    * \param[in] MPICommunicator - MPI communicator for SU2.
    */
@@ -170,8 +171,9 @@ class CInterpolatorDriver : public CDriverBase {
   void InitializeGeometry();
 
   /*!
-   * \brief Initialize solvers and output for a single zone (called lazily on first Preprocess).
+   * \brief Initialize solvers and output for a single zone.
    * \param[in] iZone - Zone index.
    */
   void InitializeSolversAndOutput(unsigned short iZone);
+
 };

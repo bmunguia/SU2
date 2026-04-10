@@ -32,7 +32,6 @@
 #include "../../Common/include/fem/fem_standard_element.hpp"
 #include "../../Common/include/adt/CADTPointsOnlyClass.hpp"
 #include "../../Common/include/toolboxes/geometry_toolbox.hpp"
-#include "../../SU2_CFD/include/metrics/metricUtils.hpp"
 
 CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) {}
@@ -88,6 +87,7 @@ void CConservativeVolumeInterpolator::PostprocessPrimitives(CConfig* config, CGe
 void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* geometry_dst,
                                                   CSolver** solver_container_dst, bool initial_interp) {
   const int rank = SU2_MPI::GetRank();
+  (void) initial_interp;
 
   /*--- Compute metric field if requested ---*/
   if (config->GetCompute_Metric()) {
@@ -95,38 +95,15 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
       cout << "Computing metric field for interpolated solution." << endl;
     }
 
-    /*--- Resolve sensor indices from sensor names (only on first interpolation) ---*/
-    if (initial_interp) {
-      if (rank == MASTER_NODE) {
-        cout << "Resolving metric sensor indices." << endl;
-      }
-
-      bool resolved = MetricUtils::ResolveSensorIndices(
-        config,
-        geometry_dst,
-        solver_container_dst
-      );
-
-    if (resolved) {
-      /*--- Allocate metric sensor arrays ---*/
-      MetricUtils::InitializeMetrics(solver_container_dst);
-      unsigned long total_num_sensor = MetricUtils::TotalNumSensors(solver_container_dst);
-
-      if (rank == MASTER_NODE && total_num_sensor > 0) {
-        cout << "Successfully resolved " << total_num_sensor << " metric sensors." << endl;
-      }
-    } else {
-      /*--- No sensors resolved so return ---*/
-      if (rank == MASTER_NODE)
-        cout << "Warning: COMPUTE_METRIC is enabled but no valid sensors found." << endl;
-      return;
-    }
-    }
-
     /*--- Compute primitive gradients for adaptation ---*/
     const auto solver_index = config->GetContainerPosition(RUNTIME_FLOW_SYS);
     auto* solver_flow = solver_container_dst[solver_index];
     solver_flow->SetPrimitive_Adapt(geometry_dst, config);
+
+    /*--- Sync all sensor values (including custom Python sensors) to halo nodes
+     *    before gradient/Hessian computation. Matches CSinglezoneDriver behavior. ---*/
+    solver_flow->InitiateComms(geometry_dst, config, MPI_QUANTITIES::SENSOR_ADAPT);
+    solver_flow->CompleteComms(geometry_dst, config, MPI_QUANTITIES::SENSOR_ADAPT);
 
     /*--- Compute Hessians ---*/
     int idxVel = -1;
