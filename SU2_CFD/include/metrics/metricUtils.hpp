@@ -44,16 +44,22 @@ namespace MetricUtils {
 /*!
  * \brief Build a map of supported derived sensor names to their point-wise evaluator lambdas.
  *
- * Derived sensors are officially-supported computed quantities (e.g. Mach number) that are
- * not stored directly as primitive variables. For now, only valid for compressible flow solvers.
+ * Derived sensors are officially-supported computed quantities that are not stored directly
+ * as primitive variables. Supported sensors:
+ *   - VELOCITY  velocity magnitude (all flow solvers)
+ *   - MACH      local Mach number  (compressible flow solvers only)
  *
- * \param[in] primitive_map - Map of primitive variable names to their array indices.
- * \param[in] nDim          - Number of spatial dimensions.
+ * Each lambda has the signature \c su2double(const su2double* prim) where \p prim is a pointer
+ * to the primitive variable array for a single point.
+ *
+ * \param[in] primitive_map  - Map of primitive variable names to their array indices.
+ * \param[in] nDim           - Number of spatial dimensions.
+ * \param[in] incompressible - True for incompressible solvers (MACH is excluded).
  * \return Map of derived sensor names to evaluator lambdas.
  */
 inline std::map<std::string, std::function<su2double(const su2double*)>>
 DerivedNameToFunctionMap(const std::map<std::string, unsigned short>& primitive_map,
-                         unsigned long nDim) {
+                         unsigned long nDim, bool incompressible) {
   using SensorFn = std::function<su2double(const su2double*)>;
   std::map<std::string, SensorFn> derived_map;
 
@@ -61,13 +67,23 @@ DerivedNameToFunctionMap(const std::map<std::string, unsigned short>& primitive_
   const unsigned short vel_y = primitive_map.at("VELOCITY_Y");
   const unsigned short vel_z = (nDim == 3) ? primitive_map.at("VELOCITY_Z")
                                             : std::numeric_limits<unsigned short>::max();
-  const unsigned short a_idx = primitive_map.at("SOUND_SPEED");
 
-  derived_map["MACH"] = [vel_x, vel_y, vel_z, a_idx, nDim](const su2double* prim) -> su2double {
+  /*--- Velocity magnitude: supported by all flow solvers ---*/
+  derived_map["VELOCITY"] = [vel_x, vel_y, vel_z, nDim](const su2double* prim) -> su2double {
     su2double vel2 = prim[vel_x] * prim[vel_x] + prim[vel_y] * prim[vel_y];
     if (nDim == 3) vel2 += prim[vel_z] * prim[vel_z];
-    return std::sqrt(vel2) / std::max(std::abs(prim[a_idx]), su2double(1e-20));
+    return std::sqrt(vel2);
   };
+
+  /*--- Mach number: compressible solvers only ---*/
+  if (!incompressible) {
+    const unsigned short a_idx = primitive_map.at("SOUND_SPEED");
+    derived_map["MACH"] = [vel_x, vel_y, vel_z, a_idx, nDim](const su2double* prim) -> su2double {
+      su2double vel2 = prim[vel_x] * prim[vel_x] + prim[vel_y] * prim[vel_y];
+      if (nDim == 3) vel2 += prim[vel_z] * prim[vel_z];
+      return std::sqrt(vel2) / std::max(std::abs(prim[a_idx]), su2double(1e-20));
+    };
+  }
 
   return derived_map;
 }
@@ -130,12 +146,9 @@ inline bool ResolveSensorIndices(
         var_map[varname] = std::make_pair(iSol, varidx);
       }
 
-      /*--- Build derived sensor map for (for now compressible flow solvers only).
-       *    Derived sensors are officially-supported computed quantities that
-       *    are not stored directly as primitive variables. ---*/
-      if (!incompressible) {
-        derived_map = DerivedNameToFunctionMap(primitive_map, nDim);
-      }
+      /*--- Build derived sensor map. VELOCITY is supported by all flow solvers;
+       *    MACH is excluded for incompressible (see DerivedNameToFunctionMap). ---*/
+      derived_map = DerivedNameToFunctionMap(primitive_map, nDim, incompressible);
     } else {
       /*--- For non-flow solvers, use solution fields ---*/
       std::vector<std::string> solution_fields = solver_container[iSol]->GetSolutionFields();
