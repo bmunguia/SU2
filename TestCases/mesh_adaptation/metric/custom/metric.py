@@ -8,25 +8,28 @@ from SU2.metric import CustomSensorRegistry
 comm = MPI.COMM_WORLD
 
 
-def mach_number(driver) -> list[float]:
-    """Compute local Mach number at all nodes for compressible flow."""
+def total_pressure(driver) -> list[float]:
+    """Compute local total pressure at all nodes for compressible flow."""
     prim_idx = driver.GetPrimitiveIndices()
     nDim = driver.GetNumberDimensions()
     primVars = driver.Primitives()
     nNodes = driver.GetNumberNodes() - driver.GetNumberHaloNodes()
 
+    dens_col = prim_idx["DENSITY"]
+    press_col = prim_idx["PRESSURE"]
     vel_cols = [prim_idx["VELOCITY_X"], prim_idx["VELOCITY_Y"]]
     if nDim == 3:
         vel_cols.append(prim_idx["VELOCITY_Z"])
-    a_col = prim_idx["SOUND_SPEED"]
 
-    mach = [0.0] * nNodes
+    p_tot = [0.0] * nNodes
     for iNode in range(nNodes):
         row = primVars(iNode)
+        p = row[press_col]
+        r = row[dens_col]
         vel2 = sum(row[k] ** 2 for k in vel_cols)
-        a = row[a_col]
-        mach[iNode] = math.sqrt(vel2) / max(abs(a), 1e-20)
-    return mach
+
+        p_tot[iNode] = p + 0.5 * r * vel2
+    return p_tot
 
 
 def main():
@@ -34,7 +37,7 @@ def main():
     driver = pysu2.CSinglezoneDriver("rans_naca0012.cfg", 1, comm)
 
     # Initialize custom metric sensors
-    custom_sensors = CustomSensorRegistry({"MACH": mach_number})
+    custom_sensors = CustomSensorRegistry({"TOTAL_PRESSURE": total_pressure})
 
     # Initialize map of Sensor: idx
     custom_sensors.initialize(driver)

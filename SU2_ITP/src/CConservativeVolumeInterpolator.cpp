@@ -98,7 +98,8 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
     /*--- Compute primitive gradients for adaptation ---*/
     const auto solver_index = config->GetContainerPosition(RUNTIME_FLOW_SYS);
     auto* solver_flow = solver_container_dst[solver_index];
-    solver_flow->SetPrimitive_Adapt(geometry_dst, config);
+    solver_flow->SetPrimitive_SensorAdapt(geometry_dst, config);
+    solver_flow->SetDerived_SensorAdapt(geometry_dst, config);
 
     /*--- Sync all sensor values (including custom Python sensors) to halo nodes
      *    before gradient/Hessian computation. Matches CSinglezoneDriver behavior. ---*/
