@@ -217,7 +217,7 @@ void computeHessiansGreenGauss(CSolver* solver, MPI_QUANTITIES kindMpiComm, PERI
       size_t jPoint = nodes->GetPoint(iPoint,iNeigh);
 
       /*--- Determine if edge points inwards or outwards of iPoint.
-        *    If inwards we need to flip the area vector. ---*/
+       *    If inwards we need to flip the area vector. ---*/
 
       su2double dir = (iPoint < jPoint)? 1.0 : -1.0;
       su2double weight = dir * halfOnVol;
@@ -228,8 +228,11 @@ void computeHessiansGreenGauss(CSolver* solver, MPI_QUANTITIES kindMpiComm, PERI
         for (size_t iVar = varBegin; iVar < varEnd; ++iVar) {
           su2double flux = weight * (gradient(iPoint, iVar, jDim) + gradient(jPoint, iVar, jDim));
           for (size_t iDim = 0; iDim < nDim; ++iDim) {
-            size_t ind = (iDim <= jDim) ? iDim*nDim - ((iDim - 1)*iDim)/2 + jDim - iDim
-                                        : jDim*nDim - ((jDim - 1)*jDim)/2 + iDim - jDim;
+            /*--- Make the Hessian symmetric by construction.
+             *    Get the 1D index for lower triangular storage. ---*/
+            const auto iMax = max(iDim, jDim);
+            const auto iMin = min(iDim, jDim);
+            const size_t ind = iMax * (iMax + 1) / 2 + iMin;
             diagScale = (iDim == jDim)? 1.0 : 0.5;
             hessian(iPoint, iVar, ind) += diagScale * flux * area[iDim];
           } // iDims
@@ -263,8 +266,11 @@ void computeHessiansGreenGauss(CSolver* solver, MPI_QUANTITIES kindMpiComm, PERI
           for (size_t iVar = varBegin; iVar < varEnd; iVar++) {
             su2double flux = gradient(iPoint, iVar, jDim) / volume;
             for (size_t iDim = 0; iDim < nDim; ++iDim) {
-              size_t ind = (iDim <= jDim) ? iDim * nDim - ((iDim - 1) * iDim)/2 + jDim - iDim
-                                          : jDim * nDim - ((jDim - 1) * jDim)/2 + iDim - jDim;
+              /*--- Make the Hessian symmetric by construction.
+               *    Get the 1D index for lower triangular storage. ---*/
+              const auto iMax = max(iDim, jDim);
+              const auto iMin = min(iDim, jDim);
+              const size_t ind = iMax * (iMax + 1) / 2 + iMin;
               diagScale = (iDim == jDim)? 1.0 : 0.5;
               hessian(iPoint, iVar, ind) -= diagScale * flux * area[iDim];
             } // iDims
