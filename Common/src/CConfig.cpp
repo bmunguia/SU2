@@ -8170,7 +8170,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         if (iSensor < nMetric_Sensor - 1 ) cout << ", ";
       }
       cout << endl;
-      cout << "Hessian for adaptive metric: Green-Gauss." << endl; break;
+      cout << "Hessian for adaptive metric: Green-Gauss." << endl;
       if (Normalize_Metric) {
         cout << "Target complexity: " << Metric_Complexity << endl;
         if (TimeMarching != TIME_MARCHING::STEADY) {
