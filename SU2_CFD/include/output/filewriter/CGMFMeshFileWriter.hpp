@@ -42,9 +42,9 @@ class CGMFMeshFileWriter final: public CFileWriter{
 
 private:
   unsigned short iZone, nZone;
+  const CParallelDataSorter* surfaceSorter;
 
 #ifdef HAVE_GMF
-  const CParallelDataSorter* surfaceSorter;
   std::vector<std::string> markerList;
 #endif
 public:
