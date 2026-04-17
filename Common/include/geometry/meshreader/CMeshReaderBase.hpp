@@ -30,6 +30,7 @@
 #pragma once
 
 #include <string.h>
+#include <unordered_set>
 
 #include "../primal_grid/CPrimalGridFEM.hpp"
 #include "../../toolboxes/fem/CFaceOfElement.hpp"
@@ -66,6 +67,7 @@ class CMeshReaderBase {
 
   unsigned long numberOfMarkers = 0; /*!< \brief Total number of markers contained within the mesh file. */
   vector<string> markerNames;        /*!< \brief String names for all markers in the mesh file. */
+  std::unordered_set<unsigned long> cornerGlobalIndices; /*!< \brief Global indices of corner nodes read from mesh. */
   vector<unsigned long>
       numberOfLocalSurfaceElements; /*!< \brief Vector containing the number of local surface elements. */
   vector<vector<unsigned long> >
@@ -169,6 +171,12 @@ class CMeshReaderBase {
    * \returns Vector of string names for all markers in the mesh zone.
    */
   inline const vector<string>& GetMarkerNames() const { return markerNames; }
+
+  /*!
+   * \brief Get the set of global indices for corner nodes read from the mesh file.
+   * \returns Reference to the unordered_set of corner node global indices.
+   */
+  inline const std::unordered_set<unsigned long>& GetCornerGlobalIndices() const { return cornerGlobalIndices; }
 
   /*!
    * \brief Get the number of local grid points within the linear partition on this rank.

@@ -371,6 +371,12 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
       /*--- If point doesn't belong to any GeoDev marker, skip it ---*/
       if (!foundMarker) continue;
 
+      /*--- Skip corner nodes since curvature is ill-defined there and AMG handles them ---*/
+      if (geometry.IsCornerNode(iPoint)) {
+        cout << "Skipping corner node " << geometry.nodes->GetGlobalIndex(iPoint) << endl;
+        continue;
+      }
+
       /*--- Get curvature directly from geometry ---*/
       const ScalarType curvature = SU2_TYPE::GetValue(nodes->GetCurvature(iPoint));
 
@@ -546,6 +552,9 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
       for (size_t iVertex = 0; iVertex < geometry.GetnVertex(iMarker); ++iVertex) {
         const auto iPoint = geometry.vertex[iMarker][iVertex]->GetNode();
         if (!nodes->GetDomain(iPoint)) continue;
+
+        /*--- Skip corner nodes since curvature is ill-defined there and AMG handles them ---*/
+        if (geometry.IsCornerNode(iPoint)) continue;
 
         /*--- Get surface normal ---*/
         const auto* normal = geometry.vertex[iMarker][iVertex]->GetNormal();

@@ -172,6 +172,9 @@ CPhysicalGeometry::CPhysicalGeometry(CGeometry* geometry, CConfig* config) : CGe
   nDim = geometry->GetnDim();
   nZone = geometry->GetnZone();
 
+  /*--- Carry over corner node indices so IsCornerNode() works after redistribution. ---*/
+  cornerNodes = geometry->GetCornerNodes();
+
   /*--- Recompute the linear partitioning offsets. ---*/
 
   PrepareOffsets(geometry->GetGlobal_nPoint());
@@ -3782,6 +3785,20 @@ void CPhysicalGeometry::LoadUnpartitionedSurfaceElements(CConfig* config, CMeshR
       config->SetMarker_All_MixingPlaneInterface(iMarker, config->GetMarker_CfgFile_MixingPlaneInterface(Marker_Tag));
       config->SetMarker_All_SobolevBC(iMarker, config->GetMarker_CfgFile_SobolevBC(Marker_Tag));
     }
+  }
+
+  /*--- Broadcast corner node global indices from master to all ranks. ---*/
+  {
+    vector<unsigned long> cornerVec;
+    if (rank == MASTER_NODE) {
+      const auto& src = mesh->GetCornerGlobalIndices();
+      cornerVec.assign(src.begin(), src.end());
+    }
+    unsigned long nCorner = cornerVec.size();
+    SU2_MPI::Bcast(&nCorner, 1, MPI_UNSIGNED_LONG, MASTER_NODE, SU2_MPI::GetComm());
+    cornerVec.resize(nCorner);
+    SU2_MPI::Bcast(cornerVec.data(), (int)nCorner, MPI_UNSIGNED_LONG, MASTER_NODE, SU2_MPI::GetComm());
+    cornerNodes.insert(cornerVec.begin(), cornerVec.end());
   }
 }
 

@@ -51,6 +51,7 @@ extern "C" {
 #include <climits>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <cstdint>
 
 #include "primal_grid/CPrimalGrid.hpp"
@@ -122,6 +123,8 @@ class CGeometry {
 
   unsigned short MGLevel{0};        /*!< \brief The mesh level index for the current geometry container. */
   unsigned long Max_GlobalPoint{0}; /*!< \brief Greater global point in the domain local structure. */
+
+  std::unordered_set<unsigned long> cornerNodes; /*!< \brief Global indices of corner nodes (surface metric skipped). */
 
   /*--- Boundary information. ---*/
 
@@ -502,6 +505,21 @@ class CGeometry {
    * \return Number of markers.
    */
   inline unsigned short GetnMarker() const { return nMarker; }
+
+  /*!
+   * \brief Check if a local point is a corner node (surface metric should be skipped).
+   * \param[in] iPoint - Local point index.
+   * \return True if the point's global index is in the corner set read from the mesh file.
+   */
+  inline bool IsCornerNode(unsigned long iPoint) const {
+    return cornerNodes.count(nodes->GetGlobalIndex(iPoint)) > 0;
+  }
+
+  /*!
+   * \brief Get the set of corner node global indices (used to copy into redistributed geometry).
+   * \return Reference to the corner node set.
+   */
+  inline const std::unordered_set<unsigned long>& GetCornerNodes() const { return cornerNodes; }
 
   /*!
    * \brief Get number of vertices.

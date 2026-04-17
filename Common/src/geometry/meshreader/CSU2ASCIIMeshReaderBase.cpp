@@ -484,6 +484,21 @@ void CSU2ASCIIMeshReaderBase::ReadSurfaceElementConnectivity(const bool single_p
   while (getline(mesh_file, text_line)) {
     /*--- Find any periodic transformation information. ---*/
 
+    if (text_line.find("NCORNER=", 0) != string::npos) {
+      text_line.erase(0, 8);
+      unsigned long nCorner = atoi(text_line.c_str());
+      for (unsigned long iCorner = 0; iCorner < nCorner; ++iCorner) {
+        getline(mesh_file, text_line);
+        istringstream corner_line(text_line);
+        unsigned short dummy; /*--- the leading "1" ---*/
+        unsigned long globalIdx;
+        corner_line >> dummy >> globalIdx;
+        cornerGlobalIndices.insert(globalIdx);
+        cout << "COrner: " << globalIdx << endl;
+      }
+      continue;
+    }
+
     if (text_line.find("NPERIODIC=", 0) != string::npos) {
       /*--- Read and store the number of transformations. ---*/
       text_line.erase(0, 10);
