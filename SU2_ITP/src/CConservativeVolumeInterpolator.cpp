@@ -60,11 +60,23 @@ void CConservativeVolumeInterpolator::Interpolate(CConfig* config, CGeometry* ge
 
   /*--- Call the conservative interpolation method ---*/
   for (auto iSol = 0u; iSol < MAX_SOLS; ++iSol) {
-    auto solver_src = solver_container_src[iSol];
-    auto solver_dst = solver_container_dst[iSol];
-    if (solver_src && solver_dst) {
-      ConservativeInterpolation(config, geometry_src, geometry_dst, solver_src, solver_dst, initial_interp);
-      initial_interp = false;
+    auto* solver_src = solver_container_src[iSol];
+    auto* solver_dst = solver_container_dst[iSol];
+    if (!solver_src || !solver_dst) continue;
+
+    const bool isTurb = (iSol == TURB_SOL);
+    auto* flowSrc = isTurb ? solver_container_src[FLOW_SOL] : nullptr;
+    auto* flowDst = isTurb ? solver_container_dst[FLOW_SOL] : nullptr;
+
+    if (isTurb && flowSrc && flowDst)
+      ScaleSolutionByDensity(solver_src, flowSrc, /*multiply=*/true, nPoint_src);
+
+    ConservativeInterpolation(config, geometry_src, geometry_dst, solver_src, solver_dst, initial_interp);
+    initial_interp = false;
+
+    if (isTurb && flowSrc && flowDst) {
+      ScaleSolutionByDensity(solver_dst, flowDst, /*multiply=*/false, nPoint_dst);
+      ScaleSolutionByDensity(solver_src, flowSrc, /*multiply=*/false, nPoint_src);
     }
   }
 }
@@ -784,7 +796,18 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       /*--- Step 2: Get current solution at destination element.               ---*/
       /*--------------------------------------------------------------------------*/
-      const su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
+      su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
+
+      /*--- Element mean itself out of range (partial overlap near domain edge).
+       *    No P1-conservative correction exists; clamp and zero gradient.       ---*/
+      if (u_G < u_src_min - EPS || u_G > u_src_max + EPS) {
+        dstElemMass[dstElemID][iVar] = max(u_src_min, min(u_src_max, u_G)) * elemVolume;
+        for (auto iDim = 0u; iDim < nDim; ++iDim)
+          dstElemGrad[dstElemID][iVar * nDim + iDim] = 0.0;
+        countCorrectedPerVar[iVar]++;
+        continue;
+      }
+
       const su2double* gradu_G = dstElemGrad[dstElemID].data() + iVar * nDim;
 
       /*--------------------------------------------------------------------------*/
@@ -920,6 +943,9 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* c
 
       /*--- Skip non-triangular elements ---*/
       if (elem->GetVTK_Type() != TRIANGLE) continue;
+
+      /*--- Skip elements with no intersection coverage ---*/
+      if (overlapMeshes.find(elemID) == overlapMeshes.end()) continue;
 
       /*--- Get element volume and centroid ---*/
       const su2double elemVolume = elem->GetVolume();
@@ -1676,4 +1702,16 @@ bool CConservativeVolumeInterpolator::ExtrapolateFromNearestNode(CGeometry* geom
   }
 
   return true;
+}
+
+void CConservativeVolumeInterpolator::ScaleSolutionByDensity(CSolver* solver, const CSolver* flowSolver,
+                                                              bool multiply, unsigned long nPoint) {
+  const unsigned short nVar = solver->GetnVar();
+  for (auto i = 0ul; i < nPoint; ++i) {
+    const su2double rho = flowSolver->GetNodes()->GetDensity(i);
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      const su2double val = solver->GetNodes()->GetSolution(i, iVar);
+      solver->GetNodes()->SetSolution(i, iVar, multiply ? val * rho : val / rho);
+    }
+  }
 }

@@ -494,7 +494,6 @@ void CSU2ASCIIMeshReaderBase::ReadSurfaceElementConnectivity(const bool single_p
         unsigned long globalIdx;
         corner_line >> dummy >> globalIdx;
         cornerGlobalIndices.insert(globalIdx);
-        cout << "COrner: " << globalIdx << endl;
       }
       continue;
     }

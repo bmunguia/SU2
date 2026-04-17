@@ -336,68 +336,42 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
 
   if constexpr (nDim == 2) {
     /*--- 2D: Use curvature computed by CGeometry::ComputeSurf_Curvature ---*/
-    for (auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-      if (!nodes->GetPhysicalBoundary(iPoint)) continue;
+    for (unsigned short iMarkerGeoDev = 0; iMarkerGeoDev < config.GetnMarker_GeoDev(); ++iMarkerGeoDev) {
+      const ScalarType geodev_deg = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
+      const ScalarType geodev_rad = geodev_deg * deg2rad;
+      const ScalarType alpha = geodev_rad;
+      const string& geoDevTag = config.GetMarker_GeoDev(iMarkerGeoDev);
 
-      /*--- Find the minimum GeoDev value for this point across all applicable markers ---*/
-      ScalarType alpha = std::numeric_limits<ScalarType>::max();
-      ScalarType n[2] = {};
-      bool foundMarker = false;
+      for (unsigned short iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
+        if (geometry.GetMarker_Tag(iMarker) != geoDevTag) continue;
 
-      for (unsigned short iMarkerGeoDev = 0; iMarkerGeoDev < config.GetnMarker_GeoDev(); ++iMarkerGeoDev) {
-        const string& markerTag = config.GetMarker_GeoDev(iMarkerGeoDev);
+        for (size_t iVertex = 0; iVertex < geometry.GetnVertex(iMarker); ++iVertex) {
+          const auto iPoint = geometry.vertex[iMarker][iVertex]->GetNode();
+          if (!nodes->GetDomain(iPoint)) continue;
 
-        /*--- Find the geometry marker index corresponding to this tag ---*/
-        for (unsigned short iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
-          if (geometry.GetMarker_Tag(iMarker) == markerTag) {
-            /*--- Check if this point belongs to this marker ---*/
-            const auto iVertex = nodes->GetVertex(iPoint, iMarker);
-            if (iVertex >= 0) {
-              /*--- Point belongs to this marker, get the GeoDev value ---*/
-              const ScalarType geodev_deg = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
-              const ScalarType geodev_rad = geodev_deg * deg2rad;
-              alpha = min(alpha, geodev_rad);
-              foundMarker = true;
+          /*--- Skip corner nodes since curvature is ill-defined there and AMG handles them ---*/
+          if (geometry.IsCornerNode(iPoint)) continue;
 
-              /*--- Also add to the normal ---*/
-              const auto* normal = geometry.vertex[iMarker][iVertex]->GetNormal();
-              for (auto iDim = 0u; iDim < 2; ++iDim) n[iDim] += SU2_TYPE::GetValue(normal[iDim]);
-            }
-            break; /*--- Found the marker, no need to continue searching ---*/
-          }
+          const ScalarType curvature = SU2_TYPE::GetValue(nodes->GetCurvature(iPoint));
+          const ScalarType h_curv = alpha / fabs(curvature);
+          const ScalarType h_clipped = max(hmin, min(hmax, h_curv));
+
+          EigVal[0] = 1.0 / (h_clipped * h_clipped);  // Tangent direction
+          EigVal[1] = eigmin;                           // Normal direction
+
+          const auto* normal = geometry.vertex[iMarker][iVertex]->GetNormal();
+          const auto area = GeometryToolbox::Norm(2, normal);
+          const ScalarType nx = SU2_TYPE::GetValue(normal[0]) / area;
+          const ScalarType ny = SU2_TYPE::GetValue(normal[1]) / area;
+
+          R[0][0] = -ny; R[0][1] = nx;  // Tangent direction
+          R[1][0] =  nx; R[1][1] = ny;  // Normal direction
+
+          CBlasStructure::EigenRecomposition(M, R, EigVal, 2);
+          Tensor::set(metric, iPoint, 0, M, 1.0, 2);
         }
+        break;
       }
-
-      /*--- If point doesn't belong to any GeoDev marker, skip it ---*/
-      if (!foundMarker) continue;
-
-      /*--- Skip corner nodes since curvature is ill-defined there and AMG handles them ---*/
-      if (geometry.IsCornerNode(iPoint)) {
-        cout << "Skipping corner node " << geometry.nodes->GetGlobalIndex(iPoint) << endl;
-        continue;
-      }
-
-      /*--- Get curvature directly from geometry ---*/
-      const ScalarType curvature = SU2_TYPE::GetValue(nodes->GetCurvature(iPoint));
-
-      /*--- Compute metric sizes ---*/
-      const ScalarType h_curv = alpha / fabs(curvature);
-      const ScalarType h_clipped = max(hmin, min(hmax, h_curv));
-
-      /*--- Build metric eigenvalues ---*/
-      EigVal[0] = 1.0 / (h_clipped * h_clipped);  // Tangent direction
-      EigVal[1] = eigmin;                         // Normal direction
-
-      /*--- Build rotation matrix ---*/
-      const auto area = GeometryToolbox::Norm(2, n);
-      for (auto iDim = 0u; iDim < 2; ++iDim) n[iDim] /= area;
-
-      R[0][0] = -n[1]; R[0][1] = n[0];   // Tangent direction
-      R[1][0] = n[0];  R[1][1] = n[1];   // Normal direction
-
-      /*--- Recompose metric ---*/
-      CBlasStructure::EigenRecomposition(M, R, EigVal, 2);
-      Tensor::set(metric, iPoint, 0, M, 1.0, 2);
     }
 
   } else {

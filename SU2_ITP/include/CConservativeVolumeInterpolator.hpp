@@ -311,4 +311,10 @@ class CConservativeVolumeInterpolator : public CVolumeInterpolator {
                                     CSolver* solver_dst,
                                     unsigned long uncontainedNodeID,
                                     unsigned long nearestNodeID);
+
+    /*!
+     * \brief Multiply (multiply=true) or divide (multiply=false) solution by local density.
+     */
+    static void ScaleSolutionByDensity(CSolver* solver, const CSolver* flowSolver,
+                                       bool multiply, unsigned long nPoint);
 };
