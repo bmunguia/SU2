@@ -40,6 +40,7 @@
 
 CTransLMSolver::CTransLMSolver(CGeometry *geometry, CConfig *config, unsigned short iMesh)
     : CTurbSolver(geometry, config, true) {
+  SU2_ZONE_SCOPED
   unsigned long iPoint;
   ifstream restart_file;
   string text_line;
@@ -175,6 +176,7 @@ CTransLMSolver::CTransLMSolver(CGeometry *geometry, CConfig *config, unsigned sh
 
 void CTransLMSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, CConfig *config,
          unsigned short iMesh, unsigned short iRKStep, unsigned short RunTime_EqSystem, bool Output) {
+  SU2_ZONE_SCOPED
   SU2_OMP_SAFE_GLOBAL_ACCESS(config->SetGlobalParam(config->GetKind_Solver(), RunTime_EqSystem);)
 
   /*--- Upwind second order reconstruction and gradients ---*/
@@ -182,6 +184,7 @@ void CTransLMSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
 }
 
 void CTransLMSolver::Postprocessing(CGeometry *geometry, CSolver **solver_container, CConfig *config, unsigned short iMesh) {
+  SU2_ZONE_SCOPED
 
   /*--- Compute LM model gradients. ---*/
 
@@ -266,6 +269,7 @@ void CTransLMSolver::Postprocessing(CGeometry *geometry, CSolver **solver_contai
 
 void CTransLMSolver::Viscous_Residual(const unsigned long iEdge, const CGeometry* geometry, CSolver** solver_container,
                                      CNumerics* numerics, const CConfig* config) {
+  SU2_ZONE_SCOPED
 
   /*--- Define an object to set solver specific numerics contribution. ---*/
 
@@ -279,6 +283,7 @@ void CTransLMSolver::Viscous_Residual(const unsigned long iEdge, const CGeometry
 
 void CTransLMSolver::Source_Residual(CGeometry *geometry, CSolver **solver_container,
                                      CNumerics **numerics_container, CConfig *config, unsigned short iMesh) {
+  SU2_ZONE_SCOPED
 
   const bool implicit = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
 
@@ -361,10 +366,12 @@ void CTransLMSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
 
 void CTransLMSolver::Source_Template(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
                                        CConfig *config, unsigned short iMesh) {
+  SU2_ZONE_SCOPED
 }
 
 void CTransLMSolver::BC_HeatFlux_Wall(CGeometry *geometry, CSolver **solver_container, CNumerics *conv_numerics,
                                       CNumerics *visc_numerics, CConfig *config, unsigned short val_marker) {
+  SU2_ZONE_SCOPED
 
   const bool implicit = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
 
@@ -421,6 +428,7 @@ void CTransLMSolver::BC_HeatFlux_Wall(CGeometry *geometry, CSolver **solver_cont
 
 void CTransLMSolver::BC_Isothermal_Wall(CGeometry *geometry, CSolver **solver_container, CNumerics *conv_numerics,
                                         CNumerics *visc_numerics, CConfig *config, unsigned short val_marker) {
+  SU2_ZONE_SCOPED
 
   BC_HeatFlux_Wall(geometry, solver_container, conv_numerics, visc_numerics, config, val_marker);
 
@@ -428,6 +436,7 @@ void CTransLMSolver::BC_Isothermal_Wall(CGeometry *geometry, CSolver **solver_co
 
 void CTransLMSolver::BC_Inlet(CGeometry *geometry, CSolver **solver_container, CNumerics *conv_numerics, CNumerics *visc_numerics, CConfig *config,
                                 unsigned short val_marker) {
+  SU2_ZONE_SCOPED
   const bool implicit = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
 
   /*--- Loop over all the vertices on this boundary marker ---*/
@@ -496,11 +505,13 @@ void CTransLMSolver::BC_Inlet(CGeometry *geometry, CSolver **solver_container, C
 
 void CTransLMSolver::BC_Outlet(CGeometry *geometry, CSolver **solver_container, CNumerics *conv_numerics,
                                CNumerics *visc_numerics, CConfig *config, unsigned short val_marker) {
+  SU2_ZONE_SCOPED
   BC_Far_Field(geometry, solver_container, conv_numerics, visc_numerics, config, val_marker);
 }
 
 void CTransLMSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* config, int val_iter,
                                   bool val_update_geo) {
+  SU2_ZONE_SCOPED
 
   string restart_filename = config->GetSolution_FileName();
 

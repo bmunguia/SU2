@@ -85,6 +85,7 @@ void CDriverBase::InitializeContainers() {
 }
 
 void CDriverBase::CommonFinalize() {
+  SU2_ZONE_SCOPED
 
   if (numerics_container != nullptr) {
     for (iZone = 0; iZone < nZone; iZone++) {
@@ -446,4 +447,3 @@ short CDriverBase::GetMetricSensorIndex(const string& sensor_name) const {
   }
   return -1;
 }
-

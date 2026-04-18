@@ -27,10 +27,8 @@ su2_deps     = [declare_dependency(include_directories: 'externals/CLI11')]
 
 default_warning_flags = []
 if build_machine.system() != 'windows'
-  if meson.get_compiler('cpp').get_id() != 'intel'
-    default_warning_flags += ['-Wno-empty-body']
-  endif
-  desired_warnings = ['-Wno-ignored-qualifiers',
+  desired_warnings = ['-Wno-empty-body',
+                      '-Wno-ignored-qualifiers',
                       '-Wno-unused-parameter',
                       '-Wno-deprecated-declarations',
                       '-Wno-error=cast-function-type',
@@ -53,6 +51,15 @@ if build_machine.system() != 'windows'
   if get_option('enable-autodiff') or get_option('enable-directdiff')
     default_warning_flags += ['-Wno-non-virtual-dtor']
   endif
+endif
+
+if get_option('cpu-arch') != ''
+  su2_cpp_args += ['-march=' + get_option('cpu-arch')]
+endif
+
+# Fast math to allow pow(x, 2) -> x * x.
+if meson.get_compiler('cpp').has_argument('-fno-finite-math-only')
+  su2_cpp_args += ['-ffast-math', '-fno-finite-math-only']
 endif
 
 # Handle assertions: default is b_ndebug=true (assertions disabled)
@@ -126,10 +133,10 @@ if get_option('enable-autodiff') and not omp
 endif
 
 # Add Tracy dependency if enabled
-if get_option('enable-tracy')
+if get_option('tracy_enable')
     tracy_dep = dependency('tracy', static: true)
     su2_deps += tracy_dep
-    su2_cpp_args += '-DHAVE_TRACY'
+    su2_cpp_args += '-DTRACY_ENABLE'
 
     # Add build type check
     if get_option('buildtype') != 'debugoptimized'
@@ -143,23 +150,6 @@ if get_option('enable-cgns')
   subdir('externals/cgns')
   su2_deps     += cgns_dep
   su2_cpp_args += '-DHAVE_CGNS'
-endif
-
-# add libmeshb for gmf format
-if get_option('enable-gmf')
-  cmake = import('cmake')
-  cmake_opts = cmake.subproject_options()
-  cmake_opts.set_override_option('warning_level', '0')
-  cmake_opts.add_cmake_defines({
-    'CMAKE_MAKE_PROGRAM': join_paths(meson.project_source_root(), 'ninja'),
-    'CMAKE_POSITION_INDEPENDENT_CODE': true,
-    'CMAKE_Fortran_COMPILER': false,
-    'CMAKE_C_FLAGS': '-D_GNU_SOURCE',
-  })
-  libmeshb_subproj = cmake.subproject('libmeshb', options: cmake_opts)
-  libmeshb_dep = libmeshb_subproj.dependency('Meshb.7')
-  su2_deps += libmeshb_dep
-  su2_cpp_args += '-DHAVE_GMF'
 endif
 
 # check for mixed precision floating point arithmetic
@@ -323,6 +313,11 @@ if get_option('enable-coolprop')
   if build_machine.cpu_family() == 'x86' or build_machine.cpu_family() == 'x86_64'
     cmake = import('cmake')
     cmake_opts = cmake.subproject_options()
+    if get_option('cpu-arch') != ''
+      cmake_opts.add_cmake_defines({
+        'CMAKE_CXX_FLAGS': '-march=' + get_option('cpu-arch')
+      })
+    endif
     cmake_opts.set_override_option('warning_level', '0')
     cmake_opts.add_cmake_defines({
       'COOLPROP_STATIC_LIBRARY': true,
@@ -400,7 +395,6 @@ message('''---------------------------------------------------------------------
          CoolProp:       @12@
          MLPCpp:         @13@
          Tracy Profiler: @14@
-         GMF:            @15@
 
          Please be sure to add the $SU2_HOME and $SU2_RUN environment variables,
          and update your $PATH (and $PYTHONPATH if applicable) with $SU2_RUN
@@ -416,8 +410,7 @@ message('''---------------------------------------------------------------------
 '''.format(get_option('prefix')+'/bin', meson.project_source_root(), get_option('enable-tecio'), get_option('enable-cgns'),
            get_option('enable-autodiff'), get_option('enable-directdiff'), get_option('enable-pywrapper'), get_option('enable-mkl'),
            get_option('enable-openblas'), get_option('enable-pastix'), get_option('enable-mixedprec'), get_option('enable-librom'), get_option('enable-coolprop'),
-           get_option('enable-mlpcpp'), get_option('enable-tracy'), get_option('enable-gmf'),
-           meson.project_build_root().startswith(meson.project_source_root()) ? meson.project_build_root().split('/')[-1] : meson.project_build_root()))
+           get_option('enable-mlpcpp'), get_option('tracy_enable'), meson.project_build_root().startswith(meson.project_source_root()) ? meson.project_build_root().split('/')[-1] : meson.project_build_root()))
 
 if get_option('enable-mpp')
   if get_option('install-mpp')
