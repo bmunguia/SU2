@@ -1328,7 +1328,8 @@ private:
 
   unsigned short nMarker_GeoDev;           /*!< \brief Number of markers where surface metric is requested */
   string* Marker_GeoDev;                   /*!< \brief Markers where surface metric is requested */
-  su2double* Metric_GeoDev;                /*!< \brief Deviation (degrees) from tangent plane for surface metric */
+  su2double* Metric_GeoDev;                /*!< \brief Surface metric control parameter (angle or Hausdorff, depending on METRIC_GEODEV_MODE) */
+  GEO_DEV_MODE Metric_GeoDev_Mode;         /*!< \brief Interpretation mode for METRIC_GEODEV values */
 
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
@@ -10500,10 +10501,15 @@ public:
   string GetMarker_GeoDev(unsigned short iMarker) const { return Marker_GeoDev[iMarker]; }
 
   /*!
-   * \brief Get deviation from tangent plane (degrees) for surface metric
-   * \return Deviation from tangent plane (degrees) for surface metric
+   * \brief Get METRIC_GEODEV value for a marker
+   * \return Marker value interpreted by METRIC_GEODEV_MODE
    */
   su2double GetMetric_GeoDev(unsigned short iMarker) const { return Metric_GeoDev[iMarker]; }
+
+  /*!
+   * \brief Get interpretation mode for METRIC_GEODEV
+   */
+  GEO_DEV_MODE GetMetric_GeoDev_Mode(void) const { return Metric_GeoDev_Mode; }
 
   /*!
    * \brief Get constraint complexity

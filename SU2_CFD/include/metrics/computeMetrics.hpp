@@ -30,9 +30,11 @@
 #pragma once
 
 #include <vector>
+#include <array>
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <unordered_set>
 #include "../../../Common/include/parallelization/mpi_structure.hpp"
 #include "../../../Common/include/parallelization/omp_structure.hpp"
 #include "../../../Common/include/linear_algebra/blas_structure.hpp"
@@ -127,6 +129,212 @@ struct hessian {
 }  // namespace tensor
 
 namespace detail {
+
+/*!
+ * \brief Signed 2D curvature estimate from a 3-point stencil.
+ * \param[in] pPrev - Previous point coordinates (x,y).
+ * \param[in] pCurr - Current point coordinates (x,y).
+ * \param[in] pNext - Next point coordinates (x,y).
+ * \param[in] eps - Regularization to avoid division by zero.
+ * \return Signed curvature. Magnitude is the inverse local radius.
+ */
+template <class ScalarType>
+inline ScalarType Curvature2D(const ScalarType* pPrev, const ScalarType* pCurr,
+                              const ScalarType* pNext, ScalarType eps = ScalarType(1e-24)) {
+  const ScalarType x0 = pPrev[0], y0 = pPrev[1];
+  const ScalarType x1 = pCurr[0], y1 = pCurr[1];
+  const ScalarType x2 = pNext[0], y2 = pNext[1];
+
+  const ScalarType dx10 = x1 - x0;
+  const ScalarType dy10 = y1 - y0;
+  const ScalarType dx21 = x2 - x1;
+  const ScalarType dy21 = y2 - y1;
+  const ScalarType dx20 = x2 - x0;
+  const ScalarType dy20 = y2 - y0;
+
+  const ScalarType l10 = sqrt(dx10 * dx10 + dy10 * dy10);
+  const ScalarType l21 = sqrt(dx21 * dx21 + dy21 * dy21);
+  const ScalarType l20 = sqrt(dx20 * dx20 + dy20 * dy20);
+
+  const ScalarType cross = dx10 * dy20 - dy10 * dx20;
+  const ScalarType denom = l10 * l21 * l20 + eps;
+
+  /*--- Signed curvature from oriented triangle area and edge lengths. ---*/
+  return ScalarType(2.0) * cross / denom;
+}
+
+/*!
+ * \brief Principal curvature estimate in 3D from a local quadratic fit.
+ * \param[in] pCurr - Current point coordinates (x,y,z).
+ * \param[in] normal - Unit normal at pCurr.
+ * \param[in] neighbors - Neighbor coordinates around pCurr.
+ * \param[out] kappa1 - Maximum principal curvature.
+ * \param[out] kappa2 - Minimum principal curvature.
+ * \param[out] dir1 - 3D unit direction corresponding to kappa1.
+ * \param[out] dir2 - 3D unit direction corresponding to kappa2.
+ * \return true if estimation succeeded, false otherwise.
+ *
+ * \note The fit uses a Monge patch z(u,v) around pCurr and computes the
+ *       Hessian-based principal curvatures. This is a robust local estimate
+ *       intended for metric construction.
+ */
+template <class ScalarType>
+inline bool Curvature3D(const ScalarType* pCurr, const ScalarType* normal,
+                        const vector<array<ScalarType, 3>>& neighbors,
+                        ScalarType& kappa1, ScalarType& kappa2,
+                        ScalarType* dir1, ScalarType* dir2) {
+  constexpr ScalarType tiny = ScalarType(1e-24);
+
+  if (neighbors.size() < 6) return false;
+
+  /*--- Build orthonormal tangent basis {u, v, n}. ---*/
+  ScalarType n[3] = {normal[0], normal[1], normal[2]};
+  const ScalarType nNorm = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+  if (nNorm < tiny) return false;
+  n[0] /= nNorm;
+  n[1] /= nNorm;
+  n[2] /= nNorm;
+
+  ScalarType u[3] = {0.0, 0.0, 0.0};
+  size_t minComp = (fabs(n[0]) < fabs(n[1])) ? 0 : 1;
+  minComp = (fabs(n[2]) < fabs(n[minComp])) ? 2 : minComp;
+  u[minComp] = ScalarType(1.0);
+
+  const ScalarType uDotN = u[0] * n[0] + u[1] * n[1] + u[2] * n[2];
+  u[0] -= uDotN * n[0];
+  u[1] -= uDotN * n[1];
+  u[2] -= uDotN * n[2];
+
+  const ScalarType uNorm = sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+  if (uNorm < tiny) return false;
+  u[0] /= uNorm;
+  u[1] /= uNorm;
+  u[2] /= uNorm;
+
+  ScalarType v[3];
+  v[0] = n[1] * u[2] - n[2] * u[1];
+  v[1] = n[2] * u[0] - n[0] * u[2];
+  v[2] = n[0] * u[1] - n[1] * u[0];
+
+  /*--- Weighted least-squares fit of z = 0.5*(a*u^2 + 2*b*u*v + c*v^2) + d*u + e*v + f. ---*/
+  ScalarType avgR2 = 0.0;
+  for (const auto& q : neighbors) {
+    const ScalarType dx = q[0] - pCurr[0];
+    const ScalarType dy = q[1] - pCurr[1];
+    const ScalarType dz = q[2] - pCurr[2];
+    avgR2 += dx * dx + dy * dy + dz * dz;
+  }
+  avgR2 = max(avgR2 / ScalarType(neighbors.size()), tiny);
+
+  ScalarType ATA[6][6] = {{0.0}};
+  ScalarType ATz[6] = {0.0};
+
+  for (const auto& q : neighbors) {
+    const ScalarType rx = q[0] - pCurr[0];
+    const ScalarType ry = q[1] - pCurr[1];
+    const ScalarType rz = q[2] - pCurr[2];
+
+    const ScalarType uu = rx * u[0] + ry * u[1] + rz * u[2];
+    const ScalarType vv = rx * v[0] + ry * v[1] + rz * v[2];
+    const ScalarType zz = rx * n[0] + ry * n[1] + rz * n[2];
+
+    const ScalarType r2 = rx * rx + ry * ry + rz * rz;
+    const ScalarType w = exp(-r2 / (ScalarType(2.0) * avgR2));
+
+    const ScalarType row[6] = {
+      ScalarType(0.5) * uu * uu,
+      uu * vv,
+      ScalarType(0.5) * vv * vv,
+      uu,
+      vv,
+      ScalarType(1.0)
+    };
+
+    for (size_t i = 0; i < 6; ++i) {
+      ATz[i] += w * row[i] * zz;
+      for (size_t j = 0; j < 6; ++j) {
+        ATA[i][j] += w * row[i] * row[j];
+      }
+    }
+  }
+
+  /*--- Solve normal equations with Gaussian elimination + partial pivoting. ---*/
+  ScalarType A[6][7] = {{0.0}};
+  for (size_t i = 0; i < 6; ++i) {
+    for (size_t j = 0; j < 6; ++j) A[i][j] = ATA[i][j];
+    A[i][6] = ATz[i];
+  }
+
+  for (size_t k = 0; k < 6; ++k) {
+    size_t pivot = k;
+    ScalarType maxAbs = fabs(A[k][k]);
+    for (size_t i = k + 1; i < 6; ++i) {
+      const ScalarType vAbs = fabs(A[i][k]);
+      if (vAbs > maxAbs) {
+        maxAbs = vAbs;
+        pivot = i;
+      }
+    }
+    if (maxAbs < tiny) return false;
+    if (pivot != k) {
+      for (size_t j = k; j < 7; ++j) swap(A[k][j], A[pivot][j]);
+    }
+
+    for (size_t i = k + 1; i < 6; ++i) {
+      const ScalarType f = A[i][k] / A[k][k];
+      for (size_t j = k; j < 7; ++j) A[i][j] -= f * A[k][j];
+    }
+  }
+
+  ScalarType x[6] = {0.0};
+  for (int i = 5; i >= 0; --i) {
+    ScalarType sum = A[i][6];
+    for (size_t j = size_t(i) + 1; j < 6; ++j) sum -= A[i][j] * x[j];
+    if (fabs(A[i][i]) < tiny) return false;
+    x[i] = sum / A[i][i];
+  }
+
+  const ScalarType a = x[0];
+  const ScalarType b = x[1];
+  const ScalarType c = x[2];
+
+  /*--- Principal curvatures from symmetric 2x2 shape approximation [[a,b],[b,c]]. ---*/
+  const ScalarType tr = a + c;
+  const ScalarType det = a * c - b * b;
+  const ScalarType disc = max(tr * tr - ScalarType(4.0) * det, ScalarType(0.0));
+  const ScalarType root = sqrt(disc);
+
+  kappa1 = ScalarType(0.5) * (tr + root);
+  kappa2 = ScalarType(0.5) * (tr - root);
+
+  /*--- Principal directions in tangent plane. ---*/
+  ScalarType e1u, e1v;
+  if (fabs(b) > tiny) {
+    e1u = b;
+    e1v = kappa1 - a;
+  } else {
+    e1u = ScalarType(1.0);
+    e1v = ScalarType(0.0);
+  }
+
+  const ScalarType e1n = sqrt(e1u * e1u + e1v * e1v);
+  if (e1n < tiny) return false;
+  e1u /= e1n;
+  e1v /= e1n;
+
+  const ScalarType e2u = -e1v;
+  const ScalarType e2v = e1u;
+
+  dir1[0] = e1u * u[0] + e1v * v[0];
+  dir1[1] = e1u * u[1] + e1v * v[1];
+  dir1[2] = e1u * u[2] + e1v * v[2];
+
+  dir2[0] = e2u * u[0] + e2v * v[0];
+  dir2[1] = e2u * u[1] + e2v * v[1];
+  dir2[2] = e2u * u[2] + e2v * v[2];
+
+  return true;
+}
 
 /*!
  * \brief Compute determinant of eigenvalues for different dimensions.
@@ -316,8 +524,22 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
   const ScalarType eigmax = 1.0 / pow(hmin, 2.0);
   const ScalarType eigmin = 1.0 / pow(hmax, 2.0);
 
-  /*--- Constraint on deviation from tangent plane ---*/;
+  /*--- Constraint conversion constants for ANGLE mode and regularization for flat regions. ---*/
   const ScalarType deg2rad = M_PI / 180.0;
+  const ScalarType curvatureFloor = 1e-24;
+  const auto geoDevMode = config.GetMetric_GeoDev_Mode();
+
+  auto computeGeoSize = [&](const ScalarType geoDevParam, const ScalarType absCurvature) {
+    if (geoDevParam <= 0.0) return hmax;
+
+    const ScalarType kAbs = max(absCurvature, curvatureFloor);
+    if (geoDevMode == GEO_DEV_MODE::ANGLE) {
+      const ScalarType alpha = geoDevParam * deg2rad;
+      return alpha / kAbs;
+    }
+
+    return sqrt(ScalarType(8.0) * geoDevParam / kAbs);
+  };
 
   /*--- Working arrays ---*/
   ScalarType M[nDim][nDim], R[nDim][nDim], EigVal[nDim], work[nDim];
@@ -335,29 +557,65 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
   auto nodes = geometry.nodes;
 
   if constexpr (nDim == 2) {
-    /*--- 2D: Use curvature computed by CGeometry::ComputeSurf_Curvature ---*/
-    for (unsigned short iMarkerGeoDev = 0; iMarkerGeoDev < config.GetnMarker_GeoDev(); ++iMarkerGeoDev) {
-      const ScalarType geodev_deg = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
-      const ScalarType geodev_rad = geodev_deg * deg2rad;
-      const ScalarType alpha = geodev_rad;
+    /*--- 2D: Prefer local 3-point curvature using boundary neighbors from connectivity. ---*/
+    /*--- Track which points have already been assigned a geodev metric so that a later ---*/
+    /*--- marker entry cannot overwrite a metric set by an earlier one (first wins). ---*/
+    vector<bool> geoDevProcessed(geometry.GetnPoint(), false);
+
+    for (auto iMarkerGeoDev = 0; iMarkerGeoDev < config.GetnMarker_GeoDev(); ++iMarkerGeoDev) {
+      const ScalarType geodev_param = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
       const string& geoDevTag = config.GetMarker_GeoDev(iMarkerGeoDev);
 
-      for (unsigned short iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
-        if (geometry.GetMarker_Tag(iMarker) != geoDevTag) continue;
+      for (auto iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
+        if (config.GetMarker_All_TagBound(iMarker) != geoDevTag) continue;
 
-        for (size_t iVertex = 0; iVertex < geometry.GetnVertex(iMarker); ++iVertex) {
+        cout << "iMarkerGeoDev: " << iMarkerGeoDev << "; geodev_param: " << geodev_param << "; iMarker: " << iMarker << "; geoDevTag: " << geoDevTag << "; markerTag: " << config.GetMarker_All_TagBound(iMarker) << endl;
+
+        for (auto iVertex = 0; iVertex < geometry.GetnVertex(iMarker); ++iVertex) {
           const auto iPoint = geometry.vertex[iMarker][iVertex]->GetNode();
           if (!nodes->GetDomain(iPoint)) continue;
 
           /*--- Skip corner nodes since curvature is ill-defined there and AMG handles them ---*/
           if (geometry.IsCornerNode(iPoint)) continue;
 
-          const ScalarType curvature = SU2_TYPE::GetValue(nodes->GetCurvature(iPoint));
-          const ScalarType h_curv = alpha / fabs(curvature);
+          /*--- Skip if this point was already assigned a geodev metric by a prior marker. ---*/
+          if (geoDevProcessed[iPoint]) continue;
+
+          ScalarType curvature = SU2_TYPE::GetValue(nodes->GetCurvature(iPoint));
+          vector<unsigned long> pointEdge;
+          pointEdge.reserve(2);
+          for (size_t iNeigh = 0; iNeigh < nodes->GetnPoint(iPoint); ++iNeigh) {
+            const auto neighborPoint = nodes->GetPoint(iPoint, iNeigh);
+            if (nodes->GetPhysicalBoundary(neighborPoint)) {
+              pointEdge.push_back(neighborPoint);
+            }
+          }
+
+          if (pointEdge.size() == 2) {
+            const auto iPointPrev = pointEdge[0];
+            const auto iPointNext = pointEdge[1];
+
+            ScalarType pPrev[2] = {
+              SU2_TYPE::GetValue(nodes->GetCoord(iPointPrev, 0)),
+              SU2_TYPE::GetValue(nodes->GetCoord(iPointPrev, 1))
+            };
+            ScalarType pCurr[2] = {
+              SU2_TYPE::GetValue(nodes->GetCoord(iPoint, 0)),
+              SU2_TYPE::GetValue(nodes->GetCoord(iPoint, 1))
+            };
+            ScalarType pNext[2] = {
+              SU2_TYPE::GetValue(nodes->GetCoord(iPointNext, 0)),
+              SU2_TYPE::GetValue(nodes->GetCoord(iPointNext, 1))
+            };
+
+            curvature = Curvature2D(pPrev, pCurr, pNext);
+          }
+
+          const ScalarType h_curv = computeGeoSize(geodev_param, fabs(curvature));
           const ScalarType h_clipped = max(hmin, min(hmax, h_curv));
 
           EigVal[0] = 1.0 / (h_clipped * h_clipped);  // Tangent direction
-          EigVal[1] = eigmin;                           // Normal direction
+          EigVal[1] = eigmin;                         // Normal direction
 
           const auto* normal = geometry.vertex[iMarker][iVertex]->GetNormal();
           const auto area = GeometryToolbox::Norm(2, normal);
@@ -369,6 +627,7 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
 
           CBlasStructure::EigenRecomposition(M, R, EigVal, 2);
           Tensor::set(metric, iPoint, 0, M, 1.0, 2);
+          geoDevProcessed[iPoint] = true;
         }
         break;
       }
@@ -505,16 +764,14 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
       if (config.GetMarker_All_KindBC(iMarker) == SEND_RECEIVE) continue;
 
       /*--- Check if this marker is in the GeoDev list ---*/
-      ScalarType alpha = std::numeric_limits<ScalarType>::max();
+      ScalarType geodev_param = 0.0;
       bool foundGeoDevMarker = false;
       const string& markerTag = geometry.GetMarker_Tag(iMarker);
 
       for (unsigned short iMarkerGeoDev = 0; iMarkerGeoDev < config.GetnMarker_GeoDev(); ++iMarkerGeoDev) {
         if (config.GetMarker_GeoDev(iMarkerGeoDev) == markerTag) {
           /*--- This marker is in the GeoDev list ---*/
-          const ScalarType geodev_deg = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
-          const ScalarType geodev_rad = geodev_deg * deg2rad;
-          alpha = min(alpha, geodev_rad);
+          geodev_param = SU2_TYPE::GetValue(config.GetMetric_GeoDev(iMarkerGeoDev));
           foundGeoDevMarker = true;
           break;
         }
@@ -539,6 +796,66 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
           R[i][2] = n[i];
         }
 
+        /*--- Prefer local jet-fit principal curvature estimate when available. ---*/
+        vector<array<ScalarType, 3>> fitNeighbors;
+        fitNeighbors.reserve(16);
+        unordered_set<unsigned long> addedNeighbors;
+
+        for (size_t jElem = 0; jElem < geometry.GetnElem_Bound(iMarker); ++jElem) {
+          if (geometry.bound[iMarker][jElem]->GetVTK_Type() != TRIANGLE) continue;
+
+          bool containsPoint = false;
+          for (size_t kNode = 0; kNode < 3; ++kNode) {
+            if (geometry.bound[iMarker][jElem]->GetNode(kNode) == iPoint) {
+              containsPoint = true;
+              break;
+            }
+          }
+          if (!containsPoint) continue;
+
+          for (size_t kNode = 0; kNode < 3; ++kNode) {
+            const auto jPoint = geometry.bound[iMarker][jElem]->GetNode(kNode);
+            if (jPoint == iPoint) continue;
+            if (!addedNeighbors.insert(jPoint).second) continue;
+
+            fitNeighbors.push_back({
+              SU2_TYPE::GetValue(nodes->GetCoord(jPoint, 0)),
+              SU2_TYPE::GetValue(nodes->GetCoord(jPoint, 1)),
+              SU2_TYPE::GetValue(nodes->GetCoord(jPoint, 2))
+            });
+          }
+        }
+
+        ScalarType pCurr3[3] = {
+          SU2_TYPE::GetValue(nodes->GetCoord(iPoint, 0)),
+          SU2_TYPE::GetValue(nodes->GetCoord(iPoint, 1)),
+          SU2_TYPE::GetValue(nodes->GetCoord(iPoint, 2))
+        };
+        ScalarType dir1[3] = {0.0, 0.0, 0.0};
+        ScalarType dir2[3] = {0.0, 0.0, 0.0};
+        ScalarType kappa1Fit = 0.0, kappa2Fit = 0.0;
+
+        if (Curvature3D(pCurr3, n, fitNeighbors, kappa1Fit, kappa2Fit, dir1, dir2)) {
+          ScalarType h1 = computeGeoSize(geodev_param, fabs(kappa1Fit));
+          ScalarType h2 = computeGeoSize(geodev_param, fabs(kappa2Fit));
+
+          h1 = max(hmin, min(hmax, h1));
+          h2 = max(hmin, min(hmax, h2));
+
+          EigVal[0] = 1.0 / pow(h1, 2.0);
+          EigVal[1] = 1.0 / pow(h2, 2.0);
+          EigVal[2] = eigmin;
+
+          for (size_t i = 0; i < 3; ++i) {
+            R[i][0] = dir1[i];
+            R[i][1] = dir2[i];
+          }
+
+          CBlasStructure::EigenRecomposition(M, R, EigVal, 3);
+          Tensor::set(metric, iPoint, 0, M, 1.0, 3);
+          continue;
+        }
+
         /*--- Compute mean and Gaussian curvatures using Meyer et al. formulation ---*/
         /*--- Mean curvature: KappaH = (1/2) * ||K(xi)|| ---*/
         ScalarType meanK = 0.5 * GeometryToolbox::Norm(3, meanCurvatureVector[iPoint].data());
@@ -552,8 +869,8 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
         ScalarType kappa2 = meanK - sqrt(delta);  // Minimum principal curvature
 
         /*--- Compute mesh sizes ---*/
-        ScalarType h1 = (fabs(kappa1) != 0.0) ? alpha / fabs(kappa1) : hmax;
-        ScalarType h2 = (fabs(kappa2) != 0.0) ? alpha / fabs(kappa2) : hmax;
+        ScalarType h1 = computeGeoSize(geodev_param, fabs(kappa1));
+        ScalarType h2 = computeGeoSize(geodev_param, fabs(kappa2));
 
         h1 = max(hmin, min(hmax, h1));
         h2 = max(hmin, min(hmax, h2));

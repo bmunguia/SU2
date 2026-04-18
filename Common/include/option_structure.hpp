@@ -2901,6 +2901,18 @@ enum class SensorType {
   CUSTOM,    /*!< \brief User-defined sensor populated externally via the Python wrapper. */
 };
 
+/*!
+ * \brief Type of interpretation for METRIC_GEODEV.
+ */
+enum class GEO_DEV_MODE {
+  ANGLE,      /*!< \brief METRIC_GEODEV is an angular deviation from the tangent plane (degrees). */
+  HAUSDORFF,  /*!< \brief METRIC_GEODEV is a target Hausdorff/sagitta distance. */
+};
+static const MapType<std::string, GEO_DEV_MODE> GeoDevMode_Map = {
+  MakePair("ANGLE", GEO_DEV_MODE::ANGLE)
+  MakePair("HAUSDORFF", GEO_DEV_MODE::HAUSDORFF)
+};
+
 
 #undef MakePair
 /* END_CONFIG_ENUMS */
