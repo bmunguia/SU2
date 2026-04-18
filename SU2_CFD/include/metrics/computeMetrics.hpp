@@ -569,8 +569,6 @@ void geometricSurfaceMetrics(CGeometry& geometry, const CConfig& config,
       for (auto iMarker = 0; iMarker < geometry.GetnMarker(); ++iMarker) {
         if (config.GetMarker_All_TagBound(iMarker) != geoDevTag) continue;
 
-        cout << "iMarkerGeoDev: " << iMarkerGeoDev << "; geodev_param: " << geodev_param << "; iMarker: " << iMarker << "; geoDevTag: " << geoDevTag << "; markerTag: " << config.GetMarker_All_TagBound(iMarker) << endl;
-
         for (auto iVertex = 0; iVertex < geometry.GetnVertex(iMarker); ++iVertex) {
           const auto iPoint = geometry.vertex[iMarker][iVertex]->GetNode();
           if (!nodes->GetDomain(iPoint)) continue;
