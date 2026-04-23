@@ -8095,7 +8095,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         cout << "Output unnormalized metric field." << endl;
       }
       if (nMarker_GeoDev != 0) {
-      cout << "Surface metric allowed deviation (degrees):";
+      cout << "Surface metric allowed deviation (degrees):" << endl;
       for (auto iMarker_GeoDev = 0; iMarker_GeoDev < nMarker_GeoDev; iMarker_GeoDev++) {
         cout << "  " << Marker_GeoDev[iMarker_GeoDev] << ": " << Metric_GeoDev[iMarker_GeoDev] << endl;
       }
