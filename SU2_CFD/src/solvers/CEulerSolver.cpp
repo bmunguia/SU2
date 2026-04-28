@@ -1833,6 +1833,7 @@ void CEulerSolver::Upwind_Residual(CGeometry *geometry, CSolver **solver_contain
 
   const su2double kappa       = config->GetMUSCL_Kappa_Flow();
   const su2double musclRamp   = config->GetMUSCLRampValue() * config->GetNewtonKrylovRelaxation();
+  const su2double pipernoK    = config->GetPiperno_LimiterCoeff();
 
   /*--- Non-physical counter. ---*/
   unsigned long counter_local = 0;
@@ -1913,19 +1914,24 @@ void CEulerSolver::Upwind_Residual(CGeometry *geometry, CSolver **solver_contain
       for (auto iVar = 0u; iVar < nPrimVarGrad; iVar++) {
         const su2double V_ij = V_j[iVar] - V_i[iVar];
 
+        if (piperno) {
+          /*--- Piperno reconstruction uses raw gradient projections directly (no kappa blending).
+           *    pipernoFunction returns the full limited projection psi_R, not a scalar limiter. ---*/
+          const su2double Project_Grad_Raw_i = GeometryToolbox::DotProduct(nDim, Gradient_i[iVar], Vector_ij);
+          const su2double Project_Grad_Raw_j = GeometryToolbox::DotProduct(nDim, Gradient_j[iVar], Vector_ij);
+          Primitive_i[iVar] = V_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, V_ij, 1e-6, pipernoK);
+          Primitive_j[iVar] = V_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, V_ij, 1e-6, pipernoK);
+          continue;
+        }
+
         const su2double Project_Grad_i = MUSCL_Reconstruction(Gradient_i[iVar], Vector_ij, V_ij, kappa, musclRamp);
         const su2double Project_Grad_j = MUSCL_Reconstruction(Gradient_j[iVar], Vector_ij, V_ij, kappa, musclRamp);
 
         su2double lim_i = 1.0;
         su2double lim_j = 1.0;
         if (van_albada) {
-          lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, EPS);
-          lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, V_ij, EPS);
-        }
-        else if (piperno) {
-          su2double V_ij = V_j[iVar] - V_i[iVar];
-          lim_i = LimiterHelpers<>::pipernoFunction(Project_Grad_i, V_ij, EPS);
-          lim_j = LimiterHelpers<>::pipernoFunction(-Project_Grad_j, V_ij, EPS);
+          lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, 1e-6);
+          lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, V_ij, 1e-6);
         }
         else if (limiter) {
           lim_i = nodes->GetLimiter_Primitive(iPoint, iVar);

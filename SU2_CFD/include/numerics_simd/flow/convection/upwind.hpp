@@ -61,6 +61,7 @@ protected:
   const bool muscl;
   const su2double umusclKappa;
   const LIMITER typeLimiter;
+  const su2double pipernoK;
 
   /*!
    * \brief Constructor, store some constants and forward args to base.
@@ -73,7 +74,8 @@ protected:
     dynamicGrid(config.GetDynamic_Grid()),
     muscl(finestGrid && config.GetMUSCL_Flow()),
     umusclKappa(config.GetMUSCL_Kappa_Flow()),
-    typeLimiter(config.GetKind_SlopeLimit_Flow()) {
+    typeLimiter(config.GetKind_SlopeLimit_Flow()),
+    pipernoK(config.GetPiperno_LimiterCoeff()) {
   }
 
 public:
@@ -119,7 +121,7 @@ public:
 
     /*--- Recompute density and enthalpy instead of reconstructing. ---*/
     auto V = reconstructPrimitives<CCompressiblePrimitives<nDim,nPrimVarGrad> >(
-        iEdge, iPoint, jPoint, gamma, gasConst, muscl, umusclKappa, umusclRamp, typeLimiter, V1st, vector_ij, solution);
+        iEdge, iPoint, jPoint, gamma, gasConst, muscl, umusclKappa, umusclRamp, typeLimiter, pipernoK, V1st, vector_ij, solution);
 
     /*--- Compute conservative variables. ---*/
 

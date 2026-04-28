@@ -2012,6 +2012,9 @@ void CConfig::SetConfig_Options() {
   /*!\brief VENKAT_LIMITER_COEFF
    *  \n DESCRIPTION: Coefficient for the limiter. DEFAULT value 0.05. Larger values decrease the extent of limiting, values approaching zero cause lower-order approximation to the solution. \ingroup Config */
   addDoubleOption("VENKAT_LIMITER_COEFF", Venkat_LimiterCoeff, 0.05);
+  /*!\brief PIPERNO_COEFF
+   *  \n DESCRIPTION: k coefficient for the Piperno limiter. Values larger than 1.0 widen the non-limiting region (1/k ≤ R ≤ k). Default value 1.0 recovers the standard Piperno limiter. \ingroup Config */
+  addDoubleOption("PIPERNO_COEFF", Piperno_LimiterCoeff, 1.0);
   /*!\brief ADJ_SHARP_LIMITER_COEFF
    *  \n DESCRIPTION: Coefficient for detecting the limit of the sharp edges. DEFAULT value 3.0.  Use with sharp edges limiter. \ingroup Config*/
   addDoubleOption("ADJ_SHARP_LIMITER_COEFF", AdjSharp_LimiterCoeff, 3.0);
@@ -7126,7 +7129,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           cout << "Van Albada slope-limiting method implemented by edges." << endl;
           break;
         case LIMITER::PIPERNO:
-          cout << "Piperno slope-limiting method implemented by edges." << endl;
+          cout << "Piperno slope-limiting method implemented by edges, with k = " << Piperno_LimiterCoeff << "." << endl;
           break;
         case LIMITER::SHARP_EDGES:
           cout << "Sharp edges slope-limiting method, with constant: " << Venkat_LimiterCoeff << ".\n";

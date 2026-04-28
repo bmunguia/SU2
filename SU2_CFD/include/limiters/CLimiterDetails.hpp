@@ -135,26 +135,37 @@ struct LimiterHelpers
     return (y + Dp*S5) / (y + Dm*(pow(delta,4)+S5));
   }
 
-  FORCEINLINE static Type pipernoPhiFunction(const Type& R)
+  /*!
+   * \brief Configurable Piperno phi function φ(r, k) where r = 1/R.
+   * \param[in] r - Inverse slope ratio r = Δu_{i-1/2} / Δu_{i+1/2}.
+   * \param[in] k - Piperno coefficient (k >= 1). k=1 recovers the standard Piperno limiter.
+   */
+  FORCEINLINE static Type pipernoPhiFunction(const Type& r, const Type& k = 1.0)
   {
-    /*--- φ(R) = 0 if r <= 0 ---*/
-    if (R <= 0.0) return 0.0;
+    if (r <= 0.0) return 0.0;
 
-    /*--- φ(R) = 1 + (3/2 r + 1)(r - 1)^3 if 0 <= r <= 1 ---*/
-    if (R <= 1.0) {
-      Type r_minus_1 = R - 1.0;
-      return 1.0 + (1.5 * R + 1.0) * pow(r_minus_1, 3);
+    /*--- Region R < 1/k ---*/
+    /*--- φ = (3r²-6r+19) / ((r-k)³+3r²-6r+19) ---*/
+    if (r > k) {
+      Type r_minus_k = r - k;
+      Type r_sq = r * r;
+      Type numerator = 3.0 * r_sq - 6.0 * r + 19.0;
+      Type denominator = r_minus_k * r_minus_k * r_minus_k + numerator;
+      return numerator / max(denominator, std::numeric_limits<passivedouble>::epsilon());
     }
 
-    /*--- φ(R) = (3r^2 - 6r + 19) / (r^3 - 3r + 18) if 1 <= r ---*/
-    Type r_squared = R * R;
-    Type r_cubed = r_squared * R;
-    Type numerator = 3.0 * r_squared - 6.0 * R + 19.0;
-    Type denominator = r_cubed - 3.0 * R + 18.0;
-    return numerator / max(denominator, std::numeric_limits<passivedouble>::epsilon());
+    /*--- Region 1/k <= R <= k ---*/
+    if (r >= 1.0 / k) return 1.0;
+
+    /*--- Region R > k ---*/
+    /*--- s = r / (1 + r*(1-k)); φ = 1 + (3/2 s + 1)(s-1)³ ---*/
+    Type s = r / (1.0 + r * (1.0 - k));
+    Type s_minus_1 = s - 1.0;
+    return 1.0 + (1.5 * s + 1.0) * s_minus_1 * s_minus_1 * s_minus_1;
   }
 
-  FORCEINLINE static Type pipernoFunction(const Type& proj, const Type& delta, const Type& eps)
+  FORCEINLINE static Type pipernoFunction(const Type& proj, const Type& delta, const Type& eps,
+                                          const Type& k = 1.0)
   {
     /*----------------------------------------------------------------*/
     /*--- In Piperno's notation:                                   ---*/
@@ -167,18 +178,15 @@ struct LimiterHelpers
     Type sign_delta = (delta >= 0.0) ? 1.0 : -1.0;
     Type inv_delta = sign_delta / max(fabs(delta), eps);
 
-    /*--- Compute 1/R directly = Δu_{i-1/2} / Δu_{i+1/2} ---*/
-    Type inv_R = delta_upwind * inv_delta;
+    /*--- Compute r = 1/R = Δu_{i-1/2} / Δu_{i+1/2} ---*/
+    Type r = delta_upwind * inv_delta;
 
-    /*--- Compute φ(1/R) ---*/
-    Type phi_inv_R = pipernoPhiFunction(inv_R);
+    /*--- Compute φ(r, k) ---*/
+    Type phi_r = pipernoPhiFunction(r, k);
 
-    /*--- R = 1 / inv_R for ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
-    Type R = 1.0 / max(fabs(inv_R), eps) * ((inv_R >= 0.0) ? 1.0 : -1.0);
-
-    /*--- Compute ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
-    /*--- When φ(R) = 1, this gives the beta scheme ---*/
-    Type psi_R = (ONE3 * delta_upwind + TWO3 * delta) * phi_inv_R;
+    /*--- Compute ψ(R) = (1/3 + 2/3 R) φ(1/R) = (1/3 Δu_{i-1/2} + 2/3 Δu_{i+1/2}) φ(r) ---*/
+    /*--- When φ = 1, this gives the beta scheme ---*/
+    Type psi_R = (ONE3 * delta_upwind + TWO3 * delta) * phi_r;
 
     /*--- Apply sign correction ---*/
     Type sign = (delta * proj >= 0.0) ? 1.0 : 0.0;
@@ -557,15 +565,16 @@ struct CLimiterDetails<LIMITER::WALL_DISTANCE>
 template<>
 struct CLimiterDetails<LIMITER::PIPERNO>
 {
-  su2double eps;
+  su2double eps, k;
 
   /*!
-   * \brief Set a small epsilon to avoid divisions by 0.
+   * \brief Set epsilon to avoid divisions by 0 and read the Piperno k coefficient.
    */
   template<class... Ts>
-  inline void preprocess(CGeometry&, const CConfig&, Ts&...)
+  inline void preprocess(CGeometry&, const CConfig& config, Ts&...)
   {
     eps = LimiterHelpers<>::epsilon();
+    k = config.GetPiperno_LimiterCoeff();
   }
 
   /*!
@@ -575,10 +584,10 @@ struct CLimiterDetails<LIMITER::PIPERNO>
   inline su2double geometricFactor(Ts&...) const {return 1.0;}
 
   /*!
-   * \brief Piperno limiter function.
+   * \brief Configurable Piperno limiter function.
    */
   inline su2double limiterFunction(size_t, su2double proj, su2double delta) const
   {
-    return LimiterHelpers<>::pipernoFunction(proj, delta, eps);
+    return LimiterHelpers<>::pipernoFunction(proj, delta, eps, k);
   }
 };

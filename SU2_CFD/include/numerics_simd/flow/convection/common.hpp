@@ -211,40 +211,49 @@ FORCEINLINE void musclEdgeLimited(Int iPoint,
 }
 
 /*!
- * \brief Piperno limiter function φ(R).
+ * \brief Configurable Piperno limiter function φ(r, k) where r = 1/R (inverse slope ratio).
+ * \param[in] r - Inverse slope ratio r = Δu_{i-1/2} / Δu_{i+1/2}.
+ * \param[in] k - Piperno coefficient (k >= 1). k=1 recovers the standard Piperno limiter.
+ * \note Uses branchless SIMD-friendly evaluation across all three regions.
  */
-FORCEINLINE Double pipernoLimiterFunction(Double R) {
-  /*--- φ(R) = 0 if r <= 0 ---*/
-  const Double positive_R = fmax(R, 0.0);
+FORCEINLINE Double pipernoLimiterFunction(Double r, su2double k) {
+  const Double pos_r = fmax(r, 0.0);
 
-  /*--- φ(R) = 1 + (3/2 r + 1)(r - 1)^3 if 0 <= r <= 1 ---*/
-  const Double r_minus_1 = positive_R - 1.0;
-  const Double r_minus_1_cubed = pow(r_minus_1, 3);
-  const Double phi_case1 = 1.0 + (1.5 * positive_R + 1.0) * r_minus_1_cubed;
+  /*--- Region R > k ---*/
+  /*--- s = r / (1 + r*(1-k)); φ = 1 + (3/2 s + 1)(s-1)³ ---*/
+  const Double s = pos_r / fmax(1.0 + pos_r * (1.0 - k), 1e-6);
+  const Double s_minus_1 = s - 1.0;
+  const Double phi_mild = 1.0 + (1.5 * s + 1.0) * pow(s_minus_1, 3);
 
-  /*--- φ(R) = (3r^2 - 6r + 19) / (r^3 - 3r + 18) if 1 <= r ---*/
-  const Double r_squared = pow(positive_R, 2);
-  const Double r_cubed = pow(positive_R, 3);
-  const Double numerator = 3.0 * r_squared - 6.0 * positive_R + 19.0;
-  const Double denominator = r_cubed - 3.0 * positive_R + 18.0;
-  const Double phi_case2 = numerator / fmax(denominator, 1e-14);
+  /*--- Region 1/k <= R <= k ---*/
+  const Double phi_flat = 1.0;
 
-  /*--- Select appropriate case based on R value ---*/
-  const Double phi_01 = (positive_R <= 1.0) * phi_case1 + (positive_R > 1.0) * phi_case2;
+  /*--- Region R < 1/k ---*/
+  /*--- φ = (3r²-6r+19) / ((r-k)³+3r²-6r+19) ---*/
+  const Double r_minus_k = pos_r - k;
+  const Double r_sq = pow(pos_r, 2);
+  const Double numerator = 3.0 * r_sq - 6.0 * pos_r + 19.0;
+  const Double denominator = pow(r_minus_k, 3) + numerator;
+  const Double phi_strong = numerator / fmax(denominator, 1e-6);
 
-  /*--- Return 0 if R <= 0, otherwise return computed φ(R) ---*/
-  return (R > 0.0) * phi_01;
+  /*--- Select region using branchless evaluation ---*/
+  const Double inv_k = 1.0 / k;
+  const Double phi = (pos_r < inv_k) * phi_mild + (pos_r >= inv_k) * ((pos_r <= k) * phi_flat + (pos_r > k) * phi_strong);
+
+  return (r > 0.0) * phi;
 }
 
 /*!
- * \brief Piperno slope limiter reconstruction (edge formulation).
+ * \brief Configurable Piperno slope limiter reconstruction (edge formulation).
+ * \param[in] k - Piperno coefficient (k >= 1). k=1 recovers the standard Piperno limiter.
  */
 template<size_t nVarGrad_ = 0, size_t nDim, class VarType, class Gradient_t>
 FORCEINLINE void musclPiperno(Int iPoint,
                               Int jPoint,
                               const VectorDbl<nDim>& vector_ij,
                               const Gradient_t& gradient,
-                              CPair<VarType>& V) {
+                              CPair<VarType>& V,
+                              su2double k) {
   constexpr auto nVarGrad = nVarGrad_ > 0 ? nVarGrad_ : VarType::nVar;
 
   auto grad_i = gatherVariables<nVarGrad,nDim>(iPoint, gradient);
@@ -262,19 +271,18 @@ FORCEINLINE void musclPiperno(Int iPoint,
     const Double delta_imhalf = 2.0 * proj_i - delta_ij;
     const Double delta_jphalf = 2.0 * proj_j - delta_ij;
 
-    /*--- Compute slope ratios R_i and R_j ---*/
-    /*--- R_i = Δu_{i+1/2} / Δu_{i-1/2} ---*/
-    /*--- R_j = Δu_{i+1/2} / Δu_{i+3/2} ---*/
+    /*--- Compute slope ratios r_i = 1/R_i and r_j = 1/R_j ---*/
+    /*--- r_i = Δu_{i-1/2} / Δu_{i+1/2}, r_j = Δu_{i+3/2} / Δu_{i+1/2} ---*/
     const Double sign_delta_ij = (delta_ij >= 0.0) - (delta_ij < 0.0);
-    const Double inv_delta_ij = sign_delta_ij / fmax(abs(delta_ij), 1e-14);
+    const Double inv_delta_ij = sign_delta_ij / fmax(abs(delta_ij), 1e-6);
 
     const Double inv_R_i = delta_imhalf * inv_delta_ij;
     const Double inv_R_j = delta_jphalf * inv_delta_ij;
 
-    /*--- Compute Piperno limiter functions ---*/
-    /*--- ψ(R) = (1/3 + 2/3 R) φ(1/R) ---*/
-    const Double phi_inv_R_i = pipernoLimiterFunction(inv_R_i);
-    const Double phi_inv_R_j = pipernoLimiterFunction(inv_R_j);
+    /*--- Compute Piperno limiter functions φ(r, k) ---*/
+    /*--- ψ(R) = (1/3 Δu_{i-1/2} + 2/3 Δu_{i+1/2}) φ(r) ---*/
+    const Double phi_inv_R_i = pipernoLimiterFunction(inv_R_i, k);
+    const Double phi_inv_R_j = pipernoLimiterFunction(inv_R_j, k);
 
     const Double proj_lim_i = (ONE3 * delta_imhalf + TWO3 * delta_ij) * phi_inv_R_i;
     const Double proj_lim_j = (ONE3 * delta_jphalf + TWO3 * delta_ij) * phi_inv_R_j;
@@ -297,6 +305,7 @@ FORCEINLINE void musclPiperno(Int iPoint,
  * \param[in] kappa - Blending coefficient for MUSCL reconstruction.
  * \param[in] umusclRamp - MUSCL 1st-2nd order ramp times Newton-Krylov relaxation.
  * \param[in] limiterType - Type of flux limiter.
+ * \param[in] pipernoK - Piperno limiter k coefficient (only used when limiterType == PIPERNO).
  * \param[in] V1st - Pair of compressible flow primitives for nodes i,j.
  * \param[in] vector_ij - Distance vector from i to j.
  * \param[in] solution - Entire solution container (a derived CVariable).
@@ -310,6 +319,7 @@ FORCEINLINE CPair<ReconVarType> reconstructPrimitives(Int iEdge, Int iPoint, Int
                                                       const su2double& kappa,
                                                       const su2double& umusclRamp,
                                                       LIMITER limiterType,
+                                                      const su2double& pipernoK,
                                                       const CPair<PrimVarType>& V1st,
                                                       const VectorDbl<nDim>& vector_ij,
                                                       const VariableType& solution) {
@@ -336,7 +346,7 @@ FORCEINLINE CPair<ReconVarType> reconstructPrimitives(Int iEdge, Int iPoint, Int
       musclEdgeLimited<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V, kappa, umusclRamp);
       break;
     case LIMITER::PIPERNO:
-      musclPiperno<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V);
+      musclPiperno<nVarGrad>(iPoint, jPoint, vector_ij, gradients, V, pipernoK);
       break;
     default:
       musclPointLimited<nVarGrad>(iPoint, jPoint, vector_ij, limiters, gradients, V, kappa, umusclRamp);

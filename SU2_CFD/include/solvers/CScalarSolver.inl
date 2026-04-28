@@ -99,6 +99,8 @@ void CScalarSolver<VariableType>::CommonPreprocessing(CGeometry *geometry, const
   const bool muscl = config->GetMUSCL();
   const bool limiter = (config->GetKind_SlopeLimit() != LIMITER::NONE) &&
                        (config->GetInnerIter() <= config->GetLimiterIter());
+  const bool van_albada = (config->GetKind_SlopeLimit() == LIMITER::VAN_ALBADA_EDGE);
+  const bool piperno = (config->GetKind_SlopeLimit() == LIMITER::PIPERNO);
 
   /*--- Clear residual and system matrix, not needed for
    * reducer strategy as we write over the entire matrix. ---*/
@@ -126,7 +128,7 @@ void CScalarSolver<VariableType>::CommonPreprocessing(CGeometry *geometry, const
     case WEIGHTED_LEAST_SQUARES: SetSolution_Gradient_LS(geometry, config, -1); break;
   }
 
-  if (limiter && muscl) SetSolution_Limiter(geometry, config);
+  if (limiter && muscl && !van_albada && !piperno) SetSolution_Limiter(geometry, config);
 }
 
 template <class VariableType>
@@ -142,17 +144,22 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
   const bool limiter = (config->GetKind_SlopeLimit() != LIMITER::NONE) &&
                        (config->GetInnerIter() <= config->GetLimiterIter());
 
-  /*--- Only reconstruct flow variables if MUSCL is on for flow (requires upwind) and turbulence. ---*/
+  // /*--- Only reconstruct flow variables if MUSCL is on for flow (requires upwind) and turbulence. ---*/
   const bool musclFlow = config->GetMUSCL_Flow() && muscl && (config->GetKind_ConvNumScheme_Flow() == SPACE_UPWIND);
-  /*--- Only consider flow limiters for cell-based limiters, edge-based would need to be recomputed. ---*/
-  const bool limiterFlow = (config->GetKind_SlopeLimit_Flow() != LIMITER::NONE) &&
-                           (config->GetKind_SlopeLimit_Flow() != LIMITER::VAN_ALBADA_EDGE) &&
-                           (config->GetKind_SlopeLimit_Flow() != LIMITER::PIPERNO);
+  // const bool musclFlow = config->GetMUSCL_Flow() && (config->GetKind_ConvNumScheme_Flow() == SPACE_UPWIND);
+  /*--- Edge-based flow limiters are computed on-the-fly per edge; node-based ones are pre-computed. ---*/
+  const bool vanAlbadaFlow = (config->GetKind_SlopeLimit_Flow() == LIMITER::VAN_ALBADA_EDGE);
+  const bool pipernoFlow   = (config->GetKind_SlopeLimit_Flow() == LIMITER::PIPERNO);
+  const bool limiterFlow   = (config->GetKind_SlopeLimit_Flow() != LIMITER::NONE) && !vanAlbadaFlow && !pipernoFlow;
+  /*--- Same for the scalar/turbulence limiter. ---*/
+  const bool vanAlbada = (config->GetKind_SlopeLimit() == LIMITER::VAN_ALBADA_EDGE);
+  const bool piperno   = (config->GetKind_SlopeLimit() == LIMITER::PIPERNO);
 
   /*--- U-MUSCL reconstruction ---*/
   const su2double kappa     = config->GetMUSCL_Kappa();
   const su2double kappaFlow = config->GetMUSCL_Kappa_Flow();
   const su2double musclRamp = config->GetMUSCLRampValue();
+  const su2double pipernoK  = config->GetPiperno_LimiterCoeff();
 
   auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
   const auto& edgeMassFluxes = *(solver_container[FLOW_SOL]->GetEdgeMassFluxes());
@@ -230,16 +237,28 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
           for (auto iVar = 0u; iVar < solver_container[FLOW_SOL]->GetnPrimVarGrad(); iVar++) {
             const su2double V_ij = V_j[iVar] - V_i[iVar];
 
+            if (pipernoFlow) {
+              const su2double Project_Grad_Raw_i = GeometryToolbox::DotProduct(nDim, Gradient_i[iVar], Vector_ij);
+              const su2double Project_Grad_Raw_j = GeometryToolbox::DotProduct(nDim, Gradient_j[iVar], Vector_ij);
+              flowPrimVar_i[iVar] = V_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, V_ij, 1e-6, pipernoK);
+              flowPrimVar_j[iVar] = V_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, V_ij, 1e-6, pipernoK);
+              continue;
+            }
+
             su2double Project_Grad_i = MUSCL_Reconstruction(Gradient_i[iVar], Vector_ij, V_ij, kappaFlow, musclRamp);
             su2double Project_Grad_j = MUSCL_Reconstruction(Gradient_j[iVar], Vector_ij, V_ij, kappaFlow, musclRamp);
 
-            if (limiterFlow) {
-              Project_Grad_i *= Limiter_i[iVar];
-              Project_Grad_j *= Limiter_j[iVar];
+            su2double lim_i = 1.0, lim_j = 1.0;
+            if (vanAlbadaFlow) {
+              lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, 1e-6);
+              lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, V_ij, 1e-6);
+            } else if (limiterFlow) {
+              lim_i = Limiter_i[iVar];
+              lim_j = Limiter_j[iVar];
             }
 
-            flowPrimVar_i[iVar] = V_i[iVar] + 0.5 * Project_Grad_i;
-            flowPrimVar_j[iVar] = V_j[iVar] - 0.5 * Project_Grad_j;
+            flowPrimVar_i[iVar] = V_i[iVar] + 0.5 * lim_i * Project_Grad_i;
+            flowPrimVar_j[iVar] = V_j[iVar] - 0.5 * lim_j * Project_Grad_j;
           }
 
           numerics->SetPrimitive(flowPrimVar_i, flowPrimVar_j);
@@ -251,7 +270,7 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
           auto Gradient_i = nodes->GetGradient_Reconstruction(iPoint);
           auto Gradient_j = nodes->GetGradient_Reconstruction(jPoint);
 
-          if (limiter) {
+          if (limiter && !vanAlbada && !piperno) {
             Limiter_i = nodes->GetLimiter(iPoint);
             Limiter_j = nodes->GetLimiter(jPoint);
           }
@@ -259,16 +278,28 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
           for (auto iVar = 0u; iVar < nVar; iVar++) {
             const su2double U_ij = Scalar_j[iVar] - Scalar_i[iVar];
 
+            if (piperno) {
+              const su2double Project_Grad_Raw_i = GeometryToolbox::DotProduct(nDim, Gradient_i[iVar], Vector_ij);
+              const su2double Project_Grad_Raw_j = GeometryToolbox::DotProduct(nDim, Gradient_j[iVar], Vector_ij);
+              solution_i[iVar] = Scalar_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, U_ij, 1e-6, pipernoK);
+              solution_j[iVar] = Scalar_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, U_ij, 1e-6, pipernoK);
+              continue;
+            }
+
             su2double Project_Grad_i = MUSCL_Reconstruction(Gradient_i[iVar], Vector_ij, U_ij, kappa, musclRamp);
             su2double Project_Grad_j = MUSCL_Reconstruction(Gradient_j[iVar], Vector_ij, U_ij, kappa, musclRamp);
 
-            if (limiter) {
-              Project_Grad_i *= Limiter_i[iVar];
-              Project_Grad_j *= Limiter_j[iVar];
+            su2double lim_i = 1.0, lim_j = 1.0;
+            if (vanAlbada) {
+              lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, U_ij, 1e-6);
+              lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, U_ij, 1e-6);
+            } else if (limiter) {
+              lim_i = Limiter_i[iVar];
+              lim_j = Limiter_j[iVar];
             }
 
-            solution_i[iVar] = Scalar_i[iVar] + 0.5 * Project_Grad_i;
-            solution_j[iVar] = Scalar_j[iVar] - 0.5 * Project_Grad_j;
+            solution_i[iVar] = Scalar_i[iVar] + 0.5 * lim_i * Project_Grad_i;
+            solution_j[iVar] = Scalar_j[iVar] - 0.5 * lim_j * Project_Grad_j;
           }
 
           numerics->SetScalarVar(solution_i, solution_j);
