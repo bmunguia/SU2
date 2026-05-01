@@ -79,8 +79,9 @@ protected:
   su2double ResLinSolver;        /*!< \brief Final linear solver residual. */
   unsigned short NonLinRes_Counter;   /*!< \brief Number of elements of the nonlinear residual indicator series. */
   vector<su2double> NonLinRes_Series; /*!< \brief Vector holding the nonlinear residual indicator series. */
-  su2double Old_Func,  /*!< \brief Old value of the nonlinear residual indicator. */
-  New_Func;            /*!< \brief Current value of the nonlinear residual indicator. */
+  su2double Old_FlowFunc = 1e30,    /*!< \brief Previous mean-flow nonlinear residual (avg log). */
+  Old_TurbFunc = 1e30,              /*!< \brief Previous turbulence nonlinear residual (avg log). */
+  Old_SpeciesFunc = 1e30;           /*!< \brief Previous species nonlinear residual (avg log). */
   unsigned short nVar,           /*!< \brief Number of variables of the problem. */
   nPrimVar,                      /*!< \brief Number of primitive variables of the problem. */
   nPrimVarGrad,                  /*!< \brief Number of primitive variables of the problem in the gradient computation. */

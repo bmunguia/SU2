@@ -114,8 +114,9 @@ CSolver::CSolver(LINEAR_SOLVER_MODE linear_solver_mode) : System(linear_solver_m
 
   /*--- Auxiliary data needed for CFL adaption. ---*/
 
-  Old_Func = 0;
-  New_Func = 0;
+  Old_FlowFunc = 1e30;
+  Old_TurbFunc = 1e30;
+  Old_SpeciesFunc = 1e30;
   NonLinRes_Counter = 0;
 
   nPrimVarGrad = 0;
@@ -1833,8 +1834,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
 void CSolver::ResetCFLAdapt() {
   SU2_ZONE_SCOPED
   NonLinRes_Series.clear();
-  Old_Func = 0;
-  New_Func = 0;
+  Old_FlowFunc = 1e30;
+  Old_TurbFunc = 1e30;
+  Old_SpeciesFunc = 1e30;
   NonLinRes_Counter = 0;
 }
 
@@ -1909,58 +1911,43 @@ void CSolver::AdaptCFLNumber(CGeometry **geometry,
     canIncrease = (linRes < linTol) && (iter >= startingIter);
 
     if ((iMesh == MESH_0) && (Res_Count > 0)) {
-      Old_Func = New_Func;
-      if (NonLinRes_Series.empty()) NonLinRes_Series.resize(Res_Count,0.0);
+      if (NonLinRes_Series.empty()) NonLinRes_Series.resize(Res_Count, 0.0);
 
-      /* Sum the RMS residuals for all equations. */
+      /* BCM TEST */
+      /* Reduce CFL if any solver's residual increased. Old values are
+       initialized to 1e30 so the first iteration never triggers. */
 
-      New_Func = 0.0;
-      unsigned short totalVars = 0;
-      for (unsigned short iVar = 0; iVar < solverFlow->GetnVar(); iVar++) {
-        New_Func += log10(solverFlow->GetRes_RMS(iVar));
-        ++totalVars;
+      auto solverResAvg = [](CSolver* s) {
+        su2double f = 0.0;
+        for (unsigned short i = 0; i < s->GetnVar(); i++) f += log10(s->GetRes_RMS(i));
+        return f / s->GetnVar();
+      };
+
+      const su2double flowFunc = solverResAvg(solverFlow);
+      reduceCFL |= (flowFunc > Old_FlowFunc);
+
+      if (solverTurb) {
+        const su2double turbFunc = solverResAvg(solverTurb);
+        reduceCFL |= (turbFunc > Old_TurbFunc);
+        Old_TurbFunc = turbFunc;
       }
-      if ((iMesh == MESH_0) && solverTurb) {
-        for (unsigned short iVar = 0; iVar < solverTurb->GetnVar(); iVar++) {
-          New_Func += log10(solverTurb->GetRes_RMS(iVar));
-          ++totalVars;
-        }
+      if (solverSpecies) {
+        const su2double speciesFunc = solverResAvg(solverSpecies);
+        reduceCFL |= (speciesFunc > Old_SpeciesFunc);
+        Old_SpeciesFunc = speciesFunc;
       }
-      if ((iMesh == MESH_0) && solverSpecies) {
-        for (unsigned short iVar = 0; iVar < solverSpecies->GetnVar(); iVar++) {
-          New_Func += log10(solverSpecies->GetRes_RMS(iVar));
-          ++totalVars;
-        }
-      }
-      New_Func /= totalVars;
 
-      /* Compute the difference in the nonlinear residuals between the
-       current and previous iterations, taking care with very low initial
-       residuals (due to initialization). */
-
-      if ((config->GetInnerIter() == 1) && (New_Func - Old_Func > 10)) {
-        Old_Func = New_Func;
-      }
-      NonLinRes_Series[NonLinRes_Counter] = New_Func - Old_Func;
-
-      /* Increment the counter, if we hit the max size, then start over. */
+      NonLinRes_Series[NonLinRes_Counter] = flowFunc - Old_FlowFunc;
+      Old_FlowFunc = flowFunc;
 
       NonLinRes_Counter++;
       if (NonLinRes_Counter == Res_Count) NonLinRes_Counter = 0;
 
-      /* Detect flip-flop convergence to reduce CFL and large increases
-       to reset to minimum value, in that case clear the history. */
+      /* Reset CFL if residual diverges explosively, and clear history. */
 
       if (config->GetInnerIter() >= Res_Count) {
-        unsigned long signChanges = 0;
         su2double totalChange = 0.0;
-        auto prev = NonLinRes_Series.front();
-        for (const auto& val : NonLinRes_Series) {
-          totalChange += val;
-          signChanges += (prev > 0) ^ (val > 0);
-          prev = val;
-        }
-        reduceCFL |= (signChanges > Res_Count/4) && (totalChange > -0.5);
+        for (const auto& val : NonLinRes_Series) totalChange += val;
 
         if (totalChange > 2.0) { // orders of magnitude
           resetCFL = true;
@@ -2010,7 +1997,9 @@ void CSolver::AdaptCFLNumber(CGeometry **geometry,
        then we schedule an increase the CFL number for the next iteration. */
 
       su2double CFLFactor = 1.0;
-      if (underRelaxation < 0.1 || reduceCFL) {
+      if (reduceCFL) {
+        CFLFactor = 1.0 / pow(CFLFactorIncrease, 4.0);
+      } else if (underRelaxation < 0.1) {
         CFLFactor = CFLFactorDecrease;
       } else if ((underRelaxation >= 0.1 && underRelaxation < 1.0) || !canIncrease) {
         CFLFactor = 1.0;

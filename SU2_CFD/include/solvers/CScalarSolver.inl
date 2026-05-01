@@ -144,9 +144,8 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
   const bool limiter = (config->GetKind_SlopeLimit() != LIMITER::NONE) &&
                        (config->GetInnerIter() <= config->GetLimiterIter());
 
-  // /*--- Only reconstruct flow variables if MUSCL is on for flow (requires upwind) and turbulence. ---*/
+  /*--- Only reconstruct flow variables if MUSCL is on for flow (requires upwind) and turbulence. ---*/
   const bool musclFlow = config->GetMUSCL_Flow() && muscl && (config->GetKind_ConvNumScheme_Flow() == SPACE_UPWIND);
-  // const bool musclFlow = config->GetMUSCL_Flow() && (config->GetKind_ConvNumScheme_Flow() == SPACE_UPWIND);
   /*--- Edge-based flow limiters are computed on-the-fly per edge; node-based ones are pre-computed. ---*/
   const bool vanAlbadaFlow = (config->GetKind_SlopeLimit_Flow() == LIMITER::VAN_ALBADA_EDGE);
   const bool pipernoFlow   = (config->GetKind_SlopeLimit_Flow() == LIMITER::PIPERNO);
@@ -240,8 +239,8 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
             if (pipernoFlow) {
               const su2double Project_Grad_Raw_i = GeometryToolbox::DotProduct(nDim, Gradient_i[iVar], Vector_ij);
               const su2double Project_Grad_Raw_j = GeometryToolbox::DotProduct(nDim, Gradient_j[iVar], Vector_ij);
-              flowPrimVar_i[iVar] = V_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, V_ij, 1e-6, pipernoK);
-              flowPrimVar_j[iVar] = V_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, V_ij, 1e-6, pipernoK);
+              flowPrimVar_i[iVar] = V_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, V_ij, EPS, pipernoK);
+              flowPrimVar_j[iVar] = V_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, V_ij, EPS, pipernoK);
               continue;
             }
 
@@ -250,8 +249,8 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
 
             su2double lim_i = 1.0, lim_j = 1.0;
             if (vanAlbadaFlow) {
-              lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, 1e-6);
-              lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, V_ij, 1e-6);
+              lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, EPS);
+              lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, V_ij, EPS);
             } else if (limiterFlow) {
               lim_i = Limiter_i[iVar];
               lim_j = Limiter_j[iVar];
@@ -281,8 +280,8 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
             if (piperno) {
               const su2double Project_Grad_Raw_i = GeometryToolbox::DotProduct(nDim, Gradient_i[iVar], Vector_ij);
               const su2double Project_Grad_Raw_j = GeometryToolbox::DotProduct(nDim, Gradient_j[iVar], Vector_ij);
-              solution_i[iVar] = Scalar_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, U_ij, 1e-6, pipernoK);
-              solution_j[iVar] = Scalar_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, U_ij, 1e-6, pipernoK);
+              solution_i[iVar] = Scalar_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, U_ij, EPS, pipernoK);
+              solution_j[iVar] = Scalar_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, U_ij, EPS, pipernoK);
               continue;
             }
 
@@ -291,8 +290,8 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
 
             su2double lim_i = 1.0, lim_j = 1.0;
             if (vanAlbada) {
-              lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, U_ij, 1e-6);
-              lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, U_ij, 1e-6);
+              lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, U_ij, EPS);
+              lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, U_ij, EPS);
             } else if (limiter) {
               lim_i = Limiter_i[iVar];
               lim_j = Limiter_j[iVar];

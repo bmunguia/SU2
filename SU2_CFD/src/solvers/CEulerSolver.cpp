@@ -1919,8 +1919,8 @@ void CEulerSolver::Upwind_Residual(CGeometry *geometry, CSolver **solver_contain
            *    pipernoFunction returns the full limited projection psi_R, not a scalar limiter. ---*/
           const su2double Project_Grad_Raw_i = GeometryToolbox::DotProduct(nDim, Gradient_i[iVar], Vector_ij);
           const su2double Project_Grad_Raw_j = GeometryToolbox::DotProduct(nDim, Gradient_j[iVar], Vector_ij);
-          Primitive_i[iVar] = V_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, V_ij, 1e-6, pipernoK);
-          Primitive_j[iVar] = V_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, V_ij, 1e-6, pipernoK);
+          Primitive_i[iVar] = V_i[iVar] + 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_i, V_ij, EPS, pipernoK);
+          Primitive_j[iVar] = V_j[iVar] - 0.5 * LimiterHelpers<>::pipernoFunction(Project_Grad_Raw_j, V_ij, EPS, pipernoK);
           continue;
         }
 
@@ -1930,8 +1930,8 @@ void CEulerSolver::Upwind_Residual(CGeometry *geometry, CSolver **solver_contain
         su2double lim_i = 1.0;
         su2double lim_j = 1.0;
         if (van_albada) {
-          lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, 1e-6);
-          lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, V_ij, 1e-6);
+          lim_i = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_i, V_ij, EPS);
+          lim_j = LimiterHelpers<>::vanAlbadaFunction(Project_Grad_j, V_ij, EPS);
         }
         else if (limiter) {
           lim_i = nodes->GetLimiter_Primitive(iPoint, iVar);

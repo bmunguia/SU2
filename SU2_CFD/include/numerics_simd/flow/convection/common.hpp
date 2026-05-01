@@ -221,12 +221,12 @@ FORCEINLINE Double pipernoLimiterFunction(Double r, su2double k) {
 
   /*--- Region R > k ---*/
   /*--- s = r / (1 + r*(1-k)); φ = 1 + (3/2 s + 1)(s-1)³ ---*/
-  const Double s = pos_r / fmax(1.0 + pos_r * (1.0 - k), 1e-6);
+  const Double s = pos_r / fmax(1.0 + pos_r * (1.0 - k), 1e-16);
   const Double s_minus_1 = s - 1.0;
-  const Double phi_mild = 1.0 + (1.5 * s + 1.0) * pow(s_minus_1, 3);
+  const Double phi_0 = 1.0 + (1.5 * s + 1.0) * pow(s_minus_1, 3);
 
   /*--- Region 1/k <= R <= k ---*/
-  const Double phi_flat = 1.0;
+  const Double phi_1 = 1.0;
 
   /*--- Region R < 1/k ---*/
   /*--- φ = (3r²-6r+19) / ((r-k)³+3r²-6r+19) ---*/
@@ -234,11 +234,11 @@ FORCEINLINE Double pipernoLimiterFunction(Double r, su2double k) {
   const Double r_sq = pow(pos_r, 2);
   const Double numerator = 3.0 * r_sq - 6.0 * pos_r + 19.0;
   const Double denominator = pow(r_minus_k, 3) + numerator;
-  const Double phi_strong = numerator / fmax(denominator, 1e-6);
+  const Double phi_2 = numerator / fmax(denominator, 1e-16);
 
   /*--- Select region using branchless evaluation ---*/
   const Double inv_k = 1.0 / k;
-  const Double phi = (pos_r < inv_k) * phi_mild + (pos_r >= inv_k) * ((pos_r <= k) * phi_flat + (pos_r > k) * phi_strong);
+  const Double phi = (pos_r < inv_k) * phi_0 + (pos_r >= inv_k) * ((pos_r <= k) * phi_1 + (pos_r > k) * phi_2);
 
   return (r > 0.0) * phi;
 }
@@ -274,7 +274,7 @@ FORCEINLINE void musclPiperno(Int iPoint,
     /*--- Compute slope ratios r_i = 1/R_i and r_j = 1/R_j ---*/
     /*--- r_i = Δu_{i-1/2} / Δu_{i+1/2}, r_j = Δu_{i+3/2} / Δu_{i+1/2} ---*/
     const Double sign_delta_ij = (delta_ij >= 0.0) - (delta_ij < 0.0);
-    const Double inv_delta_ij = sign_delta_ij / fmax(abs(delta_ij), 1e-6);
+    const Double inv_delta_ij = sign_delta_ij / fmax(abs(delta_ij), 1e-16);
 
     const Double inv_R_i = delta_imhalf * inv_delta_ij;
     const Double inv_R_j = delta_jphalf * inv_delta_ij;
