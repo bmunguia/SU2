@@ -3186,8 +3186,8 @@ void CConfig::SetConfig_Options() {
   addDoubleOption("METRIC_HMIN", Metric_Hmin, 1.0E-8);
   /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
   addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E6);
-  /*!\brief METRIC_GEODEV_MODE \n DESCRIPTION: Interpretation of METRIC_GEODEV values. \n OPTIONS: See \link GeoDevMode_Map \endlink. \n DEFAULT: HAUSDORFF. */
-  addEnumOption("METRIC_GEODEV_MODE", Metric_GeoDev_Mode, GeoDevMode_Map, GEO_DEV_MODE::HAUSDORFF);
+  /*!\brief METRIC_GEODEV_MODE \n DESCRIPTION: Interpretation of METRIC_GEODEV values. \n OPTIONS: See \link GeoDevMode_Map \endlink. \n DEFAULT: ANGLE. */
+  addEnumOption("METRIC_GEODEV_MODE", Metric_GeoDev_Mode, GeoDevMode_Map, GEO_DEV_MODE::ANGLE);
   /*!\brief METRIC_GEO_DEV \n DESCRIPTION: Surface metric control parameter per marker (angle in degrees for ANGLE mode, Hausdorff distance for HAUSDORFF mode) */
   addStringDoubleListOption("METRIC_GEODEV", nMarker_GeoDev, Marker_GeoDev, Metric_GeoDev);
   /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
