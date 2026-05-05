@@ -1318,8 +1318,10 @@ private:
 
   /*--- Mesh adaptation options ---*/
   bool Compute_Metric;                     /*!< \brief Determines if error estimation is taking place */
+  bool Integrate_Metric;                   /*!< \brief Determines if temporal metric integration is active. */
   bool Compute_Metric_Geo;                 /*!< \brief Determines if surface geometry metric calculation is taking place */
   bool Normalize_Metric;                   /*!< \brief Determines if metric tensor normalization is taking place */
+  unsigned long Metric_Start_Iter;         /*!< \brief Time iteration to begin metric accumulation. */
   unsigned short Kind_Hessian_Method;      /*!< \brief Numerical method for computation of Hessians. */
   unsigned short nMetric_Sensor;           /*!< \brief Number of sensors to use for adaptation. */
   string* Metric_Sensor;                   /*!< \brief Sensors to use for adaptation (first entry is normalized, rest are Hessian-only). */
@@ -10421,10 +10423,22 @@ public:
   bool GetCompute_Metric_Geo(void) const { return Compute_Metric_Geo; }
 
   /*!
+   * \brief Check if temporal metric integration is active
+   * \return <code>TRUE<\code> if metric integration is taking place
+  */
+  bool GetIntegrate_Metric(void) const { return Integrate_Metric; }
+
+  /*!
    * \brief Check if metric tensor normalization is being carried out
    * \return <code>TRUE<\code> if metric normalization is taking place
   */
   bool GetNormalize_Metric(void) const { return Normalize_Metric; }
+
+  /*!
+   * \brief Get the time iteration at which metric accumulation begins
+   * \return Metric start iteration
+  */
+  unsigned long GetMetric_Start_Iter(void) const { return Metric_Start_Iter; }
 
   /*!
    * \brief Get the kind of method for computation of Hessians used for anisotropy.

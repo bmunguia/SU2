@@ -3118,6 +3118,8 @@ void CConfig::SetConfig_Options() {
 
   /*!\brief COMPUTE_METRIC \n DESCRIPTION: Compute an error estimate */
   addBoolOption("COMPUTE_METRIC", Compute_Metric, false);
+  /*!\brief INTEGRATE_METRIC \n DESCRIPTION: Enables temporal integration of Hessians into metric tensor */
+  addBoolOption("INTEGRATE_METRIC", Integrate_Metric, true);
   /*!\brief NORMALIZE_METRIC \n DESCRIPTION: Normalize the metric tensor */
   addBoolOption("NORMALIZE_METRIC", Normalize_Metric, false);
   /*!\brief NUM_METHOD_HESS
@@ -3132,6 +3134,8 @@ void CConfig::SetConfig_Options() {
   addUnsignedLongOption("METRIC_COMPLEXITY", Metric_Complexity, 10000);
   /*!\brief ADAP_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
   addUnsignedShortOption("ADAP_TIME_SUBINTERVAL", nAdapt_Time_Subinterval, 1);
+  /*!\brief METRIC_START_ITER \n DESCRIPTION: Time iteration at which metric accumulation begins (warmup) */
+  addUnsignedLongOption("METRIC_START_ITER", Metric_Start_Iter, 0);
 
   /*!\brief METRIC_HMAX \n DESCRIPTION: Constraint maximum cell size */
   addDoubleOption("METRIC_HMAX", Metric_Hmax, 10.0);
@@ -3172,6 +3176,8 @@ void CConfig::SetConfig_Options() {
 
   /*!\brief COMPUTE_METRIC \n DESCRIPTION: Compute an error estimate */
   addBoolOption("COMPUTE_METRIC", Compute_Metric, false);
+  /*!\brief INTEGRATE_METRIC \n DESCRIPTION: Enables temporal integration of Hessians into metric tensor */
+  addBoolOption("INTEGRATE_METRIC", Integrate_Metric, true);
   /*!\brief COMPUTE_METRIC_GEO \n DESCRIPTION: Compute the metric tensor corresponding to the surface curvature */
   addBoolOption("COMPUTE_METRIC_GEO", Compute_Metric_Geo, false);
   /*!\brief NORMALIZE_METRIC \n DESCRIPTION: Normalize the metric tensor */
@@ -3188,6 +3194,8 @@ void CConfig::SetConfig_Options() {
   addUnsignedLongOption("METRIC_COMPLEXITY", Metric_Complexity, 10000);
   /*!\brief ADAP_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
   addUnsignedShortOption("ADAP_TIME_SUBINTERVAL", nAdapt_Time_Subinterval, 1);
+  /*!\brief METRIC_START_ITER \n DESCRIPTION: Time iteration at which metric accumulation begins (warmup) */
+  addUnsignedLongOption("METRIC_START_ITER", Metric_Start_Iter, 0);
 
   /*!\brief METRIC_HMAX \n DESCRIPTION: Constraint maximum cell size */
   addDoubleOption("METRIC_HMAX", Metric_Hmax, 10.0);
@@ -5866,6 +5874,14 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     /*--- Make sure only using single adaptation sub-interval for steady problems ---*/
     if(TimeMarching == TIME_MARCHING::STEADY)
       nAdapt_Time_Subinterval = 1;
+
+    /*--- METRIC_START_ITER has no meaning for steady simulations ---*/
+    if (TimeMarching == TIME_MARCHING::STEADY && Metric_Start_Iter > 0) {
+      if (rank == MASTER_NODE)
+        cout << "WARNING: METRIC_START_ITER > 0 has no effect for steady simulations. "
+                "Forcing to 0." << endl;
+      Metric_Start_Iter = 0;
+    }
   }
 
 }

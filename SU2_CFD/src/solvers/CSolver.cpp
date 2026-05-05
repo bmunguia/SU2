@@ -4576,25 +4576,28 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
 
     if (iSensor == 0) {
       /*--- Add Hessian of sensor at position 0 to metric tensor */
-      AddMetrics(solver, geometry, config, iSensor, restartMetric);
+      if (config->GetIntegrate_Metric() && time_iter >= config->GetMetric_Start_Iter())
+        AddMetrics(solver, geometry, config, iSensor, restartMetric);
 
-      /*--- Integrate metric field on the last iteration (the end of the simulation if steady) ---*/
       auto& metrics = base_nodes->GetMetric();
-      double integral = 0.0;
-      if (is_last_iter)
-        integral = integrateMetrics<double>(*geometry, *config, iSensor, metrics);
+      if (config->GetIntegrate_Metric()) {
+        /*--- Integrate metric field on the last iteration (the end of the simulation if steady) ---*/
+        double integral = 0.0;
+        if (is_last_iter)
+          integral = integrateMetrics<double>(*geometry, *config, iSensor, metrics);
 
-      /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
-      if (steady || (normalize && is_last_iter))
-        normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
+        /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
+        if (steady || (normalize && is_last_iter))
+          normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
 
-      /*--- Store the integral to be written ---*/
-      if (is_last_iter) {
-        integrals.push_back(integral);
-        if (rank == MASTER_NODE) {
-          const string& sensor_name = (iSensor < MetricSensors.size()) ? MetricSensors[iSensor].name : "unknown";
-          cout << "Global metric normalization integral for sensor ";
-          cout << sensor_name << ": " << integral << endl;
+        /*--- Store the integral to be written ---*/
+        if (is_last_iter) {
+          integrals.push_back(integral);
+          if (rank == MASTER_NODE) {
+            const string& sensor_name = (iSensor < MetricSensors.size()) ? MetricSensors[iSensor].name : "unknown";
+            cout << "Global metric normalization integral for sensor ";
+            cout << sensor_name << ": " << integral << endl;
+          }
         }
       }
     } // iSensor == 0
@@ -4602,7 +4605,7 @@ void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   }
 
-  if (config->GetKind_SU2() == SU2_COMPONENT::SU2_CFD && is_last_iter && rank == MASTER_NODE) {
+  if (config->GetKind_SU2() == SU2_COMPONENT::SU2_CFD && is_last_iter && !integrals.empty() && rank == MASTER_NODE) {
     /*--- Write the integral in an external file ---*/
     ofstream Integral_file;
     const bool tabTecplot = config->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT;
@@ -4661,7 +4664,8 @@ void CSolver::AddMetrics(CSolver **solver, const CGeometry*geometry, const CConf
   const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||
                              (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) ||
                              (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING);
-  const bool is_first_iter = (time_iter == 0) || (restartMetric);
+  const unsigned long metric_start_iter = config->GetMetric_Start_Iter();
+  const bool is_first_iter = (time_iter == metric_start_iter) || (restartMetric);
   const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1);
 
   double coeff = (time_stepping && (is_first_iter || is_last_iter))? 0.5 : 1.0;
