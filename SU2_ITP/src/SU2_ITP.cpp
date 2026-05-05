@@ -3,7 +3,7 @@
  * \brief Main file for the solution interpolation code (SU2_ITP).
  *        All interpolation logic is implemented in the <i>interpolation.cpp</i> file.
  * \author B. Munguía, E. van der Weide
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *

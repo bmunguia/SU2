@@ -2,7 +2,7 @@
  * \file CMetricBaselineOutput.cpp
  * \brief Main subroutines for metric field output
  * \author B. Munguía
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *

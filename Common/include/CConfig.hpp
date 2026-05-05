@@ -1223,6 +1223,11 @@ private:
   su2double InviscidVortex_y0;   /*!< \brief Initial y-coordinate of the isentropic vortex. */
   su2double InviscidVortex_eps;  /*!< \brief Strength of the isentropic vortex. */
 
+  su2double CylinderVelPerturbFactor;  /*!< \brief Velocity scaling factor for the perturbed-cylinder IC (y > 0, near surface). */
+  su2double CylinderVelPerturbX0;      /*!< \brief x-coordinate of the cylinder center for the perturbed-cylinder IC. */
+  su2double CylinderVelPerturbY0;      /*!< \brief y-coordinate of the cylinder center for the perturbed-cylinder IC. */
+  su2double CylinderVelPerturbR;       /*!< \brief Outer radius of the perturbation zone (distance from cylinder center). */
+
   bool Time_Domain;              /*!< \brief Determines if the multizone problem is solved in time-domain */
   unsigned long nOuterIter,      /*!< \brief Determines the number of outer iterations in the multizone problem */
   nInnerIter,                    /*!< \brief Determines the number of inner iterations in each multizone block */
@@ -9810,6 +9815,27 @@ public:
    * \return The strength of the isentropic vortex.
    */
   su2double GetInviscidVortex_eps(void) const {return InviscidVortex_eps; }
+
+  /*!
+   * \brief Get the velocity perturbation factor for the perturbed-cylinder IC.
+   * \return Scaling factor applied to the freestream x-velocity in the perturbed zone.
+   */
+  su2double GetCylinderVelPerturbFactor(void) const { return CylinderVelPerturbFactor; }
+
+  /*!
+   * \brief Get the x-coordinate of the cylinder center for the perturbed-cylinder IC.
+   */
+  su2double GetCylinderVelPerturbX0(void) const { return CylinderVelPerturbX0; }
+
+  /*!
+   * \brief Get the y-coordinate of the cylinder center for the perturbed-cylinder IC.
+   */
+  su2double GetCylinderVelPerturbY0(void) const { return CylinderVelPerturbY0; }
+
+  /*!
+   * \brief Get the outer radius of the perturbation zone for the perturbed-cylinder IC.
+   */
+  su2double GetCylinderVelPerturbR(void) const { return CylinderVelPerturbR; }
 
   /*!
    * \brief Get topology optimization.

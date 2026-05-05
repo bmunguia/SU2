@@ -2217,8 +2217,6 @@ enum class OUTPUT_TYPE {
   SURFACE_CGNS,            /*!< \brief CGNS format. */
   STL_ASCII,               /*!< \brief STL ASCII format for surface solution output. */
   STL_BINARY,              /*!< \brief STL binary format for surface solution output. Not implemented yet. */
-  GMF_MESH,                /*!< \brief Gamma Mesh Format (GMF) mesh output. */
-  GMF_SOL,                 /*!< \brief Gamma Mesh Format (GMF) solution output. */
   METRIC_GEO,              /*!< \brief Solution file containing the surface metric. */
 };
 static const MapType<std::string, OUTPUT_TYPE> Output_Map = {
@@ -2242,8 +2240,6 @@ static const MapType<std::string, OUTPUT_TYPE> Output_Map = {
   MakePair("SURFACE_CGNS", OUTPUT_TYPE::SURFACE_CGNS)
   MakePair("STL_ASCII", OUTPUT_TYPE::STL_ASCII)
   MakePair("STL_BINARY", OUTPUT_TYPE::STL_BINARY)
-  MakePair("GMF_MESH", OUTPUT_TYPE::GMF_MESH)
-  MakePair("GMF_SOL", OUTPUT_TYPE::GMF_SOL)
   MakePair("METRIC_GEO", OUTPUT_TYPE::METRIC_GEO)
 };
 
@@ -2813,6 +2809,7 @@ enum class VERIFICATION_SOLUTION {
   MMS_INC_EULER,            /*!< \brief Manufactured solution of the incompressible Euler equations. */
   MMS_INC_NS,               /*!< \brief Manufactured solution of the laminar incompressible Navier Stokes equations. */
   USER_DEFINED_SOLUTION,    /*!< \brief User defined solution. */
+  PERTURBED_CYLINDER,       /*!< \brief Perturbed cylinder: freestream IC with upper-half velocity perturbation. */
 };
 static const MapType<std::string, VERIFICATION_SOLUTION> Verification_Solution_Map = {
   MakePair("NO_VERIFICATION_SOLUTION", VERIFICATION_SOLUTION::NONE)
@@ -2830,6 +2827,7 @@ static const MapType<std::string, VERIFICATION_SOLUTION> Verification_Solution_M
   MakePair("MMS_INC_EULER",            VERIFICATION_SOLUTION::MMS_INC_EULER)
   MakePair("MMS_INC_NS",               VERIFICATION_SOLUTION::MMS_INC_NS)
   MakePair("USER_DEFINED_SOLUTION",    VERIFICATION_SOLUTION::USER_DEFINED_SOLUTION)
+  MakePair("PERTURBED_CYLINDER",       VERIFICATION_SOLUTION::PERTURBED_CYLINDER)
 };
 
 /*!

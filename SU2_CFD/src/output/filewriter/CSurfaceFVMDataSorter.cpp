@@ -30,7 +30,7 @@
 #include <numeric>
 
 CSurfaceFVMDataSorter::CSurfaceFVMDataSorter(CConfig *config, CGeometry *geometry, const CFVMDataSorter* valVolumeSorter, bool valMarkersNeeded) :
-  CParallelDataSorter(config, valVolumeSorter->GetFieldNames()), markersNeeded(valMarkersNeeded) {
+  CParallelDataSorter(config, valVolumeSorter->GetFieldNames()) {
 
   nDim = geometry->GetnDim();
 
@@ -1240,10 +1240,6 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
 
   auto haloSend = new unsigned short[nElem_Send[size]] ();
 
-  /*--- Allocate arrays for storing marker IDs. ---*/
-  unsigned short *markerSend = nullptr;
-  if (markersNeeded) markerSend = new unsigned short[nElem_Send[size]] ();
-
   /*--- Create an index variable to keep track of our index
    position as we load up the send buffer. ---*/
 
@@ -1307,9 +1303,6 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
                  any duplicates from the connectivity list. ---*/
 
                 if (volumeSorter->GetHalo(iPoint)) haloSend[mm] = true;
-
-                if (markersNeeded) markerSend[mm] = (unsigned short) iMarker;
-
               }
 
               /*--- Increment the index by the message length ---*/
@@ -1337,9 +1330,6 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
   auto connRecv = new unsigned long[NODES_PER_ELEMENT*nElem_Recv[size]] ();
 
   auto haloRecv = new unsigned short[nElem_Recv[size]] ();
-
-  unsigned short *markerRecv = nullptr;
-  if (markersNeeded) markerRecv = new unsigned short[nElem_Recv[size]] ();
 
 #ifdef HAVE_MPI
   /*--- We need double the number of messages to send both the conn.
@@ -1411,42 +1401,6 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
       iMessage++;
     }
   }
-
-  if (markersNeeded) {
-    /*--- Repeat the process to communicate the marker IDs. ---*/
-    send_req_marker = new SU2_MPI::Request[nSends];
-    recv_req_marker = new SU2_MPI::Request[nRecvs];
-
-    iMessage = 0;
-    for (int ii=0; ii<size; ii++) {
-      if ((ii != rank) && (nElem_Recv[ii+1] > nElem_Recv[ii])) {
-        int ll     = nElem_Recv[ii];
-        int kk     = nElem_Recv[ii+1] - nElem_Recv[ii];
-        int count  = kk;
-        int source = ii;
-        int tag    = ii + 1;
-        SU2_MPI::Irecv(&(markerRecv[ll]), count, MPI_UNSIGNED_SHORT, source, tag,
-                      SU2_MPI::GetComm(), &(recv_req_marker[iMessage]));
-        iMessage++;
-      }
-    }
-
-    /*--- Launch the non-blocking sends of the marker IDs. ---*/
-
-    iMessage = 0;
-    for (int ii=0; ii<size; ii++) {
-      if ((ii != rank) && (nElem_Send[ii+1] > nElem_Send[ii])) {
-        int ll = nElem_Send[ii];
-        int kk = nElem_Send[ii+1] - nElem_Send[ii];
-        int count  = kk;
-        int dest   = ii;
-        int tag    = rank + 1;
-        SU2_MPI::Isend(&(markerSend[ll]), count, MPI_UNSIGNED_SHORT, dest, tag,
-                      SU2_MPI::GetComm(), &(send_req_marker[iMessage]));
-        iMessage++;
-      }
-    }
-  }
 #endif
 
   /*--- Copy my own rank's data into the recv buffer directly. ---*/
@@ -1463,11 +1417,6 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
 
   for (int nn=ll; nn<kk; nn++, mm++) haloRecv[mm] = haloSend[nn];
 
-  if (markersNeeded) {
-    mm = nElem_Recv[rank];
-    for (int nn=ll; nn<kk; nn++, mm++) markerRecv[mm] = markerSend[nn];
-  }
-
   /*--- Wait for the non-blocking sends and recvs to complete. ---*/
 
 #ifdef HAVE_MPI
@@ -1481,19 +1430,6 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
 
   delete [] send_req;
   delete [] recv_req;
-
-  if (markersNeeded) {
-    number = nSends;
-    for (int ii = 0; ii < number; ii++)
-      SU2_MPI::Waitany(number, send_req_marker, &ind, &status);
-
-    number = nRecvs;
-    for (int ii = 0; ii < number; ii++)
-      SU2_MPI::Waitany(number, recv_req_marker, &ind, &status);
-
-    delete [] send_req_marker;
-    delete [] recv_req_marker;
-  }
 #endif
 
   /*--- Store the connectivity for this rank in the proper data
@@ -1502,12 +1438,10 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
    appropriate amount of memory for this section. ---*/
 
   if (nElem_Recv[size] > 0) Conn_Elem = new int[NODES_PER_ELEMENT*nElem_Recv[size]];
-  if (nElem_Recv[size] > 0 && markersNeeded) Marker_Elem = new unsigned short[nElem_Recv[size]];
   int count = 0; nElem_Total = 0;
   for (int ii = 0; ii < nElem_Recv[size]; ii++) {
     if (!haloRecv[ii]) {
       nElem_Total++;
-      if (markersNeeded) Marker_Elem[ii] = markerRecv[ii] + 1;
       for (int jj = 0; jj < NODES_PER_ELEMENT; jj++) {
         Conn_Elem[count] = (int)connRecv[ii*NODES_PER_ELEMENT+jj] + 1;
         count++;
@@ -1524,26 +1458,14 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
     case LINE:
       delete [] Conn_Line_Par;
       Conn_Line_Par = Conn_Elem;
-      if (markersNeeded) {
-        delete [] Marker_Line_Par;
-        Marker_Line_Par = Marker_Elem;
-      }
       break;
     case TRIANGLE:
       delete [] Conn_Tria_Par;
       Conn_Tria_Par = Conn_Elem;
-      if (markersNeeded) {
-        delete [] Marker_Tria_Par;
-        Marker_Tria_Par = Marker_Elem;
-      }
       break;
     case QUADRILATERAL:
       delete [] Conn_Quad_Par;
       Conn_Quad_Par = Conn_Elem;
-      if (markersNeeded) {
-        delete [] Marker_Quad_Par;
-        Marker_Quad_Par = Marker_Elem;
-      }
       break;
     default:
       SU2_MPI::Error("Unrecognized element type", CURRENT_FUNCTION);
@@ -1559,9 +1481,5 @@ void CSurfaceFVMDataSorter::SortSurfaceConnectivity(CConfig *config, CGeometry *
   delete [] nElem_Recv;
   delete [] nElem_Send;
   delete [] nElem_Flag;
-  if (markersNeeded) {
-    delete [] markerSend;
-    delete [] markerRecv;
-  }
 
 }

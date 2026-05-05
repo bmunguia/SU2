@@ -3,7 +3,7 @@
  * \brief Implementation of the conservative solution interpolation subroutines.
  *        This file contains the conservative interpolation logic using Alauzet 2015 method.
  * \author B. Munguía
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *

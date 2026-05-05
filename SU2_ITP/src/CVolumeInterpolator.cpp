@@ -3,7 +3,7 @@
  * \brief Implementation of the main solution interpolation subroutines.
  *        This file contains all utility functions used for interpolation.
  * \author B. Munguía, E. van der Weide
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *

@@ -34,6 +34,7 @@
 #include "../../../Common/include/toolboxes/MMS/CIncTGVSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CInviscidVortexSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CKelvinHelmholtzSolution.hpp"
+#include "../../../Common/include/toolboxes/MMS/CPerturbedCylinderSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CSodShockTubeSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CMMSIncEulerSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CMMSIncNSSolution.hpp"
@@ -4360,6 +4361,8 @@ void CSolver::SetVerificationSolution(unsigned short nDim,
       VerificationSolution = new CMMSIncNSSolution(nDim, nVar, MGLevel, config); break;
     case VERIFICATION_SOLUTION::USER_DEFINED_SOLUTION:
       VerificationSolution = new CUserDefinedSolution(nDim, nVar, MGLevel, config); break;
+    case VERIFICATION_SOLUTION::PERTURBED_CYLINDER:
+      VerificationSolution = new CPerturbedCylinderSolution(nDim, nVar, MGLevel, config); break;
   }
 }
 

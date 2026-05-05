@@ -38,7 +38,6 @@ class CSurfaceFVMDataSorter final: public CParallelDataSorter{
   unsigned short *Marker_Tria_Par = nullptr;
   unsigned short *Marker_Quad_Par = nullptr;
 
-  const bool markersNeeded;
 public:
 
   /*!

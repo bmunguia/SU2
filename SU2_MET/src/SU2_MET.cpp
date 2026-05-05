@@ -2,7 +2,7 @@
  * \file SU2_MET.cpp
  * \brief Main file for the solution metric calculation code (SU2_MET).
  * \author B. Munguía
- * \version 8.2.0 "Harrier"
+ * \version 8.4.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
