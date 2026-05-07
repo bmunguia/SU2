@@ -5866,9 +5866,8 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
       }
     }
 
-    /*--- Only GG Hessians for now ---*/
-    if (Kind_Hessian_Method != GREEN_GAUSS) {
-      SU2_MPI::Error("NUM_METHOD_HESS must be GREEN_GAUSS.", CURRENT_FUNCTION);
+    if (Kind_Hessian_Method != GREEN_GAUSS && Kind_Hessian_Method != L2_PROJECTION) {
+      SU2_MPI::Error("NUM_METHOD_HESS must be GREEN_GAUSS or L2_PROJECTION.", CURRENT_FUNCTION);
     }
 
     /*--- Make sure only using single adaptation sub-interval for steady problems ---*/

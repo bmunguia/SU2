@@ -622,6 +622,8 @@ public:
    */
   void SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
 
+  void SetHessian_L2Proj(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
+
   /*!
    * \brief Compute the projection of a variable for MUSCL reconstruction.
    * \note The result should be halved when added to i (or subtracted from j).

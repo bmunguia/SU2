@@ -5054,10 +5054,11 @@ void CEulerSolver::BC_Far_Field(CGeometry *geometry, CSolver **solver_container,
         /*--- Set the normal vector and the coordinates ---*/
 
         visc_numerics->SetNormal(Normal);
-        su2double Coord_Reflected[MAXNDIM];
-        GeometryToolbox::PointPointReflect(nDim, geometry->nodes->GetCoord(Point_Normal),
-                                                 geometry->nodes->GetCoord(iPoint), Coord_Reflected);
-        visc_numerics->SetCoord(geometry->nodes->GetCoord(iPoint), Coord_Reflected);
+        // su2double Coord_Reflected[MAXNDIM];
+        // GeometryToolbox::PointPointReflect(nDim, geometry->nodes->GetCoord(Point_Normal),
+        //                                          geometry->nodes->GetCoord(iPoint), Coord_Reflected);
+        // visc_numerics->SetCoord(geometry->nodes->GetCoord(iPoint), Coord_Reflected);
+        visc_numerics->SetCoord(geometry->nodes->GetCoord(iPoint), geometry->nodes->GetCoord(iPoint));
 
         /*--- Primitive variables, and gradient ---*/
 

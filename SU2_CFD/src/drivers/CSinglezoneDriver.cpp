@@ -410,10 +410,12 @@ void CSinglezoneDriver::ComputeMetricField(bool restartMetric) {
   solver_flow->CompleteComms(geometry, config, MPI_QUANTITIES::SENSOR_ADAPT);
 
   if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {
-    if(rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
+    if (rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
     solver_flow->SetHessian_GG(geometry, config, idxVel, RUNTIME_FLOW_SYS);
-  }
-  else {
+  } else if (config->GetKind_Hessian_Method() == L2_PROJECTION) {
+    if (rank == MASTER_NODE) cout << "Computing Hessians using L2-projection." << endl;
+    solver_flow->SetHessian_L2Proj(geometry, config, idxVel, RUNTIME_FLOW_SYS);
+  } else {
     SU2_MPI::Error("Unsupported Hessian method.", CURRENT_FUNCTION);
   }
 
