@@ -1243,6 +1243,7 @@ private:
   unsigned short nVolumeOutputFiles=0;/*!< \brief Number of File formats to output */
   unsigned short nVolumeOutputFrequencies; /*!< \brief Number of frequencies for the volume outputs */
   unsigned long *VolumeOutputFrequencies; /*!< \brief list containing the writing frequencies */
+  unsigned long nRestartFinalIters;       /*!< \brief Number of restart files to write at end of unsteady simulation. */
 
   bool Multizone_Mesh;            /*!< \brief Determines if the mesh contains multiple zones. */
   bool Wrt_ZoneConv;              /*!< \brief Write the convergence history of each individual zone to screen. */
@@ -10203,6 +10204,11 @@ public:
    * \param[in] iFile: index of file number for which the writing frequency needs to be returned.
    */
   unsigned long GetVolumeOutputFrequency(unsigned short iFile) const { return VolumeOutputFrequencies[iFile]; }
+
+  /*!
+   * \brief Get number of restart files to write at end of unsteady simulation.
+   */
+  unsigned long GetnRestartFinalIters() const { return nRestartFinalIters; }
 
   /*!
    * \brief Get the desired factorization frequency for PaStiX

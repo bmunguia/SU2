@@ -335,12 +335,9 @@ bool CInterpolatorDriver::ShouldOutput(unsigned long TimeIter) const {
   if (StopCalc(TimeIter)) return true;
 
   const auto* cfg = config_src_[ZONE_0];
-  const bool dual_time_2nd = (cfg->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
-
   const bool IsTime0       = (TimeIter == 0);
   const bool IsTimeWrt     = (TimeIter % cfg->GetVolumeOutputFrequency(0) == 0);
-  const bool IsTimeEnd     = (TimeIter + 1 == cfg->GetnTime_Iter()) ||
-                             (TimeIter + 2 == cfg->GetnTime_Iter() && dual_time_2nd);
+  const bool IsTimeEnd     = (TimeIter + cfg->GetnRestartFinalIters() >= cfg->GetnTime_Iter());
   const bool IsTimeRestart = ((long)TimeIter == SU2_TYPE::Int(cfg->GetRestart_Iter()));
 
   return IsTime0 || IsTimeWrt || IsTimeEnd || IsTimeRestart;

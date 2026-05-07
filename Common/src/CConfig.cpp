@@ -3064,6 +3064,8 @@ void CConfig::SetConfig_Options() {
   addUnsignedLongOption("SCREEN_WRT_FREQ_TIME", ScreenWrtFreq[0], 1);
   /* DESCRIPTION: list of writing frequencies for each file type (length same as nVolumeOutputFiles) */
   addULongListOption("OUTPUT_WRT_FREQ", nVolumeOutputFrequencies, VolumeOutputFrequencies);
+  /* DESCRIPTION: Number of restart files guaranteed to be written at the end of an unsteady simulation */
+  addUnsignedLongOption("RESTART_FINAL_ITERS", nRestartFinalIters, 2);
 
   /* DESCRIPTION: Volume solution files */
   addEnumListOption("OUTPUT_FILES", nVolumeOutputFiles, VolumeOutputFiles, Output_Map);
@@ -3684,6 +3686,18 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     delete [] VolumeOutputFrequencies;
     VolumeOutputFrequencies = newFrequencies;
     nVolumeOutputFrequencies = nVolumeOutputFiles;
+  }
+
+  /*--- Enforce minimum RESTART_FINAL_ITERS based on time-marching scheme. ---*/
+  if (Time_Domain) {
+    const unsigned long minNeeded = (TimeMarching == TIME_MARCHING::DT_STEPPING_2ND) ? 2 : 1;
+    if (nRestartFinalIters < minNeeded) {
+      if (rank == MASTER_NODE)
+        cout << "WARNING: RESTART_FINAL_ITERS = " << nRestartFinalIters
+             << " is less than the minimum required (" << minNeeded
+             << ") for the chosen time-marching scheme. Overriding to " << minNeeded << ".\n";
+      nRestartFinalIters = minNeeded;
+    }
   }
 
   /*--- Check if SU2 was build with TecIO support, as that is required for Tecplot Binary output. ---*/

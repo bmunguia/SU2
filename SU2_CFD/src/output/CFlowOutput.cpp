@@ -4001,22 +4001,23 @@ bool CFlowOutput::WriteVolumeOutput(CConfig *config, unsigned long Iter, bool fo
   bool writeRestart = false;
   auto FileFormat = config->GetVolumeOutputFiles();
 
+  /* check if we want to write a restart file*/
+  if (FileFormat[iFile] == OUTPUT_TYPE::RESTART_ASCII || FileFormat[iFile] == OUTPUT_TYPE::RESTART_BINARY || FileFormat[iFile] == OUTPUT_TYPE::CSV) {
+    writeRestart = true;
+  }
+
   if (config->GetTime_Domain()){
     if (((config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) || (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING)) &&
-        ((Iter == 0) || (Iter % config->GetVolumeOutputFrequency(iFile) == 0))){
+        ((Iter == 0) || (Iter % config->GetVolumeOutputFrequency(iFile) == 0) ||
+        (Iter + config->GetnRestartFinalIters() >= config->GetnTime_Iter() && writeRestart))){
       return true;
-    }
-
-    /* check if we want to write a restart file*/
-    if (FileFormat[iFile] == OUTPUT_TYPE::RESTART_ASCII || FileFormat[iFile] == OUTPUT_TYPE::RESTART_BINARY || FileFormat[iFile] == OUTPUT_TYPE::CSV) {
-      writeRestart = true;
     }
 
     /* only write 'double' files for the restart files */
     if ((config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) &&
       ((Iter == 0) || (Iter % config->GetVolumeOutputFrequency(iFile) == 0) ||
       (((Iter+1) % config->GetVolumeOutputFrequency(iFile) == 0) && writeRestart) || // Restarts need 2 old solutions.
-      (((Iter+2) == config->GetnTime_Iter()) && writeRestart))){      // The last timestep is written anyway but one needs the step before for restarts.
+      ((Iter + config->GetnRestartFinalIters() >= config->GetnTime_Iter()) && writeRestart))){  // Write last N restarts at end.
       return true;
     }
   } else {

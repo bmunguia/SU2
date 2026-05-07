@@ -133,7 +133,6 @@ int main(int argc, char* argv[]) {
 
     su2double Physical_dt, Physical_t;
     unsigned long TimeIter = 0;
-    const bool dual_time_2nd = (config[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
     bool StopCalc = false;
     bool* SolutionInstantiated = new bool[nZone];
 
@@ -151,8 +150,7 @@ int main(int argc, char* argv[]) {
 
       const bool IsTime0 = (TimeIter == 0);
       const bool IsTimeWrt = (TimeIter % config[ZONE_0]->GetVolumeOutputFrequency(0) == 0);
-      const bool IsTimeEnd = (TimeIter + 1 == config[ZONE_0]->GetnTime_Iter()) ||
-                             (TimeIter + 2 == config[ZONE_0]->GetnTime_Iter() && dual_time_2nd);
+      const bool IsTimeEnd = (TimeIter + config[ZONE_0]->GetnRestartFinalIters() >= config[ZONE_0]->GetnTime_Iter());
       const bool IsTimeRestart = ((long)TimeIter == SU2_TYPE::Int(config[ZONE_0]->GetRestart_Iter()));
 
       if (StopCalc || IsTime0 || IsTimeWrt || IsTimeEnd || IsTimeRestart) {
