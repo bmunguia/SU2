@@ -41,10 +41,13 @@ CSodShockTubeSolution::CSodShockTubeSolution(unsigned short val_nDim, unsigned s
     cout << endl << flush;
   }
 
-  /*--- Store the Sod shock tube initial conditions here. ---*/
-  rhoL = 1.0;    uL = 0.0;    pL = 1.0;     // Left state
-  rhoR = 0.125;  uR = 0.0;    pR = 0.1;     // Right state
-  x0 = 0.0;                                 // Interface position (middle of domain from -1 to 1)
+  /*--- Store the Sod shock tube initial conditions here. The right-state
+        pressure is derived from the configurable pressure ratio pL/pR. ---*/
+  const su2double pRatio = config->GetShockTube_PressureRatio();
+
+  rhoL = 1.0;    uL = 0.0;    pL = 1.0;         // Left state
+  rhoR = 0.125;  uR = 0.0;    pR = pL / pRatio; // Right state
+  x0 = 0.0;                                     // Interface position (middle of domain from -1 to 1)
 
   /* Useful coefficients in which Gamma is present. */
   Gamma = config->GetGamma();
@@ -53,6 +56,9 @@ CSodShockTubeSolution::CSodShockTubeSolution(unsigned short val_nDim, unsigned s
   ovGm1 = 1.0 / Gm1;
 
   /* Perform some sanity and error checks for this solution here. */
+  if (pRatio <= 1.0)
+    SU2_MPI::Error("SHOCK_TUBE_PRESSURE_RATIO must be greater than 1 for the Sod shock tube", CURRENT_FUNCTION);
+
   if ((config->GetTime_Marching() != TIME_MARCHING::TIME_STEPPING) &&
       (config->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_1ST) &&
       (config->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_2ND))

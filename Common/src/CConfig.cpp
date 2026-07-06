@@ -1175,6 +1175,8 @@ void CConfig::SetConfig_Options() {
   addDoubleOption("CYLINDER_VEL_PERTURB_Y0", CylinderVelPerturbY0, 0.0);
   /*!\brief CYLINDER_VEL_PERTURB_R \n DESCRIPTION: Outer radius of the perturbation zone (distance from cylinder center) for the perturbed-cylinder IC \n DEFAULT: 1.0 \ingroup Config*/
   addDoubleOption("CYLINDER_VEL_PERTURB_R", CylinderVelPerturbR, 1.0);
+  /*!\brief SHOCK_TUBE_PRESSURE_RATIO \n DESCRIPTION: Pressure ratio pL/pR (>1) for the Sod shock tube \n DEFAULT: 10.0 \ingroup Config*/
+  addDoubleOption("SHOCK_TUBE_PRESSURE_RATIO", ShockTube_PressureRatio, 10.0);
 
   /*!\brief KIND_MATRIX_COLORING \n DESCRIPTION: Specify the method for matrix coloring for Jacobian computations OPTIONS: see \link MatrixColoring_Map \endlink \n DEFAULT GREEDY_COLORING \ingroup Config*/
   addEnumOption("KIND_MATRIX_COLORING", Kind_Matrix_Coloring, MatrixColoring_Map, GREEDY_COLORING);

@@ -1228,6 +1228,8 @@ private:
   su2double CylinderVelPerturbY0;      /*!< \brief y-coordinate of the cylinder center for the perturbed-cylinder IC. */
   su2double CylinderVelPerturbR;       /*!< \brief Outer radius of the perturbation zone (distance from cylinder center). */
 
+  su2double ShockTube_PressureRatio;   /*!< \brief Pressure ratio pL/pR for the Sod shock tube. */
+
   bool Time_Domain;              /*!< \brief Determines if the multizone problem is solved in time-domain */
   unsigned long nOuterIter,      /*!< \brief Determines the number of outer iterations in the multizone problem */
   nInnerIter,                    /*!< \brief Determines the number of inner iterations in each multizone block */
@@ -9800,6 +9802,12 @@ public:
    * \return The radius of the isentropic vortex.
    */
   su2double GetInviscidVortex_R(void) const {return InviscidVortex_R; }
+
+  /*!
+   * \brief Get the pressure ratio (pL/pR) for the Sod shock tube.
+   * \return The pressure ratio for the Sod shock tube.
+   */
+  su2double GetShockTube_PressureRatio(void) const { return ShockTube_PressureRatio; }
 
   /*!
    * \brief Get the initial x-coordinate of the isentropic vortex.
