@@ -3146,7 +3146,7 @@ void CConfig::SetConfig_Options() {
   /*!\brief METRIC_HMIN \n DESCRIPTION: Constraint minimum cell size */
   addDoubleOption("METRIC_HMIN", Metric_Hmin, 1.0E-8);
   /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
-  addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E6);
+  addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E16);
   /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
   addPythonOption("METRIC_HGRAD");
 
