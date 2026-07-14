@@ -3142,7 +3142,7 @@ void CConfig::SetConfig_Options() {
   addUnsignedLongOption("METRIC_START_ITER", Metric_Start_Iter, 0);
 
   /*!\brief METRIC_HMAX \n DESCRIPTION: Constraint maximum cell size */
-  addDoubleOption("METRIC_HMAX", Metric_Hmax, 10.0);
+  addDoubleOption("METRIC_HMAX", Metric_Hmax, 1.0E8);
   /*!\brief METRIC_HMIN \n DESCRIPTION: Constraint minimum cell size */
   addDoubleOption("METRIC_HMIN", Metric_Hmin, 1.0E-8);
   /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
@@ -5896,6 +5896,22 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
         cout << "WARNING: METRIC_START_ITER > 0 has no effect for steady simulations. "
                 "Forcing to 0." << endl;
       Metric_Start_Iter = 0;
+    }
+  }
+
+  /*--- For the Sod shock tube, the outlet back pressure must match the right-state
+        pressure pR = pL/SHOCK_TUBE_PRESSURE_RATIO (pL = 1.0 non-dimensional), otherwise
+        the outlet reflects. Override any MARKER_OUTLET value(s) to keep them consistent.
+        pR is the non-dimensional pressure; BC_Outlet divides the stored value by
+        Pressure_Ref (= 1.0 for the shock tube), so no extra scaling is needed here. ---*/
+  if (Kind_Verification_Solution == VERIFICATION_SOLUTION::SHOCK_TUBE && nMarker_Outlet > 0) {
+    const su2double pR = 1.0 / ShockTube_PressureRatio;
+    for (unsigned short iMarker_Outlet = 0; iMarker_Outlet < nMarker_Outlet; iMarker_Outlet++) {
+      if (rank == MASTER_NODE)
+        cout << "WARNING: Sod shock tube - adjusting outlet pressure on marker "
+             << Marker_Outlet[iMarker_Outlet] << " from " << Outlet_Pressure[iMarker_Outlet]
+             << " to pR = " << pR << " for consistency with SHOCK_TUBE_PRESSURE_RATIO." << endl;
+      Outlet_Pressure[iMarker_Outlet] = pR;
     }
   }
 
