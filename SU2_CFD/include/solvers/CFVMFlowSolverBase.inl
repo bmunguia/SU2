@@ -1656,6 +1656,11 @@ void CFVMFlowSolverBase<V, FlowRegime>::SetResidual_DualTime(CGeometry *geometry
   const bool first_order = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST);
   const bool second_order = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
 
+  /*--- On the very first time iteration U^{n-1} does not exist (it equals U^n), so a
+        2nd-order scheme takes a single 1st-order (BDF1) startup step. The two source
+        terms must be exclusive: stacking them solves an inconsistent 0.4*dt step. ---*/
+  const bool startup_iter = second_order && (config->GetTimeIter() == 0);
+
   /*--- Store the physical time step ---*/
 
   TimeStep = config->GetDelta_UnstTimeND();
@@ -1688,17 +1693,17 @@ void CFVMFlowSolverBase<V, FlowRegime>::SetResidual_DualTime(CGeometry *geometry
        time discretization scheme (1st- or 2nd-order).---*/
 
       for (iVar = 0; iVar < nVar; iVar++) {
-        if (first_order || config->GetTimeIter() == 0)
+        if (first_order || startup_iter)
           LinSysRes(iPoint,iVar) += (U_time_nP1[iVar] - U_time_n[iVar])*Volume_nP1 / TimeStep;
-        if (second_order)
+        else if (second_order)
           LinSysRes(iPoint,iVar) += ( 3.0*U_time_nP1[iVar] - 4.0*U_time_n[iVar]
                                      +1.0*U_time_nM1[iVar])*Volume_nP1 / (2.0*TimeStep);
       }
 
       /*--- Compute the Jacobian contribution due to the dual time source term. ---*/
       if (implicit) {
-        if (first_order || config->GetTimeIter() == 0) Jacobian.AddVal2Diag(iPoint, Volume_nP1/TimeStep);
-        if (second_order) Jacobian.AddVal2Diag(iPoint, (Volume_nP1*3.0)/(2.0*TimeStep));
+        if (first_order || startup_iter) Jacobian.AddVal2Diag(iPoint, Volume_nP1/TimeStep);
+        else if (second_order) Jacobian.AddVal2Diag(iPoint, (Volume_nP1*3.0)/(2.0*TimeStep));
       }
     }
     END_SU2_OMP_FOR
