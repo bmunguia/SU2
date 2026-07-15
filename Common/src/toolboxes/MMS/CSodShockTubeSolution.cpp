@@ -49,6 +49,9 @@ CSodShockTubeSolution::CSodShockTubeSolution(unsigned short val_nDim, unsigned s
   rhoR = 0.125;  uR = 0.0;    pR = pL / pRatio; // Right state
   x0 = 0.0;                                     // Interface position (middle of domain from -1 to 1)
 
+  /*--- IC smoothing width (tanh); 0 keeps the sharp step. ---*/
+  smoothing = config->GetShockTube_Smoothing();
+
   /* Useful coefficients in which Gamma is present. */
   Gamma = config->GetGamma();
   Gm1 = Gamma - 1.0;
@@ -58,6 +61,9 @@ CSodShockTubeSolution::CSodShockTubeSolution(unsigned short val_nDim, unsigned s
   /* Perform some sanity and error checks for this solution here. */
   if (pRatio <= 1.0)
     SU2_MPI::Error("SHOCK_TUBE_PRESSURE_RATIO must be greater than 1 for the Sod shock tube", CURRENT_FUNCTION);
+
+  if (smoothing < 0.0)
+    SU2_MPI::Error("SHOCK_TUBE_SMOOTHING must be non-negative", CURRENT_FUNCTION);
 
   if ((config->GetTime_Marching() != TIME_MARCHING::TIME_STEPPING) &&
       (config->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_1ST) &&
@@ -91,7 +97,15 @@ void CSodShockTubeSolution::GetSolution(const su2double* val_coords, const su2do
   /* If time is essentially zero, return initial conditions */
   su2double rho, u, p;
   if (val_t < 1e-12) {
-    if (x < x0) {
+    if (smoothing > 0.0) {
+      /*--- Smooth release: tanh blend of the primitives over width `smoothing`.
+            Avoids the sub-cell step whose truncation error deposits an
+            entropy-mode "startup scar" that advects with the contact. ---*/
+      const su2double f = 0.5 * (1.0 - tanh((x - x0) / smoothing));
+      rho = rhoR + (rhoL - rhoR) * f;
+      u   = uR  + (uL  - uR)  * f;
+      p   = pR  + (pL  - pR)  * f;
+    } else if (x < x0) {
       rho = rhoL; u = uL; p = pL;
     } else {
       rho = rhoR; u = uR; p = pR;

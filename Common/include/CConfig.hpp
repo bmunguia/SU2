@@ -1229,6 +1229,7 @@ private:
   su2double CylinderVelPerturbR;       /*!< \brief Outer radius of the perturbation zone (distance from cylinder center). */
 
   su2double ShockTube_PressureRatio;   /*!< \brief Pressure ratio pL/pR for the Sod shock tube. */
+  su2double ShockTube_Smoothing;       /*!< \brief IC smoothing width (tanh) for the Sod shock tube; 0 = sharp step. */
 
   bool Time_Domain;              /*!< \brief Determines if the multizone problem is solved in time-domain */
   unsigned long nOuterIter,      /*!< \brief Determines the number of outer iterations in the multizone problem */
@@ -9808,6 +9809,12 @@ public:
    * \return The pressure ratio for the Sod shock tube.
    */
   su2double GetShockTube_PressureRatio(void) const { return ShockTube_PressureRatio; }
+
+  /*!
+   * \brief Get the IC smoothing width (tanh) for the Sod shock tube.
+   * \return The smoothing width; 0 means a sharp step.
+   */
+  su2double GetShockTube_Smoothing(void) const { return ShockTube_Smoothing; }
 
   /*!
    * \brief Get the initial x-coordinate of the isentropic vortex.

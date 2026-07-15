@@ -42,6 +42,7 @@ class CSodShockTubeSolution final : public CVerificationSolution {
   su2double rhoL, uL, pL;   /*!< \brief Left state: density, velocity, pressure. */
   su2double rhoR, uR, pR;   /*!< \brief Right state: density, velocity, pressure. */
   su2double x0;             /*!< \brief Initial interface position. */
+  su2double smoothing;      /*!< \brief IC smoothing width (tanh); 0 = sharp step. */
 
   /*--- Variables involving gamma. ---*/
   su2double Gamma;    /*!< \brief Gamma */
