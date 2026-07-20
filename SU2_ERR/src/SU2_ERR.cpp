@@ -541,12 +541,20 @@ int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
   /*--- TODO: allow for multiple sensors ---*/
   string sensor_name = config->GetMetric_Sensor(0);
 
+  /*--- Restart field names are title-case ("Density") while config values are
+        uppercase ("DENSITY"), so compare case-insensitively. ---*/
+  auto to_upper = [](string s) {
+    for (auto& c : s) c = std::toupper(c);
+    return s;
+  };
+  const string sensor_upper = to_upper(sensor_name);
+
   /*--- Find index in solution fields ---*/
   vector<string> fields = solver->GetSolutionFields();
   fields.erase(fields.begin()); // remove Point_ID
   for (size_t i = 0; i < fields.size(); ++i) {
     string field_name = fields[i].substr(1, fields[i].size() - 2);
-    if (field_name.rfind(sensor_name, 0) == 0) {
+    if (to_upper(field_name).rfind(sensor_upper, 0) == 0) {
       return static_cast<int>(i);
     }
   }
