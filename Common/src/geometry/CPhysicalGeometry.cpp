@@ -7413,7 +7413,10 @@ void CPhysicalGeometry::ComputeMeshQualityStatistics(const CConfig* config) {
   vector<su2double> SubVolume_Min(nPoint, 1.e6);
 
   /*--- Orthogonality and aspect ratio (areas) are computed by
-   looping over all edges to check the angles and the face areas. ---*/
+   looping over all edges to check the angles and the face areas.
+   The edge lengths are also tracked for reporting. ---*/
+
+  su2double edgeMin = 1.e6, edgeMax = 0.0;
 
   for (unsigned long iEdge = 0; iEdge < nEdge; iEdge++) {
     /*--- Point identification, edge normal vector and area ---*/
@@ -7448,6 +7451,9 @@ void CPhysicalGeometry::ComputeMeshQualityStatistics(const CConfig* config) {
     }
     distance = sqrt(distance);
     area = sqrt(area);
+
+    edgeMin = min(edgeMin, distance);
+    edgeMax = max(edgeMax, distance);
 
     /*--- Aspect ratio is the ratio between the largest and smallest
      faces making up the boundary of the dual CV and is a measure
@@ -7650,6 +7656,10 @@ void CPhysicalGeometry::ComputeMeshQualityStatistics(const CConfig* config) {
   SU2_MPI::Allreduce(&vrMin, &Global_VR_Min, 1, MPI_DOUBLE, MPI_MIN, SU2_MPI::GetComm());
   SU2_MPI::Allreduce(&vrMax, &Global_VR_Max, 1, MPI_DOUBLE, MPI_MAX, SU2_MPI::GetComm());
 
+  su2double Global_Edge_Min, Global_Edge_Max;
+  SU2_MPI::Allreduce(&edgeMin, &Global_Edge_Min, 1, MPI_DOUBLE, MPI_MIN, SU2_MPI::GetComm());
+  SU2_MPI::Allreduce(&edgeMax, &Global_Edge_Max, 1, MPI_DOUBLE, MPI_MAX, SU2_MPI::GetComm());
+
   /*--- Print the summary to the console for the user. ---*/
 
   PrintingToolbox::CTablePrinter MetricsTable(&std::cout);
@@ -7661,6 +7671,7 @@ void CPhysicalGeometry::ComputeMeshQualityStatistics(const CConfig* config) {
     MetricsTable << "Orthogonality Angle (deg.)" << Global_Ortho_Min << Global_Ortho_Max;
     MetricsTable << "CV Face Area Aspect Ratio" << Global_AR_Min << Global_AR_Max;
     MetricsTable << "CV Sub-Volume Ratio" << Global_VR_Min << Global_VR_Max;
+    MetricsTable << "Edge Length" << Global_Edge_Min << Global_Edge_Max;
     MetricsTable.PrintFooter();
   }
 
