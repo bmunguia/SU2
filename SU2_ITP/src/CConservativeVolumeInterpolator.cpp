@@ -33,6 +33,24 @@
 #include "../../Common/include/adt/CADTPointsOnlyClass.hpp"
 #include "../../Common/include/toolboxes/geometry_toolbox.hpp"
 
+namespace {
+/*--- Fraction of a destination element's own area that its intersections must
+ *    cover before the element is normalized by that intersection area. ---*/
+constexpr passivedouble COVERAGE_TOL = 1e-12;
+
+/*--- Slack on the maximum-principle bounds, as a fraction of the local
+ *    solution magnitude. ---*/
+constexpr passivedouble BOUNDS_TOL = 1e-12;
+
+/*--- Shortfall in destination-element coverage that counts as incomplete,
+ *    both for the repair loop and for reporting. ---*/
+constexpr passivedouble COVERAGE_SHORTFALL_TOL = 1e-9;
+
+/*--- Cap on repair rounds, in case a destination element that genuinely extends
+ *    past the source domain. ---*/
+constexpr unsigned short MAX_COVERAGE_REPAIRS = 3;
+}  // namespace
+
 CConservativeVolumeInterpolator::CConservativeVolumeInterpolator(SU2_Comm MPICommunicator)
     : CVolumeInterpolator(MPICommunicator) {}
 
@@ -231,6 +249,23 @@ void CConservativeVolumeInterpolator::ConservativeInterpolation(const CConfig* c
     if (rank == MASTER_NODE) cout << "Performing extrapolation to uncontained nodes." << endl;
     ExtrapolateToUncontainedNodes(geometry_dst, solver_dst);
   }
+
+  /*--------------------------------------------------------------------------*/
+  /*--- Step 10: Reject a non-finite transfer here. Writing it out instead  ---*/
+  /*---          surfaces as a divergence in whatever solver reads the      ---*/
+  /*---          restart, far from the mesh pair that produced it.          ---*/
+  /*--------------------------------------------------------------------------*/
+  for (auto l = 0ul; l < nPoint_dst; ++l) {
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      if (isfinite(SU2_TYPE::GetValue(solver_dst->GetNodes()->GetSolution(l, iVar)))) continue;
+
+      const su2double* coor = geometry_dst->nodes->GetCoord(l);
+      char buf[300];
+      SPRINTF(buf, "Non-finite interpolated solution: variable %u at destination node %lu (%g, %g).",
+              iVar, l, SU2_TYPE::GetValue(coor[0]), SU2_TYPE::GetValue(coor[1]));
+      SU2_MPI::Error(string(buf), CURRENT_FUNCTION);
+    }
+  }
 }
 
 void CConservativeVolumeInterpolator::PointLocalization(CGeometry* geometry_src,
@@ -368,12 +403,18 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
     }
 
     /*--- Process elements, potentially adding new ones during intersection ---*/
+    auto walkSourceMesh = [&]() {
     while (!toProcess.empty()) {
       unsigned long srcElemID = toProcess.front();
       toProcess.pop();
 
       auto* srcElem = geometry_src->elem[srcElemID];
       if (srcElem->GetVTK_Type() != TRIANGLE) continue;
+
+      /*--- Only TriangleTriangleIntersection fills this, so clear it here:
+       *    otherwise a bounding-box rejection below leaves the previous
+       *    element's candidates in place and they get queued again. ---*/
+      detectedCandidates.clear();
 
       /*--- Get source triangle vertices ---*/
       for (auto iNode = 0u; iNode < 3; ++iNode) {
@@ -416,13 +457,53 @@ void CConservativeVolumeInterpolator::CreateIntersectionMeshes(CGeometry* geomet
         }
       }
     }
+    };
 
-    /*--- Track destination element area conservation ---*/
-    su2double totalIntVol = 0.0;
-    for (const auto& srcElemMesh : overlapMeshes[dstElemID]) {
-      for (const auto& vol : srcElemMesh.vols) {
-        totalIntVol += vol;
+    /*--- Area of K_dst, computed here rather than read from the element:
+     *    element volumes are not yet set when this runs. ---*/
+    const su2double dstArea = 0.5 * abs((dstTri[2] - dstTri[0]) * (dstTri[5] - dstTri[1]) -
+                                        (dstTri[3] - dstTri[1]) * (dstTri[4] - dstTri[0]));
+
+    /*--- The walk only steps to neighbours of source elements it has already
+     *    intersected, so it stalls wherever that frontier has a gap: a seed
+     *    meeting K_dst at a single corner intersects nothing and the walk stops
+     *    immediately, and a sliver intersection can fail to detect the
+     *    neighbour that carries the rest of the overlap. Both leave K_dst
+     *    under-covered, and the mass is then scaled up by |K_dst|/coveredArea
+     *    to compensate. Reopen the frontier from the vertex balls of what has
+     *    been found so far until the element is covered or nothing new is
+     *    reachable. ---*/
+    for (auto attempt = 0u; attempt <= MAX_COVERAGE_REPAIRS; ++attempt) {
+      walkSourceMesh();
+
+      su2double coveredArea = 0.0;
+      const auto found = overlapMeshes.find(dstElemID);
+      if (found != overlapMeshes.end()) {
+        for (const auto& srcElemMesh : found->second)
+          for (const auto& vol : srcElemMesh.vols) coveredArea += vol;
       }
+      if (coveredArea > (1.0 - COVERAGE_SHORTFALL_TOL) * dstArea) break;
+      if (attempt == MAX_COVERAGE_REPAIRS) break;
+
+      set<unsigned long> retrySeeds;
+      auto addBall = [&](unsigned long srcElemID) {
+        if (geometry_src->elem[srcElemID]->GetVTK_Type() != TRIANGLE) return;
+        for (auto iNode = 0u; iNode < 3; ++iNode)
+          AddVertexBallToCandidates(geometry_src, srcElemID, iNode, retrySeeds);
+      };
+      for (auto srcElemID : candidateElems) addBall(srcElemID);
+      if (found != overlapMeshes.end()) {
+        for (const auto& srcElemMesh : found->second) addBall(srcElemMesh.srcElemID);
+      }
+
+      bool grew = false;
+      for (auto srcElemID : retrySeeds) {
+        if (processedElems.insert(srcElemID).second) {
+          toProcess.push(srcElemID);
+          grew = true;
+        }
+      }
+      if (!grew) break;
     }
   }
 
@@ -610,6 +691,17 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
   unsigned long totalBoundaryElems = 0;
   unsigned long nonConservativeTreatment = 0;
 
+  /*--- Destination elements whose intersection area is too small to normalize
+   *    by. Collected here and dropped from overlapMeshes after the loop so that
+   *    every later stage treats them as uncovered rather than dividing by zero. ---*/
+  vector<unsigned long> uncoveredElems;
+
+  /*--- Destination-side coverage, sum(intersections) / |K_dst|. The existing
+   *    statistics are per source element, which cannot show a destination
+   *    element that the walk never reached. ---*/
+  su2double minCoverage = 1e20;
+  unsigned long countUnderCovered = 0;
+
   for (const auto& intersection : overlapMeshes) {
     unsigned long dstElemID = intersection.first;
     const IntersectionMesh& srcElemMeshes = intersection.second;
@@ -682,6 +774,24 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
     /*--- Volume average integral: ∇u_dst = ∫_K_dst (∇u dA) / |K_dst| ---*/
     const su2double dstVolume = dstElem->GetVolume();
 
+    /*--- Both normalizations below divide by totalIntVol. An element that
+     *    collected no usable intersection area yields 0/0, so drop it instead
+     *    and let the node loop average over the neighbours that are covered.
+     *    Written as a negated test so a NaN totalIntVol is also caught. ---*/
+    const su2double minIntVol = COVERAGE_TOL * max(dstVolume, su2double(0.0));
+    if (!(totalIntVol > minIntVol)) {
+      std::fill(dstMass.begin(), dstMass.end(), 0.0);
+      std::fill(dstGrad.begin(), dstGrad.end(), 0.0);
+      uncoveredElems.push_back(dstElemID);
+      continue;
+    }
+
+    if (dstVolume > 0.0) {
+      const su2double coverage = totalIntVol / dstVolume;
+      minCoverage = min(minCoverage, coverage);
+      if (coverage < 1.0 - COVERAGE_SHORTFALL_TOL) countUnderCovered++;
+    }
+
     /*--- Normalize by intersection volume instead of destination volume ---*/
     /*--- For matching volumes, this should have no impact               ---*/
     /*--- For non-matching domains, this preserves P1-exactness          ---*/
@@ -695,6 +805,15 @@ void CConservativeVolumeInterpolator::ComputeDestinationMassAndGradient(CGeometr
         dstGrad[iVar * nDim + iDim] /= totalIntVol;
       }
     }
+  }
+
+  for (const auto dstElemID : uncoveredElems) overlapMeshes.erase(dstElemID);
+
+  if (rank == MASTER_NODE) {
+    cout << "Destination element coverage: minimum " << scientific << setprecision(6);
+    cout << (minCoverage > 1e19 ? 0.0 : SU2_TYPE::GetValue(minCoverage));
+    cout << ", " << countUnderCovered << " element(s) below unity, ";
+    cout << uncoveredElems.size() << " excluded." << endl;
   }
 
   /*--- Compare source element masses with contributed masses ---*/
@@ -737,7 +856,6 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
                                                                       CSolver* solver_src) {
   /*--- TODO: extend to tetrahedra ---*/
   const unsigned short nNodePerElem = (nDim == 2)? 3 : 4;
-  const su2double EPS = 1e-16;
 
   su2double dstVertices[12];
   su2double u_tilde[3], u_K_P[4];
@@ -798,14 +916,19 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--- Skip if no valid bounds found ---*/
       if (u_src_min > 1e19 || u_src_max < -1e19) continue;
 
+      /*--- Slack on the bounds, scaled to this variable's local magnitude. ---*/
+      const su2double EPS = BOUNDS_TOL * max(u_src_max - u_src_min,
+                                             max(abs(u_src_min), abs(u_src_max)));
+
       /*--------------------------------------------------------------------------*/
       /*--- Step 2: Get current solution at destination element.               ---*/
       /*--------------------------------------------------------------------------*/
       su2double u_G = dstElemMass[dstElemID][iVar] / elemVolume;
 
       /*--- Element mean itself out of range (partial overlap near domain edge).
-       *    No P1-conservative correction exists; clamp and zero gradient.       ---*/
-      if (u_G < u_src_min - EPS || u_G > u_src_max + EPS) {
+       *    No P1-conservative correction exists; clamp and zero gradient.
+       *    Non-finite u_G is clamped rather than passed on. ---*/
+      if (!(u_G >= u_src_min - EPS && u_G <= u_src_max + EPS)) {
         dstElemMass[dstElemID][iVar] = max(u_src_min, min(u_src_max, u_G)) * elemVolume;
         for (auto iDim = 0u; iDim < nDim; ++iDim)
           dstElemGrad[dstElemID][iVar * nDim + iDim] = 0.0;
@@ -834,7 +957,7 @@ void CConservativeVolumeInterpolator::ApplyMaximumPrincipleCorrection(CGeometry*
       /*--------------------------------------------------------------------------*/
       bool violatesMaxPrinciple = false;
       for (auto iNode = 0u; iNode < nNodePerElem; ++iNode) {
-        if (u_K_P[iNode] < u_src_min - EPS || u_K_P[iNode] > u_src_max + EPS) {
+        if (!(u_K_P[iNode] >= u_src_min - EPS && u_K_P[iNode] <= u_src_max + EPS)) {
           violatesMaxPrinciple = true;
           break;
         }
@@ -986,14 +1109,58 @@ void CConservativeVolumeInterpolator::DistributeSolutionToNodes(const CConfig* c
     solver_dst->CompletePeriodicComms(geometry_dst, config, i, PERIODIC_INTERP);
   }
 
-  /*--- Calculate conserved quantities from mass and volume ---*/
+  /*--- Calculate conserved quantities from mass and volume. A node whose every
+   *    incident element was skipped accumulates no volume; the negated test
+   *    also rejects a non-finite one. ---*/
+  vector<bool> nodeCovered(nPoint_dst, false);
   for (auto l = 0u; l < nPoint_dst; ++l) {
     const su2double* mass = solver_dst->GetNodes()->GetSolution_Mass(l);
     const su2double vol = mass[nVar];
+    if (!(vol > 0.0)) continue;
+
+    nodeCovered[l] = true;
     for (auto iVar = 0u; iVar < nVar; ++iVar) {
       solver_dst->GetNodes()->SetSolution(l, iVar, mass[iVar] / vol);
     }
   }
+
+  /*--- Fall back to the mean of the covered neighbours, which is defined
+   *    wherever the node is not isolated from the covered part of the mesh. ---*/
+  unsigned long nUncovered = 0, nIsolated = 0;
+  for (auto l = 0u; l < nPoint_dst; ++l) {
+    if (nodeCovered[l]) continue;
+    nUncovered++;
+
+    vector<su2double> acc(nVar, 0.0);
+    unsigned short nNeighbor = 0;
+    for (auto j = 0u; j < geometry_dst->nodes->GetnPoint(l); ++j) {
+      const unsigned long m = geometry_dst->nodes->GetPoint(l, j);
+      if (!nodeCovered[m]) continue;
+
+      nNeighbor++;
+      for (auto iVar = 0u; iVar < nVar; ++iVar)
+        acc[iVar] += solver_dst->GetNodes()->GetSolution(m, iVar);
+    }
+
+    if (nNeighbor == 0) {
+      nIsolated++;
+      continue;
+    }
+    for (auto iVar = 0u; iVar < nVar; ++iVar)
+      solver_dst->GetNodes()->SetSolution(l, iVar, acc[iVar] / nNeighbor);
+  }
+
+  if (nUncovered > 0 && rank == MASTER_NODE) {
+    cout << "Warning: " << nUncovered << " destination node(s) received no conservative ";
+    cout << "contribution and were averaged from their neighbours." << endl;
+  }
+  if (nIsolated > 0) {
+    char buf[200];
+    SPRINTF(buf, "%lu destination node(s) have no interpolated neighbour; solution is undefined there.",
+            nIsolated);
+    SU2_MPI::Error(string(buf), CURRENT_FUNCTION);
+  }
+
   solver_dst->Set_OldSolution();
 }
 
@@ -1173,8 +1340,11 @@ su2double CConservativeVolumeInterpolator::ComputeSignedDistance(const su2double
   normal[0] = lineStart[1] - lineEnd[1];
   normal[1] = lineEnd[0] - lineStart[0];
 
-  /*--- Normalize the normal vector ---*/
+  /*--- Normalize the normal vector. A zero-length edge has no orientation, so
+   *    report the point as lying on it rather than propagating a NaN into
+   *    every predicate that consumes this distance. ---*/
   su2double mag = GeometryToolbox::Norm(nDim, normal);
+  if (!(mag > 0.0)) return 0.0;
   normal[0] /= mag; normal[1] /= mag;
 
   /*--- Compute signed distance using dot product between [P P{i+1}] and N ---*/
@@ -1667,15 +1837,11 @@ bool CConservativeVolumeInterpolator::ExtrapolateFromNearestNode(CGeometry* geom
     /*--- Skip non-triangular elements ---*/
     if (elem->GetVTK_Type() != TRIANGLE) continue;
 
-    /*--- Check if element has valid solution (was processed in conservative interpolation) ---*/
-    bool hasValidSolution = false;
-    for (auto iVar = 0u; iVar < nVar; ++iVar) {
-      if (abs(dstElemMass[elemID][iVar]) > 1e-16) {
-        hasValidSolution = true;
-        break;
-      }
-    }
-    if (!hasValidSolution) continue;
+    /*--- Skip elements the conservative transfer did not cover. Membership in
+     *    overlapMeshes states that directly; a magnitude threshold on the mass
+     *    instead rejects any element whose variables are legitimately near
+     *    zero, such as momentum in a quiescent region. ---*/
+    if (overlapMeshes.find(elemID) == overlapMeshes.end()) continue;
 
     /*--- Use element volume as weight ---*/
     const su2double elemVolume = elem->GetVolume();
@@ -1689,10 +1855,13 @@ bool CConservativeVolumeInterpolator::ExtrapolateFromNearestNode(CGeometry* geom
     }
   }
 
-  /*--- Normalize gradient ---*/
-  for (auto iVar = 0u; iVar < nVar; ++iVar) {
-    for (auto iDim = 0u; iDim < nDim; ++iDim) {
-      avgGradient[iVar * nDim + iDim] /= totalWeight;
+  /*--- Normalize gradient. With no covered element the reconstruction degrades
+   *    to a copy of the nearest node rather than 0/0. ---*/
+  if (totalWeight > 0.0) {
+    for (auto iVar = 0u; iVar < nVar; ++iVar) {
+      for (auto iDim = 0u; iDim < nDim; ++iDim) {
+        avgGradient[iVar * nDim + iDim] /= totalWeight;
+      }
     }
   }
 

@@ -492,7 +492,7 @@ bool CVolumeInterpolator::NearestPointOnTriangle(CGeometry* geometry, const unsi
   su2double s = detInv * (dotV0V2 * dotV1V1 - dotV0V1 * dotV1V2);
 
   /*--- Check if projection is inside triangle ---*/
-  const su2double tolInsideElem = 1.e-10;
+  const su2double tolInsideElem = 1.e-16;
   const su2double paramLowerBound = -1.0 - tolInsideElem;
 
   if ((r >= paramLowerBound) && (s >= paramLowerBound) && ((r + s) <= tolInsideElem)) {
@@ -631,7 +631,7 @@ void CVolumeInterpolator::SurfaceInterpolation(CGeometry* geometry_src, CGeometr
           dotV0V1 += V0[k] * V1[k];
           dotV1V1 += V1[k] * V1[k];
         }
-        su2double r = (dotV1V1 > 1e-12) ? dotV0V1 / dotV1V1 : 0.0;
+        su2double r = (dotV1V1 > 1e-16) ? dotV0V1 / dotV1V1 : 0.0;
         r = max(-1.0, min(1.0, r));  // Clamp to element bounds
 
         /*--- Compute linear shape function weights ---*/
