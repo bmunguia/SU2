@@ -112,8 +112,6 @@ class CPoint {
   su2activevector MaxLength;          /*!< \brief The maximum cell-center to cell-center length. */
   su2activevector RoughnessHeight;    /*!< \brief Roughness of the nearest wall. */
 
-  su2passivematrix Metric;            /*!< \brief Metric tensor. */
-
   su2matrix<AD::Identifier>
       AD_InputIndex; /*!< \brief Indices of Coord variables in the adjoint vector before solver iteration. */
   su2matrix<AD::Identifier>
@@ -886,45 +884,5 @@ class CPoint {
         SetRoughnessHeight(iPoint, roughness[rankID][zoneID][markerID]);
       }
     }
-  }
-
-  /*!
-   * \brief Get the value of the metric tensor at the point.
-   * \param[in] iPoint - Index of the point.
-   * \return Metric tensor at the point.
-   */
-  inline double* GetMetric(unsigned long iPoint) { return Metric[iPoint]; }
-
-  /*!
-   * \brief Get the value of the metric tensor at the point.
-   * \param[in] iPoint - Index of the point.
-   * \param[in] iMat - Index of the symmetric tensor.
-   * \return Metric tensor at the point.
-   */
-  inline double GetMetric(unsigned long iPoint, unsigned long iMat) const { return Metric(iPoint, iMat); }
-
-  /*!
-   * \brief Get the metric tensor matrix for the entire domain.
-   */
-  inline const su2passivematrix& GetMetric() const { return Metric; }
-  inline su2passivematrix& GetMetric() { return Metric; }
-
-  /*!
-   * \brief Set the value of the metric tensor at the point.
-   * \param[in] iPoint - Index of the point.
-   * \param[in] iMat - Index of the symmetric tensor.
-   * \param[in] metric - Value of the metric tensor.
-   */
-  inline void SetMetric(unsigned long iPoint, unsigned long iMat, double metric) {
-    Metric(iPoint, iMat) = metric;
-  }
-
-  /*!
-   * \brief Set the value of the metric tensor at the point.
-   * \param[in] iPoint - Index of the point.
-   * \param[in] metric - Value of the metric tensor.
-   */
-  inline void SetMetric(unsigned long iPoint, const double* metric) {
-    for (unsigned long iMat = 0; iMat < 3 * (nDim - 1); iMat++) Metric(iPoint, iMat) = metric[iMat];
   }
 };

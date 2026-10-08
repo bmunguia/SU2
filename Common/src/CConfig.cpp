@@ -2295,8 +2295,6 @@ void CConfig::SetConfig_Options() {
   addStringOption("RESTART_FILENAME", Restart_FileName, string("restart"));
   /*!\brief RESTART_ADJ_FILENAME  \n DESCRIPTION: Output file restart adjoint. Objective function abbreviation will be appended. \ingroup Config*/
   addStringOption("RESTART_ADJ_FILENAME", Restart_AdjFileName, string("restart_adj"));
-  /*!\brief METRIC_GEO_FILENAME \n DESCRIPTION: Output file restart flow \ingroup Config*/
-  addStringOption("METRIC_GEO_FILENAME", Metric_GeoFileName, string("metric_geo"));
   /*!\brief VOLUME_FLOW_FILENAME  \n DESCRIPTION: Output file flow (w/o extension) variables \ingroup Config */
   addStringOption("VOLUME_FILENAME", Volume_FileName, string("vol_solution"));
   /*!\brief VOLUME_ADJ_FILENAME
@@ -3184,8 +3182,6 @@ void CConfig::SetConfig_Options() {
   addBoolOption("COMPUTE_METRIC", Compute_Metric, false);
   /*!\brief INTEGRATE_METRIC \n DESCRIPTION: Enables temporal integration of Hessians into metric tensor */
   addBoolOption("INTEGRATE_METRIC", Integrate_Metric, true);
-  /*!\brief COMPUTE_METRIC_GEO \n DESCRIPTION: Compute the metric tensor corresponding to the surface curvature */
-  addBoolOption("COMPUTE_METRIC_GEO", Compute_Metric_Geo, false);
   /*!\brief NORMALIZE_METRIC \n DESCRIPTION: Normalize the metric tensor */
   addBoolOption("NORMALIZE_METRIC", Normalize_Metric, false);
   /*!\brief NUM_METHOD_HESS
@@ -3209,10 +3205,6 @@ void CConfig::SetConfig_Options() {
   addDoubleOption("METRIC_HMIN", Metric_Hmin, 1.0E-8);
   /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
   addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E6);
-  /*!\brief METRIC_GEODEV_MODE \n DESCRIPTION: Interpretation of METRIC_GEODEV values. \n OPTIONS: See \link GeoDevMode_Map \endlink. \n DEFAULT: ANGLE. */
-  addEnumOption("METRIC_GEODEV_MODE", Metric_GeoDev_Mode, GeoDevMode_Map, GEO_DEV_MODE::ANGLE);
-  /*!\brief METRIC_GEO_DEV \n DESCRIPTION: Surface metric control parameter per marker (angle in degrees for ANGLE mode, Hausdorff distance for HAUSDORFF mode) */
-  addStringDoubleListOption("METRIC_GEODEV", nMarker_GeoDev, Marker_GeoDev, Metric_GeoDev);
   /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
   addPythonOption("METRIC_HGRAD");
 
@@ -8155,12 +8147,6 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
       else {
         cout << "Output unnormalized metric field." << endl;
       }
-      if (nMarker_GeoDev != 0) {
-      cout << "Surface metric allowed deviation (degrees):" << endl;
-      for (auto iMarker_GeoDev = 0; iMarker_GeoDev < nMarker_GeoDev; iMarker_GeoDev++) {
-        cout << "  " << Marker_GeoDev[iMarker_GeoDev] << ": " << Metric_GeoDev[iMarker_GeoDev] << endl;
-      }
-    }
     }
   }
 }

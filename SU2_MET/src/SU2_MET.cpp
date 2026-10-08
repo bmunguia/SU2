@@ -175,9 +175,6 @@ int main(int argc, char* argv[]) {
 
             SolutionInstantiated[iZone] = true;
             initialInterp = true;
-
-            /*--- Calculate the surface metric ---*/
-            SurfaceMetricField(config[iZone], geometry[iZone][INST_0]);
           }
 
           /*--- Load the solution on the source mesh ---*/
@@ -217,9 +214,6 @@ int main(int argc, char* argv[]) {
       /*--- Initialize and preprocess the output ---*/
       InitializeOutput(config[iZone], geometry[iZone][INST_0], solver[iZone][INST_0],
                        output[iZone], iZone, INST_0, nZone);
-
-      /*--- Calculate the surface metric ---*/
-      SurfaceMetricField(config[iZone], geometry[iZone][INST_0]);
 
       /*--- Load the solution on the source mesh ---*/
       LoadRestarts(config[iZone], geometry[iZone], solver[iZone], iZone, INST_0, 0, true);
@@ -350,7 +344,6 @@ void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iI
   /*--- Mesh initialization ---*/
   config->SetiInst(iInst);
   const bool fem_solver = config->GetFEMSolver();
-  const bool fea = config->GetStructuralProblem();
 
   CGeometry* geometry_aux = nullptr;
   geometry_aux = new CPhysicalGeometry(config, iZone, nZone);
@@ -426,12 +419,6 @@ void InitializeGeometry(CConfig* config, CGeometry*& geometry, int iZone, int iI
   /*--- Store the global to local mapping ---*/
   if (rank == MASTER_NODE) cout << "Storing a mapping from global to local point index." << endl;
   geometry->SetGlobal_to_Local_Point();
-
-  /*--- Compute the surface curvature ---*/
-  if (!fea) {
-    if (rank == MASTER_NODE) cout << "Compute the surface curvature." << endl;
-    geometry->ComputeSurf_Curvature(config);
-  }
 
   /*--- Create the data structure for MPI point-to-point communications ---*/
   if (!fem_solver) geometry->PreprocessP2PComms(geometry, config);
@@ -669,29 +656,4 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
     cout << "Metric field normalization completed. Integrated determinant value: ";
     cout << setprecision(3) << scientific << integral_value << endl;
   }
-}
-
-void SurfaceMetricField(const CConfig* config, CGeometry* geometry) {
-  if (!config->GetCompute_Metric_Geo()) return;
-
-  const int rank = SU2_MPI::GetRank();
-
-  const unsigned long nPointDomain = geometry->GetnPointDomain();
-  const unsigned short nDim = geometry->GetnDim();
-  const unsigned short nSymMat = 3 * (nDim - 1);
-
-  if (config->GetnMarker_GeoDev() == 0 && rank == MASTER_NODE) {
-    cout << "Warning: Surface metric requested without any markers specified for metric calculation.\n"
-            "Use option METRIC_GEODEV= ( marker, geodev, ... ), where geodev is allowed surface \n"
-            "deviation in degrees." << endl;
-  }
-
-  /*--- Create a metric container  ---*/
-  auto& metric_field = geometry->nodes->GetMetric();
-  geometricSurfaceMetrics<double, tensor::metric>(
-    *geometry, *config, metric_field
-  );
-
-  if (rank == MASTER_NODE)
-    cout << "Surface metric calculation completed." << endl;
 }

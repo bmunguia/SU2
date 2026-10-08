@@ -53,25 +53,6 @@ CMetricBaselineOutput::CMetricBaselineOutput(CConfig *config, unsigned short nDi
     }
   }
 
-  /*--- Add geometric metric fields if requested ---*/
-  if (config->GetCompute_Metric_Geo()) {
-    requestedVolumeFields.emplace_back("MESH_ADAPT_GEO");
-    nRequestedVolumeFields = requestedVolumeFields.size();
-
-    vector<string> geoFields;
-    for (auto field_it = fields.begin() + nDim; field_it != fields.end(); ++field_it) {
-      if (field_it->rfind("Metric_", 0) == 0) {
-        string geoField = "Metric_Geo_" + field_it->substr(7); // Remove "Metric_" and add "Metric_Geo_"
-        geoFields.push_back(geoField);
-      }
-    }
-    fields.insert(fields.end(), geoFields.begin(), geoFields.end());
-  }
-
-  /*--- Set the surface filename --- */
-
-  metricGeoFilename = config->GetMetric_GeoFileName();
-
 }
 
 CMetricBaselineOutput::~CMetricBaselineOutput() = default;
@@ -89,8 +70,7 @@ void CMetricBaselineOutput::SetVolumeOutputFields(CConfig *config){
   // Add all the remaining fields
 
   for (iField = nDim; iField < fields.size(); iField++){
-    string category = (fields[iField].rfind("Metric_Geo_", 0) == 0) ? "MESH_ADAPT_GEO" : "MESH_ADAPT";
-    AddVolumeOutput(fields[iField], fields[iField], category, "");
+    AddVolumeOutput(fields[iField], fields[iField], "MESH_ADAPT", "");
   }
 
 }
@@ -113,11 +93,11 @@ void CMetricBaselineOutput::LoadVolumeData(CConfig *config, CGeometry *geometry,
   if(config->GetCompute_Metric()) {
     vector<string> solver_fields = solver[0]->GetSolutionFields();
     solver_fields.erase(solver_fields.begin()); // remove Point_ID
-    /*--- Get the first index that has Metric_ in the name (not Metric_Geo_) ---*/
+    /*--- Get the first index that has Metric_ in the name ---*/
     int first_ind = -1;
     for (size_t i = 0; i < solver_fields.size(); ++i) {
       string field_name = solver_fields[i].substr(1, solver_fields[i].size() - 2);
-      if (field_name.rfind("Metric_Geo_", 0) != 0 && field_name.rfind("Metric_", 0) == 0) {
+      if (field_name.rfind("Metric_", 0) == 0) {
         first_ind = i;
         break;
       }
@@ -135,20 +115,6 @@ void CMetricBaselineOutput::LoadVolumeData(CConfig *config, CGeometry *geometry,
         SetVolumeOutputValue("Metric_yz", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 4));
         SetVolumeOutputValue("Metric_zz", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 5));
       }
-    }
-  }
-
-  if(config->GetCompute_Metric_Geo()) {
-    // Common metric components for both 2D and 3D
-    SetVolumeOutputValue("Metric_Geo_xx", iPoint, Node_Geo->GetMetric(iPoint, 0));
-    SetVolumeOutputValue("Metric_Geo_xy", iPoint, Node_Geo->GetMetric(iPoint, 1));
-    SetVolumeOutputValue("Metric_Geo_yy", iPoint, Node_Geo->GetMetric(iPoint, 2));
-
-    // Additional components for 3D
-    if (nDim == 3) {
-      SetVolumeOutputValue("Metric_Geo_xz", iPoint, Node_Geo->GetMetric(iPoint, 3));
-      SetVolumeOutputValue("Metric_Geo_yz", iPoint, Node_Geo->GetMetric(iPoint, 4));
-      SetVolumeOutputValue("Metric_Geo_zz", iPoint, Node_Geo->GetMetric(iPoint, 5));
     }
   }
 

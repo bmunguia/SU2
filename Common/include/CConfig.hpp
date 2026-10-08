@@ -849,7 +849,6 @@ private:
   Breakdown_FileName,            /*!< \brief Breakdown output file. */
   Restart_FileName,              /*!< \brief Restart file for flow variables. */
   Restart_AdjFileName,           /*!< \brief Restart file for adjoint variables, drag functional. */
-  Metric_GeoFileName,            /*!< \brief Restart file containing the surface geometry metric field. */
   Adj_FileName,                  /*!< \brief Output file with the adjoint variables. */
   ObjFunc_Grad_FileName,         /*!< \brief Gradient of the objective function. */
   ObjFunc_Value_FileName,        /*!< \brief Objective function. */
@@ -1323,7 +1322,6 @@ private:
   /*--- Mesh adaptation options ---*/
   bool Compute_Metric;                     /*!< \brief Determines if error estimation is taking place */
   bool Integrate_Metric;                   /*!< \brief Determines if temporal metric integration is active. */
-  bool Compute_Metric_Geo;                 /*!< \brief Determines if surface geometry metric calculation is taking place */
   bool Normalize_Metric;                   /*!< \brief Determines if metric tensor normalization is taking place */
   unsigned long Metric_Start_Iter;         /*!< \brief Time iteration to begin metric accumulation. */
   unsigned short Kind_Hessian_Method;      /*!< \brief Numerical method for computation of Hessians. */
@@ -1336,11 +1334,6 @@ private:
   su2double Metric_Hmax,                   /*!< \brief Maximum cell size */
             Metric_Hmin,                   /*!< \brief Minimum cell size */
             Metric_ARmax;                  /*!< \brief Maximum cell aspect ratio */
-
-  unsigned short nMarker_GeoDev;           /*!< \brief Number of markers where surface metric is requested */
-  string* Marker_GeoDev;                   /*!< \brief Markers where surface metric is requested */
-  su2double* Metric_GeoDev;                /*!< \brief Surface metric control parameter (angle or Hausdorff, depending on METRIC_GEODEV_MODE) */
-  GEO_DEV_MODE Metric_GeoDev_Mode;         /*!< \brief Interpretation mode for METRIC_GEODEV values */
 
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
@@ -6062,12 +6055,6 @@ public:
   }
 
   /*!
-   * \brief Get the name of the restart file for the surface geometry metric field.
-   * \return Name of the restart file for the surface geometry metric field.
-   */
-  string GetMetric_GeoFileName(void) const { return Metric_GeoFileName; }
-
-  /*!
    * \brief Get the name of the file with the adjoint variables.
    * \return Name of the file with the adjoint variables.
    */
@@ -10438,12 +10425,6 @@ public:
   bool GetCompute_Metric(void) const { return Compute_Metric; }
 
   /*!
-   * \brief Check if surface geometry metric calculation is being carried out
-   * \return <code>TRUE<\code> if surface geometry metric calculation is taking place
-  */
-  bool GetCompute_Metric_Geo(void) const { return Compute_Metric_Geo; }
-
-  /*!
    * \brief Check if temporal metric integration is active
    * \return <code>TRUE<\code> if metric integration is taking place
   */
@@ -10522,29 +10503,6 @@ public:
    * \return Maximum cell aspect ratio
    */
   su2double GetMetric_ARmax(void) const { return Metric_ARmax; }
-
-  /*!
-   * \brief Get number of markers where surface metric was requested
-   * \return Number of markers where surface metric was requested
-   */
-  unsigned short GetnMarker_GeoDev(void) const { return nMarker_GeoDev; }
-
-  /*!
-   * \brief Get marker where surface metric was requested
-   * \return Marker where surface metric was requested
-   */
-  string GetMarker_GeoDev(unsigned short iMarker) const { return Marker_GeoDev[iMarker]; }
-
-  /*!
-   * \brief Get METRIC_GEODEV value for a marker
-   * \return Marker value interpreted by METRIC_GEODEV_MODE
-   */
-  su2double GetMetric_GeoDev(unsigned short iMarker) const { return Metric_GeoDev[iMarker]; }
-
-  /*!
-   * \brief Get interpretation mode for METRIC_GEODEV
-   */
-  GEO_DEV_MODE GetMetric_GeoDev_Mode(void) const { return Metric_GeoDev_Mode; }
 
   /*!
    * \brief Get constraint complexity

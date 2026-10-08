@@ -2219,7 +2219,6 @@ enum class OUTPUT_TYPE {
   SURFACE_CGNS,            /*!< \brief CGNS format. */
   STL_ASCII,               /*!< \brief STL ASCII format for surface solution output. */
   STL_BINARY,              /*!< \brief STL binary format for surface solution output. Not implemented yet. */
-  METRIC_GEO,              /*!< \brief Solution file containing the surface metric. */
 };
 static const MapType<std::string, OUTPUT_TYPE> Output_Map = {
   MakePair("TECPLOT_ASCII", OUTPUT_TYPE::TECPLOT_ASCII)
@@ -2242,7 +2241,6 @@ static const MapType<std::string, OUTPUT_TYPE> Output_Map = {
   MakePair("SURFACE_CGNS", OUTPUT_TYPE::SURFACE_CGNS)
   MakePair("STL_ASCII", OUTPUT_TYPE::STL_ASCII)
   MakePair("STL_BINARY", OUTPUT_TYPE::STL_BINARY)
-  MakePair("METRIC_GEO", OUTPUT_TYPE::METRIC_GEO)
 };
 
 /*!
@@ -2914,18 +2912,6 @@ enum class SensorType {
   PRIMITIVE, /*!< \brief Value read directly from the primitive variable array. */
   COMPUTED,  /*!< \brief Officially-supported computed quantity (e.g. Mach number). */
   CUSTOM,    /*!< \brief User-defined sensor populated externally via the Python wrapper. */
-};
-
-/*!
- * \brief Type of interpretation for METRIC_GEODEV.
- */
-enum class GEO_DEV_MODE {
-  ANGLE,      /*!< \brief METRIC_GEODEV is an angular deviation from the tangent plane (degrees). */
-  HAUSDORFF,  /*!< \brief METRIC_GEODEV is a target Hausdorff/sagitta distance. */
-};
-static const MapType<std::string, GEO_DEV_MODE> GeoDevMode_Map = {
-  MakePair("ANGLE", GEO_DEV_MODE::ANGLE)
-  MakePair("HAUSDORFF", GEO_DEV_MODE::HAUSDORFF)
 };
 
 

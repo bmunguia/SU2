@@ -251,17 +251,13 @@ protected:
   CParallelDataSorter* volumeDataSorter;        //!< Volume data sorter.
   CParallelDataSorter* volumeDataSorterCompact; //!< Volume data sorter for compact files.
   CParallelDataSorter* surfaceDataSorter;       //!< Surface data sorter.
-  CParallelDataSorter* metricGeoDataSorter;      //!< Volume data sorter for geometry metric files.
 
   vector<string> volumeFieldNames;          //!< Vector containing the volume field names.
   vector<string> requiredVolumeFieldNames;  //!< Vector containing the minimum required volume field names.
-  vector<string> requiredMetricGeoFieldNames;
 
   string volumeFilename,               //!< Volume output filename.
   surfaceFilename,                     //!< Surface output filename.
   restartFilename;                     //!< Restart output filename.
-
-  string metricGeoFilename;            //!< Surface metric output filename.
 
   /** \brief Structure to store information for a volume output field.
    *
@@ -274,8 +270,6 @@ protected:
     short offset = -1;
     /*! \brief This offset is used for the compact formulation. */
     short offsetCompact = -1;
-    /*! \brief This offset is used for the compact metric formulation. */
-    short offsetMetricGeo = -1;
     /*! \brief The group this field belongs to. */
     string outputGroup;
     /*! \brief String containing the description of the field. */
@@ -298,7 +292,7 @@ protected:
   bool buildFieldIndexCache;
 
   /*! \brief Vectors to cache the positions of the fields in the data array. */
-  std::vector<short> fieldIndexCache, fieldIndexCacheCompact, fieldIndexCacheMetricGeo;
+  std::vector<short> fieldIndexCache, fieldIndexCacheCompact;
   /*! \brief Current value of the cache indices. */
   unsigned short cachePosition;
 
@@ -314,9 +308,6 @@ protected:
 
   /*! \brief Minimum required volume fields for restart file. */
   const std::vector<string> restartVolumeFields = {"COORDINATES", "SOLUTION", "SENSITIVITY", "GRID_VELOCITY"};
-
-  /*! \brief Minimum required volume fields for surface geometry metric. */
-  const std::vector<string> metricGeoVolumeFields = {"COORDINATES", "MESH_ADAPT_GEO"};
 
   /*----------------------------- Convergence monitoring ----------------------------*/
 
