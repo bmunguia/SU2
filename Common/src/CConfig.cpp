@@ -3141,15 +3141,6 @@ void CConfig::SetConfig_Options() {
   /*!\brief METRIC_START_ITER \n DESCRIPTION: Time iteration at which metric accumulation begins (warmup) */
   addUnsignedLongOption("METRIC_START_ITER", Metric_Start_Iter, 0);
 
-  /*!\brief METRIC_HMAX \n DESCRIPTION: Constraint maximum cell size */
-  addDoubleOption("METRIC_HMAX", Metric_Hmax, 1.0E8);
-  /*!\brief METRIC_HMIN \n DESCRIPTION: Constraint minimum cell size */
-  addDoubleOption("METRIC_HMIN", Metric_Hmin, 1.0E-8);
-  /*!\brief METRIC_ARMAX \n DESCRIPTION: Constraint maximum cell aspect ratio */
-  addDoubleOption("METRIC_ARMAX", Metric_ARmax, 1.0E16);
-  /*!\brief METRIC_HGRAD \n DESCRIPTION: Size gradation smoothing parameter */
-  addPythonOption("METRIC_HGRAD");
-
   /*!\brief ADAP_ITER \n DESCRIPTION: Mesh adaptation inner iterations per complexity */
   addPythonOption("ADAP_ITER");
   /*!\brief ADAP_COMPLEXITIES \n DESCRIPTION: List of constraint (target) mesh complexities for mesh convergence study */
