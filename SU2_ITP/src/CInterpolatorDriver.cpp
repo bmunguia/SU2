@@ -25,7 +25,7 @@
  */
 
 #include "../include/CInterpolatorDriver.hpp"
-#include "../../SU2_CFD/include/metrics/metricUtils.hpp"
+#include "../../SU2_CFD/include/adaptive_metric/adaptiveMetricUtils.hpp"
 
 using namespace std;
 
@@ -163,24 +163,16 @@ void CInterpolatorDriver::InitializeSolversAndOutput(unsigned short iZone) {
   /*--- Resolve metric sensor indices and allocate sensor arrays before
    *    initializing the output, so the output object sees the full sensor list
    *    and registers Hessian fields with the correct names and indices. ---*/
-  if (config_container[iZone]->GetCompute_Metric()) {
+  if (config_container[iZone]->GetAdaptiveMetricParsedOptions().compute) {
     if (rank == MASTER_NODE)
-      cout << "Resolving metric sensor indices." << endl;
+      cout << "Resolving adaptive metric sensor indices." << endl;
 
-    bool resolved = MetricUtils::ResolveSensorIndices(
-      config_container[iZone],
-      geometry_container[iZone][iInst][MESH_0],
-      solver_container[iZone][iInst][MESH_0]
-    );
-
-    if (resolved) {
-      MetricUtils::InitializeMetrics(solver_container[iZone][iInst][MESH_0]);
-      const auto total = MetricUtils::TotalNumSensors(solver_container[iZone][iInst][MESH_0]);
-      if (rank == MASTER_NODE && total > 0)
-        cout << "Successfully resolved " << total << " metric sensors." << endl;
-    } else if (rank == MASTER_NODE) {
-      cout << "Warning: COMPUTE_METRIC is enabled but no valid sensors found." << endl;
-    }
+    auto solver = solver_container[iZone][iInst][MESH_0];
+    AdaptiveMetricUtils::ResolveSensorIndices(config_container[iZone], geometry_container[iZone][iInst][MESH_0], solver);
+    AdaptiveMetricUtils::InitializeAdaptiveMetric(solver);
+    if (rank == MASTER_NODE)
+      cout << "Successfully resolved " << AdaptiveMetricUtils::TotalNumSensors(solver) << " adaptive metric sensors."
+           << endl;
   }
 
   /*--- Initialize and preprocess the output for the destination mesh ---*/

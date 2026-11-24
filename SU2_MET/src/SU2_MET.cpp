@@ -528,7 +528,7 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
   const unsigned short nSymMat = solver->GetnSymMat();
 
   /*--- Check if normalization is enabled ---*/
-  if (!config->GetNormalize_Metric()) {
+  if (!config->GetAdaptiveMetricParsedOptions().normalize) {
     return;
   }
 
@@ -629,26 +629,27 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
     return;
   }
 
-  /*--- Create a metric container for the normalization ---*/
-  su2matrix<double> metric_field(nPointDomain, nSymMat);
+  /*--- Create a metric container (one sensor) for the normalization ---*/
+  const unsigned short iSensor = 0;
+  C3DPassiveMatrix metric_field(nPointDomain, 1, nSymMat);
 
   /*--- Extract metric tensor from solution fields ---*/
   for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
     for (auto iSymMat = 0u; iSymMat < nSymMat; iSymMat++) {
-      metric_field(iPoint, iSymMat) = SU2_TYPE::GetValue(solver->GetNodes()->GetSolution(iPoint, iFields[iSymMat]));
+      metric_field(iPoint, iSensor, iSymMat) =
+          SU2_TYPE::GetValue(solver->GetNodes()->GetSolution(iPoint, iFields[iSymMat]));
     }
   }
 
-  /*--- Apply normalization using the tensor::metric interface ---*/
-  const unsigned short iSensor = 0;
-  normalizeMetrics<double, tensor::metric>(
-    *geometry, *config, iSensor, integral_value, metric_field);
+  /*--- Apply the Lp-norm normalization with the space-time integral ---*/
+  const auto& adapt = config->GetAdaptiveMetricParsedOptions();
+  normalizeAdaptiveMetric(*geometry, *config, {integral_value}, {adapt.sensor_names[iSensor]}, metric_field);
 
   /*--- Write the normalized metric back to the solution fields ---*/
   for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
     for (auto iSymMat = 0u; iSymMat < nSymMat; iSymMat++) {
       solver->GetNodes()->SetSolution(iPoint, iFields[iSymMat],
-                                      metric_field(iPoint, iSymMat));
+                                      metric_field(iPoint, iSensor, iSymMat));
     }
   }
 

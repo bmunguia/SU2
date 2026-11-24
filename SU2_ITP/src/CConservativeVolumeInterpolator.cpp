@@ -120,7 +120,7 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
   (void) initial_interp;
 
   /*--- Compute metric field if requested ---*/
-  if (config->GetCompute_Metric()) {
+  if (config->GetAdaptiveMetricParsedOptions().compute) {
     if (rank == MASTER_NODE) {
       cout << "Computing metric field for interpolated solution." << endl;
     }
@@ -138,10 +138,11 @@ void CConservativeVolumeInterpolator::Postprocess(CConfig* config, CGeometry* ge
 
     /*--- Compute Hessians ---*/
     int idxVel = -1;
-    if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {
+    const auto hessianMethod = config->GetAdaptiveMetricParsedOptions().kind_hessian_method;
+    if (hessianMethod == GREEN_GAUSS) {
       if (rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
       solver_flow->SetHessian_GG(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
-    } else if (config->GetKind_Hessian_Method() == L2_PROJECTION) {
+    } else if (hessianMethod == L2_PROJECTION) {
       if (rank == MASTER_NODE) cout << "Computing Hessians using L2-projection." << endl;
       solver_flow->SetHessian_L2Proj(geometry_dst, config, idxVel, RUNTIME_FLOW_SYS);
     } else {

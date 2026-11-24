@@ -304,17 +304,17 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       ICOUNT          = GetnAdaptiveMetricSensor();
       JCOUNT          = nDim;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
-      MPI_TYPE        = COMM_TYPE_DOUBLE;
+      MPI_TYPE        = COMM_TYPE::DOUBLE;
       break;
     case PERIODIC_HESSIAN:
       ICOUNT          = GetnAdaptiveMetricSensor();
       JCOUNT          = nSymMat;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
-      MPI_TYPE        = COMM_TYPE_DOUBLE;
+      MPI_TYPE        = COMM_TYPE::DOUBLE;
       break;
     case PERIODIC_INTERP:
       COUNT_PER_POINT = nVar + 1;
-      MPI_TYPE        = COMM_TYPE_DOUBLE;
+      MPI_TYPE        = COMM_TYPE::DOUBLE;
       break;
     default:
       SU2_MPI::Error("Unrecognized quantity for periodic communication.",

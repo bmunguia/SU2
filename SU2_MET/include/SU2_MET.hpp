@@ -38,7 +38,7 @@
 #include "../../SU2_CFD/include/solvers/CSolverFactory.hpp"
 #include "../../SU2_CFD/include/output/CMetricBaselineOutput.hpp"
 #include "../../Common/include/geometry/CPhysicalGeometry.hpp"
-#include "../../SU2_CFD/include/metrics/computeMetrics.hpp"
+#include "../../SU2_CFD/include/adaptive_metric/computeAdaptiveMetric.hpp"
 
 void InitializeConfig(CConfig* driver_config, CConfig** config_container, char* zone_file_name,
                       char* config_file_name, SU2_COMPONENT val_software, int iZone, int nZone,

@@ -90,7 +90,7 @@ void CMetricBaselineOutput::LoadVolumeData(CConfig *config, CGeometry *geometry,
   if (nDim == 3)
     SetVolumeOutputValue(fields[2], iPoint, Node_Geo->GetCoord(iPoint, 2));
 
-  if(config->GetCompute_Metric()) {
+  if(config->GetAdaptiveMetricParsedOptions().compute) {
     vector<string> solver_fields = solver[0]->GetSolutionFields();
     solver_fields.erase(solver_fields.begin()); // remove Point_ID
     /*--- Get the first index that has Metric_ in the name ---*/

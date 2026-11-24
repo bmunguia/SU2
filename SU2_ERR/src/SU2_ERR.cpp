@@ -252,7 +252,7 @@ int main(int argc, char* argv[]) {
           }
 
           if (rank == MASTER_NODE) {
-            string sensor_string = config_src[ZONE_0]->GetMetric_Sensor(0);
+            string sensor_string = config_src[ZONE_0]->GetAdaptiveMetricParsedOptions().sensor_names[0];
             cout << sensor_string << " L1-norm field error: " << sensor_error << endl;
           }
         }
@@ -327,7 +327,7 @@ int main(int argc, char* argv[]) {
       }
 
       if (rank == MASTER_NODE) {
-        string sensor_string = config_src[ZONE_0]->GetMetric_Sensor(0);
+        string sensor_string = config_src[ZONE_0]->GetAdaptiveMetricParsedOptions().sensor_names[0];
         cout << sensor_string << " L1-norm field error: " << sensor_error << endl;
       }
     }
@@ -366,7 +366,7 @@ int main(int argc, char* argv[]) {
       }
 
       /*--- TODO: allow for multiple sensors ---*/
-      string sensor_string = config_src[ZONE_0]->GetMetric_Sensor(0);
+      string sensor_string = config_src[ZONE_0]->GetAdaptiveMetricParsedOptions().sensor_names[0];
       Error_file << "\"Time Iter\",\"Num Point\",\"" << sensor_string << "\"";
       if (tabTecplot)
         Error_file << "\nZONE T= \"Error estimates\"" << endl;
@@ -539,7 +539,7 @@ int main(int argc, char* argv[]) {
 int GetSensorFieldIndex(const CConfig* config, const CSolver* solver) {
   /*--- Get corresponding field string from metric sensor ---*/
   /*--- TODO: allow for multiple sensors ---*/
-  string sensor_name = config->GetMetric_Sensor(0);
+  string sensor_name = config->GetAdaptiveMetricParsedOptions().sensor_names[0];
 
   /*--- Restart field names are title-case ("Density") while config values are
         uppercase ("DENSITY"), so compare case-insensitively. ---*/
@@ -568,7 +568,7 @@ su2double EstimateFieldError(const CConfig* config, CGeometry* geometry,
                              int iFieldDst, int iFieldRef) {
 
   /*--- Get the norm and number of points from configuration and geometry ---*/
-  const unsigned short p = config->GetMetric_Norm();
+  const unsigned short p = config->GetAdaptiveMetricParsedOptions().norm;
   const unsigned long nPointDomain = geometry->GetnPointDomain();
 
   su2double local_sum = 0.0;
