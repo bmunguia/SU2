@@ -4832,6 +4832,9 @@ void CSolver::SavelibROM(CGeometry *geometry, CConfig *config, bool converged) {
 void CSolver::ComputeAdaptiveMetric(CGeometry *geometry, const CConfig *config, bool restartMetric) {
   /*--- TODO: - goal-oriented metric ---*/
   /*---       - metric intersection  ---*/
+  const auto& adapt = config->GetAdaptiveMetricParsedOptions();
+  if (!adapt.integrate) return;
+
   auto& metric = base_nodes->GetAdaptiveMetric();
   const auto& hessian = base_nodes->GetHessian();
 
@@ -4843,11 +4846,12 @@ void CSolver::ComputeAdaptiveMetric(CGeometry *geometry, const CConfig *config, 
     accumulateAdaptiveMetric(*geometry, hessian, 1.0, metric);
     IntegrateAndNormalizeAdaptiveMetric(geometry, config);
   }
-  else {
-    /*--- Unsteady: trapezoidal time integration of |H|. The first step has half weight; the
-     *    half weight of the last step is applied in FinalizeAdaptiveMetric, since only the
-     *    driver knows when the run stops (e.g. MAX_TIME or time convergence). ---*/
-    const bool first_step = (config->GetTimeIter() == 0) || restartMetric;
+  else if (config->GetTimeIter() >= adapt.start_iter) {
+    /*--- Unsteady: trapezoidal time integration of |H|, from ADAPTIVE_METRIC_START_ITER or from
+     *    the restart solution. The first step has half weight; the half weight of the last step
+     *    is applied in FinalizeAdaptiveMetric, since only the driver knows when the run stops
+     *    (e.g. MAX_TIME or time convergence). ---*/
+    const bool first_step = restartMetric || (nAdaptiveMetricSteps == 0);
     if (first_step) {
       resetAdaptiveMetric(metric);
       nAdaptiveMetricSteps = 0;
@@ -4893,6 +4897,39 @@ void CSolver::IntegrateAndNormalizeAdaptiveMetric(CGeometry *geometry, const CCo
            << integrals[iSensor] << endl;
   }
 
+  if (config->GetKind_SU2() == SU2_COMPONENT::SU2_CFD && rank == MASTER_NODE)
+    WriteAdaptiveMetricIntegrals(config, integrals);
+
   if (config->GetAdaptiveMetricParsedOptions().normalize)
     normalizeAdaptiveMetric(*geometry, *config, integrals, names, metric);
+}
+
+void CSolver::WriteAdaptiveMetricIntegrals(const CConfig *config, const vector<passivedouble>& integrals) const {
+  const auto& adapt = config->GetAdaptiveMetricParsedOptions();
+  const bool tabTecplot = config->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT;
+
+  string filename = adapt.integral_filename;
+  filename = filename.substr(0, filename.find_last_of('.'));
+  filename += tabTecplot ? ".dat" : ".csv";
+
+  /*--- One row per run (or unsteady sub-interval), one column per sensor ---*/
+  ofstream file;
+  if (std::filesystem::exists(filename) && !adapt.wrt_integral_overwrite) {
+    file.open(filename, ios::app);
+  } else {
+    file.open(filename, ios::out);
+    if (tabTecplot) {
+      file << "TITLE = \"SU2_CFD Metric Integral Evaluation\"" << endl;
+      file << "VARIABLES = ";
+    }
+    file << "\"Time Iter\"";
+    for (auto iSensor = 0ul; iSensor < integrals.size(); ++iSensor)
+      file << ",\"" << adapt.sensor_names[iSensor] << " Metric Integral\"";
+    if (tabTecplot) file << "\nZONE T= \"Metric integrals\"";
+    file << endl;
+  }
+
+  file << config->GetTimeIter();
+  for (const auto integral : integrals) file << ", " << setprecision(15) << scientific << integral;
+  file << endl;
 }

@@ -556,7 +556,7 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
 
   /*--- Try to read integral file ---*/
   const bool tabTecplot = config->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT;
-  string filename = config->GetMetric_Integral_FileName();
+  string filename = config->GetAdaptiveMetricParsedOptions().integral_filename;
   unsigned short lastindex = filename.find_last_of('.');
   filename = filename.substr(0, lastindex);
   if (tabTecplot)

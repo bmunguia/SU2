@@ -1301,8 +1301,8 @@ void CConfig::SetConfig_Options() {
   addBoolOption("WRT_VOLUME_OVERWRITE", Wrt_Volume_Overwrite, true);
   /*!\brief WRT_SENSOR_ERROR_OVERWRITE \n DESCRIPTION: overwrite interpolation error. \n Options: YES, NO \ingroup Config */
   addBoolOption("WRT_SENSOR_ERROR_OVERWRITE", Wrt_Sensor_Error_Overwrite, true);
-  /*!\brief WRT_METRIC_INTEGRAL_OVERWRITE \n DESCRIPTION: overwrite integral of metric tensor field. \n Options: YES, NO \ingroup Config */
-  addBoolOption("WRT_METRIC_INTEGRAL_OVERWRITE", Wrt_Metric_Integral_Overwrite, true);
+  /*!\brief WRT_ADAPTIVE_METRIC_INTEGRAL_OVERWRITE \n DESCRIPTION: Overwrite the adaptive metric integral file instead of appending to it. \n Options: YES, NO \ingroup Config */
+  addBoolOption("WRT_ADAPTIVE_METRIC_INTEGRAL_OVERWRITE", adaptiveMetric_ParsedOptions.wrt_integral_overwrite, true);
   /*!\brief SYSTEM_MEASUREMENTS \n DESCRIPTION: System of measurements \n OPTIONS: see \link Measurements_Map \endlink \n DEFAULT: SI \ingroup Config*/
   addEnumOption("SYSTEM_MEASUREMENTS", SystemMeasurements, Measurements_Map, SI);
   /*!\brief MULTIZONE_ADAPT_FILENAME \n DESCRIPTION: Append zone number to restart and solution filenames. \ingroup Config*/
@@ -2476,9 +2476,9 @@ void CConfig::SetConfig_Options() {
   /*!\brief SENSOR_ERROR_FILENAME
    *  \n DESCRIPTION: Output interpolation error in mesh adaptation sensor  \ingroup Config*/
   addStringOption("SENSOR_ERROR_FILENAME", Sensor_Error_FileName, string("sensor_error"));
-  /*!\brief METRIC_INTEGRAL_FILENAME
-   *  \n DESCRIPTION: Output integral of metric tensor field for mesh adaptation sensor  \ingroup Config*/
-  addStringOption("METRIC_INTEGRAL_FILENAME", Metric_Integral_FileName, string("metric_integral"));
+  /*!\brief ADAPTIVE_METRIC_INTEGRAL_FILENAME
+   *  \n DESCRIPTION: Output file with the normalization integrals of the adaptive metric \ingroup Config*/
+  addStringOption("ADAPTIVE_METRIC_INTEGRAL_FILENAME", adaptiveMetric_ParsedOptions.integral_filename, string("adaptive_metric_integral"));
   /*!\brief SURFACE_FLOW_FILENAME
    *  \n DESCRIPTION: Output file surface flow coefficient (w/o extension)  \ingroup Config*/
   addStringOption("SURFACE_FILENAME", SurfCoeff_FileName, string("surface"));
@@ -3333,8 +3333,8 @@ void CConfig::SetConfig_Options() {
   addBoolOption("COMPUTE_ADAPTIVE_METRIC", adaptiveMetric_ParsedOptions.compute, false);
   /*!\brief NORMALIZE_ADAPTIVE_METRIC \n DESCRIPTION: Perform the Lp-norm normalization of the adaptive metric */
   addBoolOption("NORMALIZE_ADAPTIVE_METRIC", adaptiveMetric_ParsedOptions.normalize, true);
-  /*!\brief INTEGRATE_METRIC \n DESCRIPTION: Enables temporal integration of Hessians into metric tensor */
-  addBoolOption("INTEGRATE_METRIC", Integrate_Metric, true);
+  /*!\brief INTEGRATE_ADAPTIVE_METRIC \n DESCRIPTION: Accumulate the sensor Hessians into the adaptive metric (NO only computes the Hessians) */
+  addBoolOption("INTEGRATE_ADAPTIVE_METRIC", adaptiveMetric_ParsedOptions.integrate, true);
   /*!\brief NUM_METHOD_HESS
    *  \n DESCRIPTION: Numerical method for Hessian computation \n OPTIONS: See \link Gradient_Map \endlink. \n DEFAULT: GREEN_GAUSS. \ingroup Config*/
   addEnumOption("NUM_METHOD_HESS", adaptiveMetric_ParsedOptions.kind_hessian_method, Gradient_Map, GREEN_GAUSS);
@@ -3351,8 +3351,8 @@ void CConfig::SetConfig_Options() {
   addUnsignedLongOption("ADAPTIVE_METRIC_COMPLEXITY", adaptiveMetric_ParsedOptions.complexity, 10000);
   /*!\brief ADAP_TIME_SUBINTERVAL \n DESCRIPTION: Number of time subintervals in unsteady mesh adaptation */
   addUnsignedShortOption("ADAP_TIME_SUBINTERVAL", adaptiveMetric_ParsedOptions.n_time_subintervals, 1);
-  /*!\brief METRIC_START_ITER \n DESCRIPTION: Time iteration at which metric accumulation begins (warmup) */
-  addUnsignedLongOption("METRIC_START_ITER", Metric_Start_Iter, 0);
+  /*!\brief ADAPTIVE_METRIC_START_ITER \n DESCRIPTION: Time iteration at which the unsteady adaptive metric accumulation begins (warmup) */
+  addUnsignedLongOption("ADAPTIVE_METRIC_START_ITER", adaptiveMetric_ParsedOptions.start_iter, 0);
 
   /*!\brief ADAPTIVE_METRIC_HMAX \n DESCRIPTION: Constraint maximum cell size, one value for all sensors or one per sensor (default 100) */
   addDoubleListOption("ADAPTIVE_METRIC_HMAX", adaptiveMetric_ParsedOptions.n_hmax, adaptiveMetric_ParsedOptions.hmax_list);
@@ -6338,11 +6338,6 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
       SU2_MPI::Error("COMPUTE_ADAPTIVE_METRIC requires at least one ADAPTIVE_METRIC_SENSOR.", CURRENT_FUNCTION);
     }
 
-    /*--- TODO: periodic communication of the sensor gradients and Hessians ---*/
-    if (nMarker_PerBound > 0) {
-      SU2_MPI::Error("COMPUTE_ADAPTIVE_METRIC does not yet support periodic boundaries.", CURRENT_FUNCTION);
-    }
-
     /*--- Check that config is valid for requested sensor ---*/
     for (auto iSensor = 0u; iSensor < adapt.n_sensors; iSensor++) {
       /*--- If using GOAL, it must be the only sensor and the discrete adjoint must be used ---*/
@@ -6398,12 +6393,12 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     if(TimeMarching == TIME_MARCHING::STEADY)
       adapt.n_time_subintervals = 1;
 
-    /*--- METRIC_START_ITER has no meaning for steady simulations ---*/
-    if (TimeMarching == TIME_MARCHING::STEADY && Metric_Start_Iter > 0) {
+    /*--- ADAPTIVE_METRIC_START_ITER has no meaning for steady simulations ---*/
+    if (TimeMarching == TIME_MARCHING::STEADY && adapt.start_iter > 0) {
       if (rank == MASTER_NODE)
-        cout << "WARNING: METRIC_START_ITER > 0 has no effect for steady simulations. "
+        cout << "WARNING: ADAPTIVE_METRIC_START_ITER > 0 has no effect for steady simulations. "
                 "Forcing to 0." << endl;
-      Metric_Start_Iter = 0;
+      adapt.start_iter = 0;
     }
   }
 

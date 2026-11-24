@@ -4521,7 +4521,8 @@ public:
   /*!
    * \brief Add the current Hessians of all sensors to their adaptive metrics.
    * \note Steady: the metric is |H|, normalized if requested. Unsteady: dt*|H| is accumulated
-   *       (half weight on the first step); call FinalizeAdaptiveMetric when the run stops.
+   *       (half weight on the first step) from ADAPTIVE_METRIC_START_ITER; call
+   *       FinalizeAdaptiveMetric when the run stops. Does nothing if INTEGRATE_ADAPTIVE_METRIC is NO.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
    * \param[in] restartMetric - Whether this is the initial sub-interval metric computation for an unsteady restart.
@@ -4546,6 +4547,13 @@ private:
    * \param[in] config - Definition of the particular problem.
    */
   void IntegrateAndNormalizeAdaptiveMetric(CGeometry *geometry, const CConfig *config);
+
+  /*!
+   * \brief Write the adaptive metric integrals of all sensors to ADAPTIVE_METRIC_INTEGRAL_FILENAME.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] integrals - Normalization integral of each sensor.
+   */
+  void WriteAdaptiveMetricIntegrals(const CConfig *config, const vector<passivedouble>& integrals) const;
 
 protected:
   /*!

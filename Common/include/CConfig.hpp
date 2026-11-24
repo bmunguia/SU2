@@ -756,7 +756,6 @@ private:
   Wrt_Surface_Overwrite,              /*!< \brief Overwrite surface output files or append iteration number.*/
   Wrt_Volume_Overwrite,               /*!< \brief Overwrite volume output files or append iteration number.*/
   Wrt_Sensor_Error_Overwrite,         /*!< \brief Overwrite interpolation error.*/
-  Wrt_Metric_Integral_Overwrite,      /*!< \brief Overwrite integral of metric tensor field.*/
   PyCustomSource,                     /*!< \brief Use a user-defined custom source term .*/
   Restart_Flow;                       /*!< \brief Restart flow solution for adjoint and linearized problems. */
   unsigned short nMarker_Monitoring,  /*!< \brief Number of markers to monitor. */
@@ -882,7 +881,6 @@ private:
   ObjFunc_Grad_FileName,         /*!< \brief Gradient of the objective function. */
   ObjFunc_Value_FileName,        /*!< \brief Objective function. */
   Sensor_Error_FileName,         /*!< \brief Interpolation error of mesh adaptation sensor */
-  Metric_Integral_FileName,      /*!< \brief Integral of metric tensor for mesh adaptation sensor */
   SurfCoeff_FileName,            /*!< \brief Output file with the flow variables on the surface. */
   SurfAdjCoeff_FileName,         /*!< \brief Output file with the adjoint variables on the surface. */
   SurfSens_FileName,             /*!< \brief Output file for the sensitivity on the surface (discrete adjoint). */
@@ -1370,8 +1368,6 @@ private:
 
   /*--- Adaptive metric (mesh adaptation) options ---*/
   AdaptiveMetric_ParsedOptions adaptiveMetric_ParsedOptions; /*!< \brief Adaptive metric options */
-  bool Integrate_Metric;                   /*!< \brief Determines if temporal metric integration is active. */
-  unsigned long Metric_Start_Iter;         /*!< \brief Time iteration to begin metric accumulation. */
 
   /*!
    * \brief Set the default values of config options not set in the config file using another config object.
@@ -5850,12 +5846,6 @@ public:
   bool GetWrt_Sensor_Error_Overwrite(void) const { return Wrt_Sensor_Error_Overwrite; }
 
   /*!
-   * \brief Flag for whether integral of metric tensor field files are overwritten.
-   * \return Flag for overwriting. If Flag=false, metric integral is appended to file
-   */
-  bool GetWrt_Metric_Integral_Overwrite(void) const { return Wrt_Metric_Integral_Overwrite; }
-
-  /*!
    * \brief Flag for whether visualization files are overwritten.
    * \return Flag for overwriting. If Flag=false, iteration nr is appended to filename
    */
@@ -6314,12 +6304,6 @@ public:
    * \return Name of the file with the interpolation error.
    */
   string GetSensor_Error_FileName(void) const { return Sensor_Error_FileName; }
-
-  /*!
-   * \brief Get the name of the file with the integral of the metric tensor.
-   * \return Name of the file with the integral of the metric tensor.
-   */
-  string GetMetric_Integral_FileName(void) const { return Metric_Integral_FileName; }
 
   /*!
    * \brief Get the name of the file with the surface information for the flow problem.
@@ -10698,18 +10682,6 @@ public:
    * \return FLAMELET_ENTHALPY_BC enum value.
    */
   FLAMELET_ENTHALPY_BC GetFlamelet_Enthalpy_BC() const { return flamelet_ParsedOptions.enthalpy_bc; }
-
-  /*!
-   * \brief Check if temporal metric integration is active
-   * \return <code>TRUE<\code> if metric integration is taking place
-  */
-  bool GetIntegrate_Metric(void) const { return Integrate_Metric; }
-
-  /*!
-   * \brief Get the time iteration at which metric accumulation begins
-   * \return Metric start iteration
-  */
-  unsigned long GetMetric_Start_Iter(void) const { return Metric_Start_Iter; }
 
   /*!
    * \brief Check if conservative solution interpolation is being carried out

@@ -3172,6 +3172,11 @@ struct AdaptiveMetric_ParsedOptions {
   unsigned long complexity = 10000;        /*!< \brief Target mesh complexity. */
   unsigned short n_time_subintervals = 1;  /*!< \brief Number of unsteady time sub-intervals for adaptation. */
 
+  bool integrate = true;                   /*!< \brief Accumulate the Hessians into the adaptive metric. */
+  unsigned long start_iter = 0;            /*!< \brief Time iteration at which the unsteady accumulation begins. */
+  std::string integral_filename = "adaptive_metric_integral"; /*!< \brief File with the normalization integrals. */
+  bool wrt_integral_overwrite = true;      /*!< \brief Overwrite the integral file instead of appending to it. */
+
   /*--- Size and aspect ratio constraints, as parsed: empty (default), one value for all
    *    sensors, or one value per sensor. ---*/
   static constexpr passivedouble default_hmax = 100.0;  /*!< \brief Default maximum cell size. */
