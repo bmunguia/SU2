@@ -34,6 +34,8 @@
  *  \author B. Munguía
  */
 class CMetricBaselineOutput : public CBaselineOutput {
+  std::vector<unsigned long> metricColumns; /*!< \brief Solution column of each adaptive metric field. */
+
 public:
 
   /*!

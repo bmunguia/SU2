@@ -43,15 +43,16 @@ CMetricBaselineOutput::CMetricBaselineOutput(CConfig *config, unsigned short nDi
 
   nRequestedVolumeFields = requestedVolumeFields.size();
 
-  /*--- Remove fields that aren't the coordinates or metric ---*/
-  auto it = fields.begin() + nDim;
-  while (it != fields.end()) {
-    if (it->rfind("Metric_", 0) != 0) {
-      it = fields.erase(it);
-    } else {
-      ++it;
+  /*--- Keep the coordinates and the adaptive metric of every sensor (AdaptiveMetric_<Sensor>_*),
+   *    and store the solution column of each metric field ---*/
+  std::vector<string> kept(fields.begin(), fields.begin() + nDim);
+  for (auto iField = static_cast<unsigned long>(nDim); iField < fields.size(); ++iField) {
+    if (fields[iField].rfind("AdaptiveMetric_", 0) == 0) {
+      kept.push_back(fields[iField]);
+      metricColumns.push_back(iField);
     }
   }
+  fields = kept;
 
 }
 
@@ -77,8 +78,6 @@ void CMetricBaselineOutput::SetVolumeOutputFields(CConfig *config){
 
 void CMetricBaselineOutput::LoadVolumeData(CConfig *config, CGeometry *geometry, CSolver **solver, unsigned long iPoint){
 
-  unsigned short iField = 0;
-
   /*--- Take the solver at index 0 --- */
 
   CVariable* Node_Sol  = solver[0]->GetNodes();
@@ -90,32 +89,7 @@ void CMetricBaselineOutput::LoadVolumeData(CConfig *config, CGeometry *geometry,
   if (nDim == 3)
     SetVolumeOutputValue(fields[2], iPoint, Node_Geo->GetCoord(iPoint, 2));
 
-  if(config->GetAdaptiveMetricParsedOptions().compute) {
-    vector<string> solver_fields = solver[0]->GetSolutionFields();
-    solver_fields.erase(solver_fields.begin()); // remove Point_ID
-    /*--- Get the first index that has Metric_ in the name ---*/
-    int first_ind = -1;
-    for (size_t i = 0; i < solver_fields.size(); ++i) {
-      string field_name = solver_fields[i].substr(1, solver_fields[i].size() - 2);
-      if (field_name.rfind("Metric_", 0) == 0) {
-        first_ind = i;
-        break;
-      }
-    }
-
-    if (first_ind >= 0) {
-      // Common metric components for both 2D and 3D
-      SetVolumeOutputValue("Metric_xx", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 0));
-      SetVolumeOutputValue("Metric_xy", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 1));
-      SetVolumeOutputValue("Metric_yy", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 2));
-
-      // Additional components for 3D
-      if (nDim == 3) {
-        SetVolumeOutputValue("Metric_xz", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 3));
-        SetVolumeOutputValue("Metric_yz", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 4));
-        SetVolumeOutputValue("Metric_zz", iPoint, Node_Sol->GetSolution(iPoint, first_ind + 5));
-      }
-    }
-  }
+  for (auto iMetric = 0ul; iMetric < metricColumns.size(); ++iMetric)
+    SetVolumeOutputValue(fields[nDim + iMetric], iPoint, Node_Sol->GetSolution(iPoint, metricColumns[iMetric]));
 
 }

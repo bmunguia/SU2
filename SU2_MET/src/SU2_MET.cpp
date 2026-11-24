@@ -503,18 +503,20 @@ void WriteFiles(CConfig* config, CGeometry* geometry, CSolver** solver_container
 }
 
 vector<int> GetMetricFieldIndices(const CConfig* config, const CSolver* solver) {
-  vector<int> indices;vector<string> fields = solver->GetSolutionFields();
+  /*--- Solution columns of the adaptive metric fields (AdaptiveMetric_<Sensor>_*), in file order:
+   *    sensor by sensor, each with its symmetric tensor components. ---*/
+  vector<int> indices;
+  vector<string> fields = solver->GetSolutionFields();
   fields.erase(fields.begin()); // remove Point_ID
   for (size_t i = 0; i < fields.size(); ++i) {
     string field_name = fields[i].substr(1, fields[i].size() - 2);
-    if (field_name.rfind("Metric_", 0) == 0) {
+    if (field_name.rfind("AdaptiveMetric_", 0) == 0) {
       indices.push_back(static_cast<int>(i));
     }
   }
 
-  if (indices.size() == 0) {
-    SU2_MPI::Error("Metric tensor not found in solution.", CURRENT_FUNCTION);
-    return indices;
+  if (indices.empty()) {
+    SU2_MPI::Error("Adaptive metric tensor not found in solution.", CURRENT_FUNCTION);
   }
 
   return indices;
@@ -526,39 +528,41 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
   const unsigned long nPointDomain = geometry->GetnPointDomain();
   const unsigned short nDim = geometry->GetnDim();
   const unsigned short nSymMat = solver->GetnSymMat();
+  const auto& adapt = config->GetAdaptiveMetricParsedOptions();
 
   /*--- Check if normalization is enabled ---*/
-  if (!config->GetAdaptiveMetricParsedOptions().normalize) {
+  if (!adapt.normalize) {
     return;
   }
 
-  /*--- Get metric field indices ---*/
-  vector<int> iFields = GetMetricFieldIndices(config, solver);
-  if (iFields.empty()) {
-    SU2_MPI::Error("No metric fields found for normalization.", CURRENT_FUNCTION);
-    return;
-  } else if (iFields.size() != nSymMat) {
-    if (rank == MASTER_NODE)
-    SU2_MPI::Error(string("Incorrect number of tensor components. Should be ") +
-                   to_string(nSymMat) + string("for ")  + to_string(nDim) + string("D."),
+  /*--- The size constraints of each sensor are only set up with COMPUTE_ADAPTIVE_METRIC ---*/
+  if (!adapt.compute) {
+    SU2_MPI::Error("SU2_MET requires COMPUTE_ADAPTIVE_METRIC= YES.", CURRENT_FUNCTION);
+  }
+
+  /*--- Get metric field indices: one tensor per sensor of ADAPTIVE_METRIC_SENSOR ---*/
+  const vector<int> iFields = GetMetricFieldIndices(config, solver);
+  const unsigned long nSensor = adapt.n_sensors;
+  if (iFields.size() != nSensor * nSymMat) {
+    SU2_MPI::Error(string("Found ") + to_string(iFields.size()) + string(" adaptive metric components, expected ") +
+                   to_string(nSymMat) + string(" for each of the ") + to_string(nSensor) +
+                   string(" sensors in ") + to_string(nDim) + string("D."),
                    CURRENT_FUNCTION);
-    return;
   }
 
   if (rank == MASTER_NODE) {
-    cout << "Metric tensor found at indices ( ";
-    for (auto i = 0u; i < nSymMat; ++i) {
+    cout << "Adaptive metric tensors found at indices ( ";
+    for (size_t i = 0; i < iFields.size(); ++i) {
       cout << iFields[i];
-      if (i < nSymMat - 1) cout << ", ";
+      if (i + 1 < iFields.size()) cout << ", ";
     }
     cout << " ) in solution." << endl;
   }
 
   /*--- Try to read integral file ---*/
   const bool tabTecplot = config->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT;
-  string filename = config->GetAdaptiveMetricParsedOptions().integral_filename;
-  unsigned short lastindex = filename.find_last_of('.');
-  filename = filename.substr(0, lastindex);
+  string filename = adapt.integral_filename;
+  filename = filename.substr(0, filename.find_last_of('.'));
   if (tabTecplot)
     filename += ".dat";
   else
@@ -573,8 +577,9 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
     return;
   }
 
-  /*--- Read and sum all integral values (space-time integral) ---*/
-  double integral_value = 0.0;
+  /*--- Read and sum the integrals of each sensor over all rows (space-time integral).
+   *    Each row is: TimeIter, integral of sensor 0, integral of sensor 1, ... ---*/
+  vector<passivedouble> integrals(nSensor, 0.0);
   bool found_value = false;
   string line;
   int lines_to_skip = tabTecplot ? 2 : 1;  // Skip 2 lines for .dat, 1 line for .csv
@@ -605,56 +610,56 @@ void NormalizeMetricField(const CConfig* config, CSolver* solver, CGeometry* geo
       tokens.push_back(token);
     }
 
-    /*--- We expect at least 2 values: TimeIter, Integral ---*/
-    if (tokens.size() >= 2) {
-      try {
-        double integral_val = stod(tokens[1]);
-        integral_value += integral_val;
-        found_value = true;
-      } catch (const exception& e) {
-        if (rank == MASTER_NODE) {
-          cout << "Warning: Could not parse line: " << line << endl;
-        }
-      }
+    if (tokens.size() != nSensor + 1) {
+      SU2_MPI::Error("Metric integral file '" + filename + "' must have one integral per sensor (" +
+                     to_string(nSensor) + ") in each row.", CURRENT_FUNCTION);
+    }
+
+    try {
+      for (auto iSensor = 0ul; iSensor < nSensor; ++iSensor) integrals[iSensor] += stod(tokens[iSensor + 1]);
+      found_value = true;
+    } catch (const exception& e) {
+      SU2_MPI::Error("Could not parse line of metric integral file: " + line, CURRENT_FUNCTION);
     }
   }
 
   integral_file.close();
 
-  if (!found_value || integral_value <= 0.0) {
+  if (!found_value) {
     if (rank == MASTER_NODE) {
-      cout << "Warning: Invalid integral value (" << integral_value
-           << ") found. Skipping normalization." << endl;
+      cout << "Warning: No integral values found in '" << filename << "'. Skipping normalization." << endl;
     }
     return;
   }
 
-  /*--- Create a metric container (one sensor) for the normalization ---*/
-  const unsigned short iSensor = 0;
-  C3DPassiveMatrix metric_field(nPointDomain, 1, nSymMat);
-
-  /*--- Extract metric tensor from solution fields ---*/
+  /*--- Extract the metric tensors from the solution fields ---*/
+  C3DPassiveMatrix metric_field(nPointDomain, nSensor, nSymMat);
   for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
-    for (auto iSymMat = 0u; iSymMat < nSymMat; iSymMat++) {
-      metric_field(iPoint, iSensor, iSymMat) =
-          SU2_TYPE::GetValue(solver->GetNodes()->GetSolution(iPoint, iFields[iSymMat]));
+    for (auto iSensor = 0ul; iSensor < nSensor; iSensor++) {
+      for (auto iSymMat = 0u; iSymMat < nSymMat; iSymMat++) {
+        metric_field(iPoint, iSensor, iSymMat) =
+            SU2_TYPE::GetValue(solver->GetNodes()->GetSolution(iPoint, iFields[iSensor * nSymMat + iSymMat]));
+      }
     }
   }
 
-  /*--- Apply the Lp-norm normalization with the space-time integral ---*/
-  const auto& adapt = config->GetAdaptiveMetricParsedOptions();
-  normalizeAdaptiveMetric(*geometry, *config, {integral_value}, {adapt.sensor_names[iSensor]}, metric_field);
+  /*--- Apply the Lp-norm normalization with the space-time integrals ---*/
+  normalizeAdaptiveMetric(*geometry, *config, integrals, adapt.SensorList(), metric_field);
 
-  /*--- Write the normalized metric back to the solution fields ---*/
+  /*--- Write the normalized metrics back to the solution fields ---*/
   for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
-    for (auto iSymMat = 0u; iSymMat < nSymMat; iSymMat++) {
-      solver->GetNodes()->SetSolution(iPoint, iFields[iSymMat],
-                                      metric_field(iPoint, iSensor, iSymMat));
+    for (auto iSensor = 0ul; iSensor < nSensor; iSensor++) {
+      for (auto iSymMat = 0u; iSymMat < nSymMat; iSymMat++) {
+        solver->GetNodes()->SetSolution(iPoint, iFields[iSensor * nSymMat + iSymMat],
+                                        metric_field(iPoint, iSensor, iSymMat));
+      }
     }
   }
 
   if (rank == MASTER_NODE) {
-    cout << "Metric field normalization completed. Integrated determinant value: ";
-    cout << setprecision(3) << scientific << integral_value << endl;
+    for (auto iSensor = 0ul; iSensor < nSensor; ++iSensor) {
+      cout << "Adaptive metric normalization completed for sensor " << adapt.sensor_names[iSensor]
+           << ". Space-time integral: " << setprecision(3) << scientific << integrals[iSensor] << endl;
+    }
   }
 }
