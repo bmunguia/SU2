@@ -2,7 +2,7 @@
  * \file CDriverBase.hpp
  * \brief Base class for all drivers.
  * \author H. Patel, A. Gastaldi
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -60,8 +60,7 @@ class CDriverBase {
       nZone,             /*!< \brief Total number of zones in the problem. */
       nDim,              /*!< \brief Number of dimensions. */
       iInst,             /*!< \brief Iterator on instance levels. */
-      *nInst,            /*!< \brief Total number of instances in the problem (per zone). */
-      **interface_types; /*!< \brief Type of coupling between the distinct (physical) zones. */
+      *nInst;            /*!< \brief Total number of instances in the problem (per zone). */
 
   CConfig* driver_config = nullptr; /*!< \brief Definition of the driver configuration. */
   COutput* driver_output = nullptr; /*!< \brief Definition of the driver output. */
@@ -518,10 +517,24 @@ class CDriverBase {
   /*!
    * \brief Get the local index of a named metric sensor in the flow solver.
    * Used by Python custom sensor registries to cache indices before the run loop.
-   * \param[in] sensor_name - Name as listed in METRIC_SENSOR config.
+   * \param[in] sensor_name - Name as listed in ADAPTIVE_METRIC_SENSOR config.
    * \return Sensor index, or -1 if not found.
    */
-  short GetMetricSensorIndex(const std::string& sensor_name) const;
+  short GetAdaptiveMetricSensorIndex(const std::string& sensor_name) const;
+
+  /*!
+   * \brief Finalize the time-integrated adaptive metric of an unsteady run (no-op for steady runs).
+   * \note Call once, after the last time step and before writing the final output. The C++ main
+   *       loop does this automatically; Python scripts that drive the time loop must call it.
+   */
+  void FinalizeAdaptiveMetric();
+
+  /*!
+   * \brief Set the values of a custom metric sensor on the nodes of the flow solver.
+   * \param[in] iSensor - Sensor index (see GetAdaptiveMetricSensorIndex); the sensor must be listed in ADAPTIVE_METRIC_CUSTOM_SENSOR.
+   * \param[in] values - One value per domain node, or per node including halos.
+   */
+  void SetAdaptSensor(unsigned short iSensor, const vector<passivedouble>& values);
 
   /*!
    * \brief Get a read/write view of adaptation sensor values on all mesh nodes of the flow solver.

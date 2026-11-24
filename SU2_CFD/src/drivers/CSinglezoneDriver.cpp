@@ -2,7 +2,7 @@
  * \file driver_direct_singlezone.cpp
  * \brief The main subroutines for driving single-zone problems.
  * \author R. Sanchez
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -29,7 +29,7 @@
 #include "../../include/definition_structure.hpp"
 #include "../../include/output/COutput.hpp"
 #include "../../include/iteration/CIteration.hpp"
-#include "../../include/metrics/metricUtils.hpp"
+#include "../../include/adaptive_metric/adaptiveMetricUtils.hpp"
 
 CSinglezoneDriver::CSinglezoneDriver(char* confFile,
                        unsigned short val_nZone,
@@ -44,24 +44,18 @@ CSinglezoneDriver::CSinglezoneDriver(char* confFile,
   /*--- Resolve and allocate metric sensor arrays if metric computation is enabled.
    *    Done here so the arrays are ready regardless of whether the C++ StartSolver()
    *    main loop or the Python wrapper (Preprocess/Run/Postprocess) is used. ---*/
-  if (config_container[ZONE_0]->GetCompute_Metric()) {
+  if (config_container[ZONE_0]->GetAdaptiveMetricParsedOptions().compute) {
     if (rank == MASTER_NODE)
-      cout << "Resolving metric sensor indices." << endl;
+      cout << "Resolving adaptive metric sensor indices." << endl;
 
-    bool resolved = MetricUtils::ResolveSensorIndices(
-      config_container[ZONE_0],
-      geometry_container[ZONE_0][INST_0][MESH_0],
-      solver_container[ZONE_0][INST_0][MESH_0]
-    );
-
-    if (resolved) {
-      MetricUtils::InitializeMetrics(solver_container[ZONE_0][INST_0][MESH_0]);
-      unsigned long total_num_sensor = MetricUtils::TotalNumSensors(solver_container[ZONE_0][INST_0][MESH_0]);
-      if (rank == MASTER_NODE && total_num_sensor > 0)
-        cout << "Successfully resolved " << total_num_sensor << " metric sensors." << endl;
-    } else if (rank == MASTER_NODE) {
-      cout << "Warning: COMPUTE_METRIC is enabled but no valid sensors found." << endl;
-    }
+    /*--- CConfig guarantees at least one sensor, and unknown names are an error. ---*/
+    auto solver = solver_container[ZONE_0][INST_0][MESH_0];
+    AdaptiveMetricUtils::ResolveSensorIndices(config_container[ZONE_0], geometry_container[ZONE_0][INST_0][MESH_0],
+                                              solver);
+    AdaptiveMetricUtils::InitializeAdaptiveMetric(solver);
+    if (rank == MASTER_NODE)
+      cout << "Successfully resolved " << AdaptiveMetricUtils::TotalNumSensors(solver) << " adaptive metric sensors."
+           << endl;
   }
 }
 
@@ -139,6 +133,10 @@ void CSinglezoneDriver::StartSolver() {
 
     Monitor(TimeIter);
 
+    /*--- Finalize the time-integrated adaptive metric before the last output. ---*/
+
+    if (StopCalc) FinalizeAdaptiveMetric();
+
     /*--- Output the solution in files. ---*/
 
     Output(TimeIter);
@@ -197,10 +195,10 @@ void CSinglezoneDriver::Preprocess(unsigned long TimeIter) {
         initial metric of sub-interval i, so we calculate it after setting the
         initial condition. ---*/
   if (config_container[ZONE_0]->GetTime_Domain() &&
-      config_container[ZONE_0]->GetCompute_Metric() &&
+      config_container[ZONE_0]->GetAdaptiveMetricParsedOptions().compute &&
       config_container[ZONE_0]->GetRestart() &&
       TimeIter == config_container[ZONE_0]->GetRestart_Iter()) {
-    ComputeMetricField(true);
+    ComputeAdaptiveMetricField(true);
   }
 
   /*--- Run a predictor step ---*/
@@ -242,8 +240,8 @@ void CSinglezoneDriver::Postprocess() {
 
   /*--- Compute metric for anisotropic mesh adaptation ---*/
 
-  if (config_container[ZONE_0]->GetCompute_Metric())
-    ComputeMetricField();
+  if (config_container[ZONE_0]->GetAdaptiveMetricParsedOptions().compute)
+    ComputeAdaptiveMetricField();
 
 }
 
@@ -344,7 +342,9 @@ bool CSinglezoneDriver::Monitor(unsigned long TimeIter){
 
     if ((MaxIterationsReached || InnerConvergence) && (rank == MASTER_NODE)) {
       cout << "\n----------------------------- Solver Exit -------------------------------" << endl;
-      if (InnerConvergence) cout << "All convergence criteria satisfied." << endl;
+      if (output_container[ZONE_0]->GetConvergenceInterrupted())
+        cout << "Interrupt signal received, exiting before the convergence criteria were satisfied." << endl;
+      else if (InnerConvergence) cout << "All convergence criteria satisfied." << endl;
       else cout << "\nMaximum number of iterations reached (ITER = " << nInnerIter << ") before convergence." << endl;
       output_container[ZONE_0]->PrintConvergenceSummary();
       cout << "-------------------------------------------------------------------------" << endl;
@@ -388,7 +388,7 @@ bool CSinglezoneDriver::GetTimeConvergence() const{
   return output_container[ZONE_0]->GetCauchyCorrectedTimeConvergence(config_container[ZONE_0]);
 }
 
-void CSinglezoneDriver::ComputeMetricField(bool restartMetric) {
+void CSinglezoneDriver::ComputeAdaptiveMetricField(bool restartMetric) {
 
   auto solver = solver_container[ZONE_0][INST_0][MESH_0];
   auto solver_flow = solver_container[ZONE_0][INST_0][MESH_0][FLOW_SOL];
@@ -397,28 +397,30 @@ void CSinglezoneDriver::ComputeMetricField(bool restartMetric) {
   int idxVel = -1;
 
   if (rank == MASTER_NODE){
-    cout << endl <<"----------------------------- Compute Metric ----------------------------" << endl;
-    cout << "Storing primitive variables needed for gradients in metric." << endl;
+    cout << endl <<"------------------------ Compute Adaptive Metric ------------------------" << endl;
+    cout << "Storing sensor values needed for the adaptive metric." << endl;
   }
 
-  /*--- Populate primitive and computed sensor slots in Sensor_Adapt.
+  /*--- Populate primitive, computed and solver-field sensor slots in Sensor_Adapt.
    *    Custom sensors (CUSTOM type) must have been set already via the Python wrapper
-   *    (CustomSensorRegistry.populate) before ComputeMetricField is called. ---*/
+   *    (CustomSensorRegistry.populate) before ComputeAdaptiveMetricField is called. ---*/
   solver_flow->SetPrimitive_SensorAdapt(geometry, config);
   solver_flow->SetComputed_SensorAdapt(geometry, config);
+  solver_flow->SetSolverField_SensorAdapt(solver, geometry, config);
   solver_flow->InitiateComms(geometry, config, MPI_QUANTITIES::SENSOR_ADAPT);
   solver_flow->CompleteComms(geometry, config, MPI_QUANTITIES::SENSOR_ADAPT);
 
-  if (config->GetKind_Hessian_Method() == GREEN_GAUSS) {
+  const auto hessianMethod = config->GetAdaptiveMetricParsedOptions().kind_hessian_method;
+  if (hessianMethod == GREEN_GAUSS) {
     if (rank == MASTER_NODE) cout << "Computing Hessians using Green-Gauss." << endl;
     solver_flow->SetHessian_GG(geometry, config, idxVel, RUNTIME_FLOW_SYS);
-  } else if (config->GetKind_Hessian_Method() == L2_PROJECTION) {
+  } else if (hessianMethod == L2_PROJECTION) {
     if (rank == MASTER_NODE) cout << "Computing Hessians using L2-projection." << endl;
     solver_flow->SetHessian_L2Proj(geometry, config, idxVel, RUNTIME_FLOW_SYS);
   } else {
     SU2_MPI::Error("Unsupported Hessian method.", CURRENT_FUNCTION);
   }
 
-  if(rank == MASTER_NODE) cout << "Computing feature-based metric tensor." << endl;
-  solver_flow->ComputeMetric(solver, geometry, config, restartMetric);
+  if(rank == MASTER_NODE) cout << "Computing feature-based adaptive metric tensor." << endl;
+  solver_flow->ComputeAdaptiveMetric(geometry, config, restartMetric);
 }

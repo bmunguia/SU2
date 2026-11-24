@@ -2,7 +2,7 @@
  * \file CSolver.cpp
  * \brief Main subroutines for CSolver class.
  * \author F. Palacios, T. Economon
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -27,11 +27,14 @@
 
 
 #include "../../include/solvers/CSolver.hpp"
+
+#include <limits>
+
 #include "../../include/gradients/computeGradientsGreenGauss.hpp"
 #include "../../include/gradients/computeGradientsLeastSquares.hpp"
 #include "../../include/gradients/computeGradientsL2Projection.hpp"
 #include "../../include/limiters/computeLimiters.hpp"
-#include "../../include/metrics/computeMetrics.hpp"
+#include "../../include/adaptive_metric/computeAdaptiveMetric.hpp"
 #include "../../../Common/include/toolboxes/MMS/CIncTGVSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CInviscidVortexSolution.hpp"
 #include "../../../Common/include/toolboxes/MMS/CKelvinHelmholtzSolution.hpp"
@@ -94,7 +97,7 @@ CSolver::CSolver(LINEAR_SOLVER_MODE linear_solver_mode) : System(linear_solver_m
   Jacobian_jj        = nullptr;
   base_nodes         = nullptr;
   nOutputVariables   = 0;
-  ResLinSolver       = 0.0;
+  ResLinSolver       = EPS;
 
   /*--- Variable initialization to avoid valgrid warnings when not used. ---*/
 
@@ -199,59 +202,71 @@ CSolver::~CSolver() {
 void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
                                           unsigned short commType,
                                           unsigned short &COUNT_PER_POINT,
-                                          unsigned short &MPI_TYPE,
+                                          COMM_TYPE &MPI_TYPE,
                                           unsigned short &ICOUNT,
                                           unsigned short &JCOUNT) const {
   SU2_ZONE_SCOPED
   switch (commType) {
     case PERIODIC_VOLUME:
       COUNT_PER_POINT  = 1;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case PERIODIC_NEIGHBORS:
       COUNT_PER_POINT  = 1;
-      MPI_TYPE         = COMM_TYPE_UNSIGNED_SHORT;
+      MPI_TYPE         = COMM_TYPE::UNSIGNED_SHORT;
       break;
     case PERIODIC_RESIDUAL:
       COUNT_PER_POINT  = nVar + nVar*nVar + 1;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case PERIODIC_IMPLICIT:
       COUNT_PER_POINT  = nVar;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case PERIODIC_LAPLACIAN:
       COUNT_PER_POINT  = nVar;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case PERIODIC_MAX_EIG:
       COUNT_PER_POINT  = 1;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case PERIODIC_SENSOR:
       COUNT_PER_POINT  = 2;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case PERIODIC_AUXVAR_GG:
+      COUNT_PER_POINT  = base_nodes->GetnAuxVar()*nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      ICOUNT           = base_nodes->GetnAuxVar();
+      JCOUNT           = nDim;
       break;
     case PERIODIC_SOL_GG:
     case PERIODIC_SOL_GG_R:
       COUNT_PER_POINT  = nVar*nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nVar;
       JCOUNT           = nDim;
       break;
     case PERIODIC_PRIM_GG:
     case PERIODIC_PRIM_GG_R:
       COUNT_PER_POINT  = nPrimVarGrad*nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nPrimVarGrad;
       JCOUNT           = nDim;
+      break;
+    case PERIODIC_AUXVAR_LS:
+      COUNT_PER_POINT = static_cast<unsigned long>(nDim)*nDim + base_nodes->GetnAuxVar()*nDim;
+      MPI_TYPE = COMM_TYPE::DOUBLE;
+      ICOUNT = base_nodes->GetnAuxVar();
+      JCOUNT = nDim;
       break;
     case PERIODIC_SOL_LS:
     case PERIODIC_SOL_ULS:
     case PERIODIC_SOL_LS_R:
     case PERIODIC_SOL_ULS_R:
       COUNT_PER_POINT  = nDim*nDim + nVar*nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nVar;
       JCOUNT           = nDim;
       break;
@@ -260,38 +275,39 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
     case PERIODIC_PRIM_LS_R:
     case PERIODIC_PRIM_ULS_R:
       COUNT_PER_POINT  = nDim*nDim + nPrimVarGrad*nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nPrimVarGrad;
       JCOUNT           = nDim;
       break;
     case PERIODIC_LIM_PRIM_1:
-      COUNT_PER_POINT  = nPrimVarGrad*2;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      /*--- Min and max of the solution, min and max of the reconstruction increments. ---*/
+      COUNT_PER_POINT  = nPrimVarGrad * (HasPeriodicRotation(*config) ? 4 : 2);
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nPrimVarGrad;
       break;
     case PERIODIC_LIM_PRIM_2:
       COUNT_PER_POINT  = nPrimVarGrad;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nPrimVarGrad;
       break;
     case PERIODIC_LIM_SOL_1:
       COUNT_PER_POINT  = nVar*2;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nVar;
       break;
     case PERIODIC_LIM_SOL_2:
       COUNT_PER_POINT  = nVar;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       ICOUNT           = nVar;
       break;
     case PERIODIC_GRAD_ADAPT:
-      ICOUNT          = GetnMetricSensor();
+      ICOUNT          = GetnAdaptiveMetricSensor();
       JCOUNT          = nDim;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
       break;
     case PERIODIC_HESSIAN:
-      ICOUNT          = GetnMetricSensor();
+      ICOUNT          = GetnAdaptiveMetricSensor();
       JCOUNT          = nSymMat;
       COUNT_PER_POINT = ICOUNT * JCOUNT;
       MPI_TYPE        = COMM_TYPE_DOUBLE;
@@ -315,6 +331,9 @@ namespace PeriodicCommHelpers {
       case PERIODIC_PRIM_ULS:
         return nodes->GetGradient_Primitive();
         break;
+      case PERIODIC_AUXVAR_LS:
+      case PERIODIC_AUXVAR_GG:
+        return nodes->GetAuxVarGradient();
       case PERIODIC_SOL_GG:
       case PERIODIC_SOL_LS:
       case PERIODIC_SOL_ULS:
@@ -334,6 +353,9 @@ namespace PeriodicCommHelpers {
 
   const su2activematrix& selectField(CVariable* nodes, unsigned short commType) {
     switch(commType) {
+      case PERIODIC_AUXVAR_LS:
+      case PERIODIC_AUXVAR_GG:
+        return nodes->GetAuxVar();
       case PERIODIC_PRIM_GG:
       case PERIODIC_PRIM_LS:
       case PERIODIC_PRIM_ULS:
@@ -363,6 +385,32 @@ namespace PeriodicCommHelpers {
   }
 }
 
+bool CSolver::HasPeriodicRotation(const CConfig& config) const {
+  if (!rotate_periodic) return false;
+  // Use the global marker configuration so every MPI rank selects the same packet size.
+  for (auto iMarker = 0u; iMarker < config.GetnMarker_Periodic(); ++iMarker) {
+    if (GeometryToolbox::HasRotation(config.GetPeriodicRotAngles(config.GetMarker_PerBound(iMarker)))) return true;
+  }
+  return false;
+}
+
+su2activematrix* CSolver::GetPeriodicProjections(const CGeometry& geometry, const CConfig& config) {
+
+  if (!HasPeriodicRotation(config)) return nullptr;
+
+  BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+  {
+    if (PeriodicProj.empty() && geometry.nPeriodicRecv > 0) {
+      for (auto iRecv = 0; iRecv < geometry.nPoint_PeriodicRecv[geometry.nPeriodicRecv]; ++iRecv)
+        PeriodicProjIndex.emplace(geometry.Local_Point_PeriodicRecv[iRecv], PeriodicProjIndex.size());
+      PeriodicProj.resize(PeriodicProjIndex.size(), 2*nPrimVarGrad);
+    }
+  }
+  END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+  return &PeriodicProj;
+}
+
 void CSolver::InitiatePeriodicComms(CGeometry *geometry,
                                     const CConfig *config,
                                     unsigned short val_periodic_index,
@@ -381,11 +429,13 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
   bool boundary_i, boundary_j;
   bool weighted = true;
+  const bool auxiliary = commType == PERIODIC_AUXVAR_GG || commType == PERIODIC_AUXVAR_LS;
+  const auto nRotVars = max<unsigned long>(max(nVar, nPrimVar), base_nodes->GetnAuxVar());
 
   unsigned short iVar, jVar, iDim, iMat;
   unsigned short nNeighbor       = 0;
   unsigned short COUNT_PER_POINT = 0;
-  unsigned short MPI_TYPE        = 0;
+  COMM_TYPE MPI_TYPE{};
   unsigned short ICOUNT          = nVar;
   unsigned short JCOUNT          = nVar;
 
@@ -395,10 +445,10 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
   auto *Diff      = new su2double[nVar];
   auto *Und_Lapl  = new su2double[nVar];
-  auto *Sol_Min   = new su2double[nPrimVarGrad];
-  auto *Sol_Max   = new su2double[nPrimVarGrad];
-  auto *rotPrim_i = new su2double[nPrimVar];
-  auto *rotPrim_j = new su2double[nPrimVar];
+  auto *Sol_Min   = new su2double[std::max(nVar, nPrimVarGrad)];
+  auto *Sol_Max   = new su2double[std::max(nVar, nPrimVarGrad)];
+  auto *rotPrim_i = new su2double[nRotVars];
+  auto *rotPrim_j = new su2double[nRotVars];
 
   su2double Sensor_i = 0.0, Sensor_j = 0.0, Pressure_i, Pressure_j;
   const su2double *Coord_i, *Coord_j;
@@ -414,6 +464,13 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
   auto Rotate = [&](const su2double* origin, const su2double* direction, su2double* rotated) {
     if(nDim==2) GeometryToolbox::Rotate(rotMatrix2D, origin, direction, rotated);
     else GeometryToolbox::Rotate(rotMatrix3D, origin, direction, rotated);
+  };
+
+  /*--- Rotates, in place, the range [vMin, vMax] of each component of a vector: each term
+   of the product with the rotation matrix takes its smallest and its largest value. ---*/
+  auto RotateBox = [&](su2double* vMin, su2double* vMax) {
+    if (nDim == 2) GeometryToolbox::RotateBox(rotMatrix2D, vMin, vMax);
+    else GeometryToolbox::RotateBox(rotMatrix3D, vMin, vMax);
   };
 
   string Marker_Tag;
@@ -445,6 +502,37 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
   auto& gradient = PeriodicCommHelpers::selectGradient(base_nodes, commType);
   auto& limiter = PeriodicCommHelpers::selectLimiter(base_nodes, commType);
   auto& field = PeriodicCommHelpers::selectField(base_nodes, commType);
+
+  /*--- Updates the range [Sol_Min, Sol_Max] of each variable with the values of a neighbor,
+   the velocity of the neighbor (variables 1 to nDim) is rotated first if requested. ---*/
+  auto UpdateMinMax = [&](const su2double* values, bool rotateVelocity) {
+    if (rotateVelocity) {
+      for (auto iField = 0u; iField < ICOUNT; iField++) rotPrim_j[iField] = values[iField];
+      Rotate(zeros, &values[1], &rotPrim_j[1]);
+      values = rotPrim_j;
+    }
+    for (auto iField = 0u; iField < ICOUNT; iField++) {
+      Sol_Min[iField] = min(Sol_Min[iField], values[iField]);
+      Sol_Max[iField] = max(Sol_Max[iField], values[iField]);
+    }
+  };
+
+  /*--- Reconstruction increments of all variables from a point to the middle
+   of the edge to one of its neighbors, computed as in computeLimiters_impl. ---*/
+  auto ReconstructionIncrements = [&](unsigned long point_i, unsigned long point_j, su2double* increments) {
+    const su2double kappa = config->GetMUSCL_Kappa_Flow();
+    const auto* coord_i = geometry->nodes->GetCoord(point_i);
+    const auto* coord_j = geometry->nodes->GetCoord(point_j);
+
+    su2double dist_ij[3] = {0.0};
+    for (auto iCoordinate = 0u; iCoordinate < nDim; ++iCoordinate)
+      dist_ij[iCoordinate] = 0.5 * (coord_j[iCoordinate] - coord_i[iCoordinate]);
+
+    for (auto iField = 0u; iField < ICOUNT; iField++) {
+      increments[iField] = LimiterHelpers<>::reconstructionIncrement(nDim, dist_ij,
+                           gradient[point_i][iField], field(point_i, iField), field(point_j, iField), kappa);
+    }
+  };
 
   /*--- Load the specified quantity from the solver into the generic
    communication buffer in the geometry class. ---*/
@@ -503,6 +591,10 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
         } else {
           GeometryToolbox::RotationMatrix(Theta, Phi, Psi, rotMatrix3D);
         }
+
+        /*--- Whether the vector components of the solution are rotated for this marker. ---*/
+
+        const bool rotation = rotate_periodic && GeometryToolbox::HasRotation(angles);
 
         /*--- Compute the offset in the recv buffer for this point. ---*/
 
@@ -570,33 +662,38 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
             if (implicit_periodic) {
 
+              const auto block = Jacobian.GetBlockView(iPoint, iPoint);
+
               for (iVar = 0; iVar < nVar; iVar++) {
                 for (jVar = 0; jVar < nVar; jVar++) {
-                  jacBlock[iVar][jVar] = Jacobian.GetBlock(iPoint, iPoint, iVar, jVar);
+                  jacBlock[iVar][jVar] = block(iVar, jVar);
                 }
               }
 
-              /*--- Rotate the momentum columns of the Jacobian. ---*/
+              /*--- Rotate the momentum rows and columns of the Jacobian, the residual of the
+               periodic match is Q*R(Q^T*U), so its Jacobian is Q*J*Q^T. First the rows. ---*/
 
               if (rotate_periodic) {
                 for (iVar = 0; iVar < nVar; iVar++) {
                   if (nDim == 2) {
-                    jacBlock[1][iVar] = (rotMatrix2D[0][0]*Jacobian.GetBlock(iPoint, iPoint, 1, iVar) +
-                                         rotMatrix2D[0][1]*Jacobian.GetBlock(iPoint, iPoint, 2, iVar));
-                    jacBlock[2][iVar] = (rotMatrix2D[1][0]*Jacobian.GetBlock(iPoint, iPoint, 1, iVar) +
-                                         rotMatrix2D[1][1]*Jacobian.GetBlock(iPoint, iPoint, 2, iVar));
+                    jacBlock[1][iVar] = rotMatrix2D[0][0]*block(1, iVar) + rotMatrix2D[0][1]*block(2, iVar);
+                    jacBlock[2][iVar] = rotMatrix2D[1][0]*block(1, iVar) + rotMatrix2D[1][1]*block(2, iVar);
                   } else {
-
-                    jacBlock[1][iVar] = (rotMatrix3D[0][0]*Jacobian.GetBlock(iPoint, iPoint, 1, iVar) +
-                                         rotMatrix3D[0][1]*Jacobian.GetBlock(iPoint, iPoint, 2, iVar) +
-                                         rotMatrix3D[0][2]*Jacobian.GetBlock(iPoint, iPoint, 3, iVar));
-                    jacBlock[2][iVar] = (rotMatrix3D[1][0]*Jacobian.GetBlock(iPoint, iPoint, 1, iVar) +
-                                         rotMatrix3D[1][1]*Jacobian.GetBlock(iPoint, iPoint, 2, iVar) +
-                                         rotMatrix3D[1][2]*Jacobian.GetBlock(iPoint, iPoint, 3, iVar));
-                    jacBlock[3][iVar] = (rotMatrix3D[2][0]*Jacobian.GetBlock(iPoint, iPoint, 1, iVar) +
-                                         rotMatrix3D[2][1]*Jacobian.GetBlock(iPoint, iPoint, 2, iVar) +
-                                         rotMatrix3D[2][2]*Jacobian.GetBlock(iPoint, iPoint, 3, iVar));
+                    jacBlock[1][iVar] = rotMatrix3D[0][0]*block(1, iVar) + rotMatrix3D[0][1]*block(2, iVar) +
+                                        rotMatrix3D[0][2]*block(3, iVar);
+                    jacBlock[2][iVar] = rotMatrix3D[1][0]*block(1, iVar) + rotMatrix3D[1][1]*block(2, iVar) +
+                                        rotMatrix3D[1][2]*block(3, iVar);
+                    jacBlock[3][iVar] = rotMatrix3D[2][0]*block(1, iVar) + rotMatrix3D[2][1]*block(2, iVar) +
+                                        rotMatrix3D[2][2]*block(3, iVar);
                   }
+                }
+
+                /*--- Then the columns, i.e. the momentum part of each row. ---*/
+
+                for (auto iRow = 0u; iRow < nVar; iRow++) {
+                  su2double rotated[3] = {0.0};
+                  Rotate(zeros, &jacBlock[iRow][1], rotated);
+                  for (auto jDim = 0u; jDim < nDim; jDim++) jacBlock[iRow][1+jDim] = rotated[jDim];
                 }
               }
 
@@ -754,6 +851,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
           case PERIODIC_SOL_GG_R:
           case PERIODIC_PRIM_GG:
           case PERIODIC_PRIM_GG_R:
+          case PERIODIC_AUXVAR_GG:
 
             /*--- Access and rotate the partial G-G gradient. These will be
              summed on both sides of the periodic faces before dividing
@@ -771,9 +869,9 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
               Rotate(zeros, jacBlock[iVar], rotBlock[iVar]);
             }
 
-            /*--- Rotate the vector components of the solution. ---*/
+            /*--- Auxiliary fields are scalars: rotate their spatial gradients only. ---*/
 
-            if (rotate_periodic) {
+            if (rotate_periodic && !auxiliary) {
               for (iDim = 0; iDim < nDim; iDim++) {
                 su2double d_diDim[3] = {0.0};
                 for (iVar = 1; iVar < 1+nDim; ++iVar) {
@@ -834,6 +932,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
             break;
 
+          case PERIODIC_AUXVAR_LS:
           case PERIODIC_SOL_LS: case PERIODIC_SOL_ULS:
           case PERIODIC_SOL_LS_R: case PERIODIC_SOL_ULS_R:
           case PERIODIC_PRIM_LS: case PERIODIC_PRIM_ULS:
@@ -876,7 +975,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
             for (iVar = 0; iVar < ICOUNT; iVar++)
               rotPrim_i[iVar] = field(iPoint, iVar);
 
-            if (rotate_periodic) {
+            if (rotate_periodic && !auxiliary) {
               Rotate(zeros, &field(iPoint,1), &rotPrim_i[1]);
             }
 
@@ -911,7 +1010,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
                 for (iVar = 0; iVar < ICOUNT; iVar++)
                   rotPrim_j[iVar] = field(jPoint,iVar);
 
-                if (rotate_periodic) {
+                if (rotate_periodic && !auxiliary) {
                   Rotate(zeros, &field(jPoint,1), &rotPrim_j[1]);
                 }
 
@@ -1002,11 +1101,15 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
               Sol_Max[iVar] = base_nodes->GetSolution_Max()(iPoint, iVar);
             }
 
+            /*--- The velocity of each neighbour is rotated before taking the min and max of its
+             components (the rotated min and max vectors do not bound the rotated components).
+             The min/max stored so far (the value of the point, or what was accumulated from
+             other periodic pairs) are a range for each component, which is rotated as a box. ---*/
+
+            if (rotation) RotateBox(&Sol_Min[1], &Sol_Max[1]);
+
             for (auto jPoint : geometry->nodes->GetPoints(iPoint)) {
-              for (iVar = 0; iVar < ICOUNT; iVar++) {
-                Sol_Min[iVar] = min(Sol_Min[iVar], field(jPoint, iVar));
-                Sol_Max[iVar] = max(Sol_Max[iVar], field(jPoint, iVar));
-              }
+              UpdateMinMax(field[jPoint], rotation);
             }
 
             for (iVar = 0; iVar < ICOUNT; iVar++) {
@@ -1014,11 +1117,34 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
               bufDSend[buf_offset+ICOUNT+iVar] = Sol_Max[iVar];
             }
 
-            /*--- Rotate the momentum components of the min/max. ---*/
-
-            if (rotate_periodic) {
+            /*--- Preserve the original arithmetic for translational periodicity, including its AD recording. ---*/
+            if (rotate_periodic && !rotation) {
               Rotate(zeros, &Sol_Min[1], &bufDSend[buf_offset+1]);
               Rotate(zeros, &Sol_Max[1], &bufDSend[buf_offset+ICOUNT+1]);
+            }
+
+            /*--- The limiters of the velocity components cannot be compared across a rotation
+             (second phase). Instead, we also send the min and max, over "our" edges, of the
+             reconstruction increments (computed as in computeLimiters_impl) with the velocity
+             part rotated, the periodic match then computes its limiters with the complete
+             stencil. Without rotation these are zero, i.e. they have no effect. ---*/
+
+            if ((commType == PERIODIC_LIM_PRIM_1) && (COUNT_PER_POINT == 4*ICOUNT)) {
+
+              for (auto iField = 0u; iField < ICOUNT; iField++)
+                Sol_Min[iField] = Sol_Max[iField] = 0.0;
+
+              if (rotation) {
+                for (auto jPoint : geometry->nodes->GetPoints(iPoint)) {
+                  ReconstructionIncrements(iPoint, jPoint, rotPrim_i);
+                  UpdateMinMax(rotPrim_i, true);
+                }
+              }
+
+              for (auto iField = 0u; iField < ICOUNT; iField++) {
+                bufDSend[buf_offset+2*ICOUNT+iField] = Sol_Min[iField];
+                bufDSend[buf_offset+3*ICOUNT+iField] = Sol_Max[iField];
+              }
             }
 
             break;
@@ -1034,7 +1160,14 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
               bufDSend[buf_offset+iVar] = limiter(iPoint, iVar);
             }
 
-            if (rotate_periodic) {
+            /*--- The limiters of the velocity components cannot be compared across a rotation,
+             they were computed with the complete stencil (see the first phase), we send
+             a value that is never the minimum. ---*/
+
+            if (rotation) {
+              for (auto iCoordinate = 0u; iCoordinate < nDim; iCoordinate++)
+                bufDSend[buf_offset+1+iCoordinate] = std::numeric_limits<passivedouble>::max();
+            } else if (rotate_periodic) {
               Rotate(zeros, &limiter(iPoint,1), &bufDSend[buf_offset+1]);
             }
 
@@ -1076,7 +1209,8 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
 
   /*--- Set the size of the data packet and type depending on quantity. ---*/
 
-  unsigned short COUNT_PER_POINT = 0, MPI_TYPE = 0, ICOUNT = 0, JCOUNT = 0;
+  unsigned short COUNT_PER_POINT = 0, ICOUNT = 0, JCOUNT = 0;
+  COMM_TYPE MPI_TYPE{};
   GetPeriodicCommCountAndType(config, commType, COUNT_PER_POINT, MPI_TYPE, ICOUNT, JCOUNT);
 
   /*--- Local variables ---*/
@@ -1299,6 +1433,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
             case PERIODIC_PRIM_GG:
             case PERIODIC_PRIM_GG_R:
             case PERIODIC_GRAD_ADAPT:
+            case PERIODIC_AUXVAR_GG:
 
               /*--- For G-G, we accumulate partial gradients then compute
                the final value using the entire volume of the periodic cell. ---*/
@@ -1328,6 +1463,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
 
               break;
 
+            case PERIODIC_AUXVAR_LS:
             case PERIODIC_SOL_LS: case PERIODIC_SOL_ULS:
             case PERIODIC_SOL_LS_R: case PERIODIC_SOL_ULS_R:
             case PERIODIC_PRIM_LS: case PERIODIC_PRIM_ULS:
@@ -1372,6 +1508,19 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
                 su2double Solution_Max = max(base_nodes->GetSolution_Max()(iPoint, iVar),
                                              bufDRecv[buf_offset+ICOUNT+iVar]);
                 base_nodes->GetSolution_Max()(iPoint, iVar) = Solution_Max;
+              }
+
+              /*--- Min/max reconstruction increments over the edges of the periodic match,
+               used to start the search over "our" edges (only with rotation). ---*/
+
+              if ((commType == PERIODIC_LIM_PRIM_1) && (COUNT_PER_POINT == 4*ICOUNT) && !PeriodicProj.empty()) {
+                auto* projections = GetPeriodicProjection(iPoint);
+                assert(projections != nullptr);
+                for (auto iField = 0u; iField < ICOUNT; iField++) {
+                  projections[iField] = min(projections[iField], bufDRecv[buf_offset+2*ICOUNT+iField]);
+                  projections[ICOUNT+iField] = max(projections[ICOUNT+iField],
+                                                   bufDRecv[buf_offset+3*ICOUNT+iField]);
+                }
               }
 
               break;
@@ -1420,7 +1569,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
 void CSolver::GetCommCountAndType(const CConfig* config,
                                   MPI_QUANTITIES commType,
                                   unsigned short &COUNT_PER_POINT,
-                                  unsigned short &MPI_TYPE) const {
+                                  COMM_TYPE &MPI_TYPE) const {
   SU2_ZONE_SCOPED
   switch (commType) {
     case MPI_QUANTITIES::SOLUTION:
@@ -1428,65 +1577,85 @@ void CSolver::GetCommCountAndType(const CConfig* config,
     case MPI_QUANTITIES::UNDIVIDED_LAPLACIAN:
     case MPI_QUANTITIES::SOLUTION_LIMITER:
       COUNT_PER_POINT  = nVar;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::MAX_EIGENVALUE:
     case MPI_QUANTITIES::SENSOR:
       COUNT_PER_POINT  = 1;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::SOLUTION_GRADIENT:
     case MPI_QUANTITIES::SOLUTION_GRAD_REC:
       COUNT_PER_POINT  = nVar*nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::PRIMITIVE_GRADIENT:
     case MPI_QUANTITIES::PRIMITIVE_GRAD_REC:
       COUNT_PER_POINT  = nPrimVarGrad*nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::PRIMITIVE_LIMITER:
       COUNT_PER_POINT  = nPrimVarGrad;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::SOLUTION_EDDY:
       COUNT_PER_POINT  = nVar+1;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::STOCH_SOURCE_LANG:
+      COUNT_PER_POINT  = nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::DES_LENGTHSCALE:
+      COUNT_PER_POINT  = 1;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::SOLUTION_FEA:
       if (config->GetTime_Domain())
         COUNT_PER_POINT  = nVar*3;
       else
         COUNT_PER_POINT  = nVar;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::AUXVAR_GRADIENT:
       COUNT_PER_POINT  = nDim*base_nodes->GetnAuxVar();
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::MESH_DISPLACEMENTS:
       COUNT_PER_POINT  = nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::SOLUTION_TIME_N:
       COUNT_PER_POINT  = nVar;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::SOLUTION_TIME_N1:
       COUNT_PER_POINT  = nVar;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::MOM_COEFF:
+      COUNT_PER_POINT  = 1;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::MOM_CORRECTION:
+      COUNT_PER_POINT  = nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::HBYA_CORRECTION:
+      COUNT_PER_POINT  = nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::SENSOR_ADAPT:
-      COUNT_PER_POINT  = GetnMetricSensor();
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      COUNT_PER_POINT  = GetnAdaptiveMetricSensor();
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::GRADIENT_ADAPT:
-      COUNT_PER_POINT  = GetnMetricSensor()*nDim;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      COUNT_PER_POINT  = GetnAdaptiveMetricSensor()*nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::HESSIAN:
-      COUNT_PER_POINT  = GetnMetricSensor()*nSymMat;
-      MPI_TYPE         = COMM_TYPE_DOUBLE;
+      COUNT_PER_POINT  = GetnAdaptiveMetricSensor()*nSymMat;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     default:
       SU2_MPI::Error("Unrecognized quantity for point-to-point MPI comms.",
@@ -1523,7 +1692,7 @@ void CSolver::InitiateComms(CGeometry *geometry,
 
   unsigned short iVar, iDim, iMat;
   unsigned short COUNT_PER_POINT = 0;
-  unsigned short MPI_TYPE        = 0;
+  COMM_TYPE MPI_TYPE{};
 
   unsigned long iPoint, msg_offset, buf_offset;
 
@@ -1595,6 +1764,13 @@ void CSolver::InitiateComms(CGeometry *geometry,
               bufDSend[buf_offset+iVar] = base_nodes->GetSolution(iPoint, iVar);
             bufDSend[buf_offset+nVar]   = base_nodes->GetmuT(iPoint);
             break;
+          case MPI_QUANTITIES::STOCH_SOURCE_LANG:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetLangevinSourceTerms(iPoint, iDim);
+            break;
+          case MPI_QUANTITIES::DES_LENGTHSCALE:
+            bufDSend[buf_offset] = base_nodes->GetDES_LengthScale(iPoint);
+            break;
           case MPI_QUANTITIES::UNDIVIDED_LAPLACIAN:
             for (iVar = 0; iVar < nVar; iVar++)
               bufDSend[buf_offset+iVar] = base_nodes->GetUndivided_Laplacian(iPoint, iVar);
@@ -1611,7 +1787,7 @@ void CSolver::InitiateComms(CGeometry *geometry,
             bufDSend[buf_offset] = base_nodes->GetSensor(iPoint);
             break;
           case MPI_QUANTITIES::SENSOR_ADAPT:
-            for (iVar = 0; iVar < GetnMetricSensor(); iVar++)
+            for (iVar = 0; iVar < GetnAdaptiveMetricSensor(); iVar++)
               bufDSend[buf_offset+iVar] = base_nodes->GetSensor_Adapt(iPoint, iVar);
             break;
           case MPI_QUANTITIES::SOLUTION_GRADIENT:
@@ -1625,7 +1801,7 @@ void CSolver::InitiateComms(CGeometry *geometry,
                 bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
             break;
           case MPI_QUANTITIES::HESSIAN:
-            for (iVar = 0; iVar < GetnMetricSensor(); iVar++)
+            for (iVar = 0; iVar < GetnAdaptiveMetricSensor(); iVar++)
               for (iMat = 0; iMat < nSymMat; iMat++) {
                 const auto buf_idx = buf_offset + static_cast<unsigned long>(iVar)*nSymMat + iMat;
                 bufDSend[buf_idx] = gradient(iPoint, iVar, iMat);
@@ -1652,6 +1828,17 @@ void CSolver::InitiateComms(CGeometry *geometry,
             for (iVar = 0; iVar < nVar; iVar++)
               bufDSend[buf_offset+iVar] = base_nodes->GetSolution_time_n1(iPoint, iVar);
             break;
+          case MPI_QUANTITIES::MOM_COEFF:
+            bufDSend[buf_offset] = base_nodes->GetMomCoeff(iPoint);
+            break;
+          case MPI_QUANTITIES::MOM_CORRECTION:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetMomentumCorrection(iPoint, iDim);
+            break; 
+          case MPI_QUANTITIES::HBYA_CORRECTION:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetHbyACorrection(iPoint, iDim);
+            break; 
           default:
             SU2_MPI::Error("Unrecognized quantity for point-to-point MPI comms.",
                            CURRENT_FUNCTION);
@@ -1679,7 +1866,7 @@ void CSolver::CompleteComms(CGeometry *geometry,
   unsigned short iDim, iVar, iMat;
   unsigned long iPoint, iRecv, nRecv, msg_offset, buf_offset;
   unsigned short COUNT_PER_POINT = 0;
-  unsigned short MPI_TYPE = 0;
+  COMM_TYPE MPI_TYPE{};
 
   int ind, source, iMessage, jRecv;
 
@@ -1756,6 +1943,13 @@ void CSolver::CompleteComms(CGeometry *geometry,
               base_nodes->SetSolution(iPoint, iVar, bufDRecv[buf_offset+iVar]);
             base_nodes->SetmuT(iPoint,bufDRecv[buf_offset+nVar]);
             break;
+          case MPI_QUANTITIES::STOCH_SOURCE_LANG:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetLangevinSourceTerms(iPoint, iDim, bufDRecv[buf_offset+iDim]);
+            break;
+          case MPI_QUANTITIES::DES_LENGTHSCALE:
+            base_nodes->SetDES_LengthScale(iPoint, bufDRecv[buf_offset]);
+            break;
           case MPI_QUANTITIES::UNDIVIDED_LAPLACIAN:
             for (iVar = 0; iVar < nVar; iVar++)
               base_nodes->SetUnd_Lapl(iPoint, iVar, bufDRecv[buf_offset+iVar]);
@@ -1772,7 +1966,7 @@ void CSolver::CompleteComms(CGeometry *geometry,
             base_nodes->SetSensor(iPoint,bufDRecv[buf_offset]);
             break;
           case MPI_QUANTITIES::SENSOR_ADAPT:
-            for (iVar = 0; iVar < GetnMetricSensor(); iVar++)
+            for (iVar = 0; iVar < GetnAdaptiveMetricSensor(); iVar++)
                base_nodes->SetSensor_Adapt(iPoint, iVar, bufDRecv[buf_offset+iVar]);
             break;
           case MPI_QUANTITIES::SOLUTION_GRADIENT:
@@ -1786,7 +1980,7 @@ void CSolver::CompleteComms(CGeometry *geometry,
                 gradient(iPoint,iVar,iDim) = bufDRecv[buf_offset+iVar*nDim+iDim];
             break;
           case MPI_QUANTITIES::HESSIAN:
-            for (iVar = 0; iVar < GetnMetricSensor(); iVar++)
+            for (iVar = 0; iVar < GetnAdaptiveMetricSensor(); iVar++)
               for (iMat = 0; iMat < nSymMat; iMat++) {
                 const auto buf_idx = buf_offset + static_cast<unsigned long>(iVar)*nSymMat + iMat;
                 gradient(iPoint, iVar, iMat) = bufDRecv[buf_idx];
@@ -1812,6 +2006,17 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::SOLUTION_TIME_N1:
             for (iVar = 0; iVar < nVar; iVar++)
               base_nodes->Set_Solution_time_n1(iPoint, iVar, bufDRecv[buf_offset+iVar]);
+            break;
+          case MPI_QUANTITIES::MOM_COEFF:
+            base_nodes->SetMomCoeff(iPoint, bufDRecv[buf_offset]);
+            break;
+          case MPI_QUANTITIES::MOM_CORRECTION:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetMomentumCorrection(iPoint, iDim, bufDRecv[buf_offset+iDim]);
+            break;
+          case MPI_QUANTITIES::HBYA_CORRECTION:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetHbyACorrection(iPoint, iDim, bufDRecv[buf_offset+iDim]);
             break;
           default:
             SU2_MPI::Error("Unrecognized quantity for point-to-point MPI comms.",
@@ -1847,6 +2052,8 @@ void CSolver::AdaptCFLNumber(CGeometry **geometry,
                              CSolver   ***solver_container,
                              CConfig   *config) {
   SU2_ZONE_SCOPED
+
+  if (config->GetCFL_Adapt() != YES) return;
 
   /* Adapt the CFL number on all multigrid levels using an
    exponential progression with under-relaxation approach. */
@@ -1912,7 +2119,10 @@ void CSolver::AdaptCFLNumber(CGeometry **geometry,
 
     canIncrease = (linRes < linTol) && (iter >= startingIter);
 
-    if ((iMesh == MESH_0) && (Res_Count > 0)) {
+    /* Do not use the residual criteria when we are mitigating outliers
+     * because they were never very reliable for large cases where monotonic
+     * residual reduction is impossible to achieve. */
+    if (!config->OptionIsSet("OUTLIER_MITIGATION_PARAM") && iMesh == MESH_0 && Res_Count > 0) {
       if (NonLinRes_Series.empty()) NonLinRes_Series.resize(Res_Count, 0.0);
 
       /* BCM TEST */
@@ -2071,16 +2281,18 @@ void CSolver::AdaptCFLNumber(CGeometry **geometry,
 
 }
 
-void CSolver::SetResidual_RMS(const CGeometry *geometry, const CConfig *config) {
+void CSolver::SetResidual_RMS(const CGeometry *geometry, const CConfig *config, bool force) {
   SU2_ZONE_SCOPED
 
-  if (geometry->GetMGLevel() != MESH_0) return;
+  /*--- On coarse levels the reduction is skipped for performance, unless MG_Smooth_EarlyExit
+   *    needs it or the caller asks for it. ---*/
+  if (!force && geometry->GetMGLevel() != MESH_0 && !config->GetMGOptions().MG_Smooth_EarlyExit) return;
 
   BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
 
   /*--- Set the L2 Norm residual in all the processors. ---*/
 
-  vector<su2double> rbuf_res(nVar);
+  vector<su2double> rbuf_res(nVar * nDim);
   unsigned long Global_nPointDomain = 0;
 
   if (config->GetComm_Level() == COMM_FULL) {
@@ -2111,23 +2323,30 @@ void CSolver::SetResidual_RMS(const CGeometry *geometry, const CConfig *config) 
   /*--- Set the Maximum residual in all the processors. ---*/
 
   if (config->GetComm_Level() == COMM_FULL) {
-
-    const unsigned long nProcessor = size;
-
-    su2activematrix rbuf_residual(nProcessor,nVar);
-    su2matrix<unsigned long> rbuf_point(nProcessor,nVar);
-    su2activematrix rbuf_coord(nProcessor*nVar, nDim);
-
-    SU2_MPI::Allgather(Residual_Max.data(), nVar, MPI_DOUBLE, rbuf_residual.data(), nVar, MPI_DOUBLE, SU2_MPI::GetComm());
-    SU2_MPI::Allgather(Point_Max.data(), nVar, MPI_UNSIGNED_LONG, rbuf_point.data(), nVar, MPI_UNSIGNED_LONG, SU2_MPI::GetComm());
-    SU2_MPI::Allgather(Point_Max_Coord.data(), nVar*nDim, MPI_DOUBLE, rbuf_coord.data(), nVar*nDim, MPI_DOUBLE, SU2_MPI::GetComm());
-
+    SU2_MPI::Allreduce(Residual_Max.data(), rbuf_res.data(), nVar, MPI_DOUBLE, MPI_MAX, SU2_MPI::GetComm());
     for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-      for (auto iProcessor = 0ul; iProcessor < nProcessor; iProcessor++) {
-        AddRes_Max(iVar, rbuf_residual(iProcessor,iVar), rbuf_point(iProcessor,iVar), rbuf_coord[iProcessor*nVar+iVar]);
+      if (Residual_Max[iVar] < rbuf_res[iVar]) {
+        Point_Max[iVar] = 0;
+        for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+          Point_Max_Coord(iVar, iDim) = std::numeric_limits<su2double>::lowest();
+        }
       }
+      Residual_Max[iVar] = rbuf_res[iVar];
+    }
+    vector<unsigned long> rbuf_point(nVar);
+    SU2_MPI::Allreduce(Point_Max.data(), rbuf_point.data(), nVar, MPI_UNSIGNED_LONG, MPI_MAX, SU2_MPI::GetComm());
+    SU2_MPI::Allreduce(Point_Max_Coord.data(), rbuf_res.data(), nVar*nDim, MPI_DOUBLE, MPI_MAX, SU2_MPI::GetComm());
+    Point_Max = std::move(rbuf_point);
+    for (unsigned short iVar = 0; iVar < nVar * nDim; iVar++) {
+      Point_Max_Coord.data()[iVar] = rbuf_res[iVar];
     }
   }
+
+  /*--- Floor the maximum residual like the RMS residual above, so an
+   *    exactly-zero residual (e.g. an inert species at a cold start)
+   *    cannot become a nonfinite log10 in screen or history output. ---*/
+
+  for (auto& residual : Residual_Max) residual = max(EPS*EPS, residual);
 
   }
   END_SU2_OMP_SAFE_GLOBAL_ACCESS
@@ -2245,19 +2464,19 @@ void CSolver::SetAuxVar_Gradient_GG(CGeometry *geometry, const CConfig *config) 
   const auto& solution = base_nodes->GetAuxVar();
   auto& gradient = base_nodes->GetAuxVarGradient();
 
-  computeGradientsGreenGauss(this, MPI_QUANTITIES::AUXVAR_GRADIENT, PERIODIC_NONE, *geometry,
+  computeGradientsGreenGauss(this, MPI_QUANTITIES::AUXVAR_GRADIENT, PERIODIC_AUXVAR_GG, *geometry,
                              *config, solution, 0, base_nodes->GetnAuxVar(), -1, gradient);
 }
 
 void CSolver::SetAuxVar_Gradient_LS(CGeometry *geometry, const CConfig *config) {
   SU2_ZONE_SCOPED
 
-  bool weighted = true;
+  const bool weighted = true;
   const auto& solution = base_nodes->GetAuxVar();
   auto& gradient = base_nodes->GetAuxVarGradient();
   auto& rmatrix  = base_nodes->GetRmatrix();
 
-  computeGradientsLeastSquares(this, MPI_QUANTITIES::AUXVAR_GRADIENT, PERIODIC_NONE, *geometry, *config,
+  computeGradientsLeastSquares(this, MPI_QUANTITIES::AUXVAR_GRADIENT, PERIODIC_AUXVAR_LS, *geometry, *config,
                                weighted, solution, 0, base_nodes->GetnAuxVar(), -1, gradient, rmatrix);
 }
 
@@ -2295,21 +2514,37 @@ void CSolver::SetSolution_Gradient_LS(CGeometry *geometry, const CConfig *config
   computeGradientsLeastSquares(this, comm, commPer, *geometry, *config, weighted, solution, 0, nVar, idxVel, gradient, rmatrix);
 }
 
-void CSolver::AllocateMetricSensorArrays(unsigned short nSensors) {
+void CSolver::AllocateAdaptiveMetricArrays(unsigned short nSensors) {
   if (base_nodes == nullptr || nSensors == 0) return;
-  base_nodes->AllocateMetricSensorArrays(nSensors);
+  base_nodes->AllocateAdaptiveMetricArrays(nSensors);
 }
 
 void CSolver::SetPrimitive_SensorAdapt(CGeometry *geometry, const CConfig *config) {
   /*--- Copy PRIMITIVE sensor values from primitive variable array into Sensor_Adapt.
-   *    COMPUTED and CUSTOM slots are skipped here. ---*/
-  for (size_t iSensor = 0; iSensor < MetricSensors.size(); ++iSensor) {
-    if (MetricSensors[iSensor].type != SensorType::PRIMITIVE) continue;
+   *    Other sensor types are skipped here. ---*/
+  for (auto iSensor = 0ul; iSensor < AdaptiveMetricSensors.size(); ++iSensor) {
+    if (AdaptiveMetricSensors[iSensor].type != SensorType::PRIMITIVE) continue;
 
-    const auto prim_idx = MetricSensors[iSensor].prim_idx;
+    const auto var_idx = AdaptiveMetricSensors[iSensor].var_idx;
     SU2_OMP_FOR_DYN(256)
-    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
-      base_nodes->SetSensor_Adapt(iPoint, iSensor, base_nodes->GetPrimitive(iPoint, prim_idx));
+    for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
+      base_nodes->SetSensor_Adapt(iPoint, iSensor, base_nodes->GetPrimitive(iPoint, var_idx));
+    }
+    END_SU2_OMP_FOR
+  }
+}
+
+void CSolver::SetSolverField_SensorAdapt(CSolver **solver, CGeometry *geometry, const CConfig *config) {
+  /*--- Copy SOLVER_FIELD sensor values from the solution of their source solver into Sensor_Adapt.
+   *    All solvers share the mesh, so point indices coincide. ---*/
+  for (auto iSensor = 0ul; iSensor < AdaptiveMetricSensors.size(); ++iSensor) {
+    if (AdaptiveMetricSensors[iSensor].type != SensorType::SOLVER_FIELD) continue;
+
+    const auto var_idx = AdaptiveMetricSensors[iSensor].var_idx;
+    const auto* source_nodes = solver[AdaptiveMetricSensors[iSensor].iSol]->GetNodes();
+    SU2_OMP_FOR_DYN(256)
+    for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
+      base_nodes->SetSensor_Adapt(iPoint, iSensor, source_nodes->GetSolution(iPoint, var_idx));
     }
     END_SU2_OMP_FOR
   }
@@ -2318,12 +2553,12 @@ void CSolver::SetPrimitive_SensorAdapt(CGeometry *geometry, const CConfig *confi
 void CSolver::SetComputed_SensorAdapt(CGeometry *geometry, const CConfig *config) {
   /*--- Evaluate COMPUTED sensors via their stored lambdas (e.g. Mach number).
    *    Each lambda receives a pointer to the full primitive row for the point. ---*/
-  for (size_t iSensor = 0; iSensor < MetricSensors.size(); ++iSensor) {
-    if (MetricSensors[iSensor].type != SensorType::COMPUTED) continue;
+  for (auto iSensor = 0ul; iSensor < AdaptiveMetricSensors.size(); ++iSensor) {
+    if (AdaptiveMetricSensors[iSensor].type != SensorType::COMPUTED) continue;
 
-    const auto& fn = MetricSensors[iSensor].fn;
+    const auto& fn = AdaptiveMetricSensors[iSensor].fn;
     SU2_OMP_FOR_DYN(256)
-    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+    for (auto iPoint = 0ul; iPoint < nPoint; iPoint++) {
       base_nodes->SetSensor_Adapt(iPoint, iSensor, fn(base_nodes->GetPrimitive(iPoint)));
     }
     END_SU2_OMP_FOR
@@ -2333,7 +2568,7 @@ void CSolver::SetComputed_SensorAdapt(CGeometry *geometry, const CConfig *config
 void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  auto nHess = GetnMetricSensor();
+  auto nHess = GetnAdaptiveMetricSensor();
 
   computeGradientsGreenGauss(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                              *geometry, *config, solution, 0, nHess, idxVel, gradient);
@@ -2347,7 +2582,7 @@ void CSolver::SetHessian_GG(CGeometry *geometry, const CConfig *config, short id
 void CSolver::SetHessian_L2Proj(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver) {
   const auto& solution = base_nodes->GetSensor_Adapt();
   auto& gradient = base_nodes->GetGradient_Adapt();
-  const auto nHess = GetnMetricSensor();
+  const auto nHess = GetnAdaptiveMetricSensor();
 
   computeGradientsL2Projection(this, MPI_QUANTITIES::GRADIENT_ADAPT, PERIODIC_GRAD_ADAPT,
                                *geometry, *config, solution, 0, nHess, idxVel, gradient);
@@ -2474,10 +2709,11 @@ void CSolver::SetSolution_Limiter(CGeometry *geometry, const CConfig *config) {
   auto& limiter = base_nodes->GetLimiter();
 
   computeLimiters(kindLimiter, this, MPI_QUANTITIES::SOLUTION_LIMITER, PERIODIC_LIM_SOL_1, PERIODIC_LIM_SOL_2,
-                  *geometry, *config, 0, nVar, umusclKappa, solution, gradient, solMin, solMax, limiter);
+                  *geometry, *config, 0, nVar, umusclKappa, solution, gradient, solMin, solMax, limiter,
+                  GetLimiterReference());
 }
 
-void CSolver::Gauss_Elimination(su2double** A, su2double* rhs, unsigned short nVar) {
+void CSolver::GaussElimination(su2double** A, su2double* rhs, unsigned short nVar) {
   SU2_ZONE_SCOPED
 
   short iVar, jVar, kVar;
@@ -3000,7 +3236,7 @@ void CSolver::Read_SU2_Restart_ASCII(CGeometry *geometry, const CConfig *config,
   /*--- Check that this is an SU2 binary file. SU2 binary files
    have the hex representation of "SU2" as the first int in the file. ---*/
 
-  if (magic_number == 535532) {
+  if (magic_number == SU2_RESTART_MAGIC_NUMBER) {
     SU2_MPI::Error(string("File ") + string(fname) + string(" is a binary SU2 restart file, expected ASCII.\n") +
                    string("SU2 reads/writes binary restart files by default.\n") +
                    string("Note that backward compatibility for ASCII restart files is\n") +
@@ -3039,7 +3275,7 @@ void CSolver::Read_SU2_Restart_ASCII(CGeometry *geometry, const CConfig *config,
   /*--- Check that this is an SU2 binary file. SU2 binary files
    have the hex representation of "SU2" as the first int in the file. ---*/
 
-  if (magic_number == 535532) {
+  if (magic_number == SU2_RESTART_MAGIC_NUMBER) {
     SU2_MPI::Error(string("File ") + string(fname) + string(" is a binary SU2 restart file, expected ASCII.\n") +
                    string("SU2 reads/writes binary restart files by default.\n") +
                    string("Note that backward compatibility for ASCII restart files is\n") +
@@ -3123,7 +3359,7 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
 
   char str_buf[CGNS_STRING_SIZE], fname[100];
   strcpy(fname, val_filename.c_str());
-  const int nRestart_Vars = 5;
+  const int nRestart_Vars = SU2_RESTART_HEADER_SIZE;
   Restart_Vars.resize(nRestart_Vars);
   fields.clear();
 
@@ -3151,17 +3387,20 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
   /*--- Check that this is an SU2 binary file. SU2 binary files
    have the hex representation of "SU2" as the first int in the file. ---*/
 
-  if (Restart_Vars[0] != 535532) {
+  if (Restart_Vars[0] != SU2_RESTART_MAGIC_NUMBER) {
     SU2_MPI::Error(string("File ") + string(fname) + string(" is not a binary SU2 restart file.\n") +
                    string("SU2 reads/writes binary restart files by default.\n") +
                    string("Note that backward compatibility for ASCII restart files is\n") +
                    string("possible with the READ_BINARY_RESTART option."), CURRENT_FUNCTION);
   }
 
-  /*--- Store the number of fields and points to be read for clarity. ---*/
+  /*--- Store the number of fields and points to be read for clarity. The file may
+   have been written by a build of different precision, in which case the data needs
+   to be converted after reading it. ---*/
 
   const unsigned long nFields = Restart_Vars[1];
   const unsigned long nPointFile = Restart_Vars[2];
+  const int scalarSize = GetSU2BinaryScalarSize(Restart_Vars[SU2_RESTART_PRECISION_IDX]);
 
   /*--- Read the variable names from the file. Note that we are adopting a
    fixed length of 33 for the string length to match with CGNS. This is
@@ -3183,7 +3422,13 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
 
   /*--- Read in the data for the restart at all local points. ---*/
 
-  ret = fread(Restart_Data.data(), sizeof(passivedouble), nFields*nPointFile, fhw);
+  if (scalarSize == static_cast<int>(sizeof(passivedouble))) {
+    ret = fread(Restart_Data.data(), scalarSize, nFields*nPointFile, fhw);
+  } else {
+    vector<char> buffer(nFields*nPointFile*scalarSize);
+    ret = fread(buffer.data(), scalarSize, nFields*nPointFile, fhw);
+    SU2BinaryDataToPassive(buffer.data(), scalarSize, nFields*nPointFile, Restart_Data.data());
+  }
   if (ret != nFields*nPointFile) {
     SU2_MPI::Error("Error reading restart file.", CURRENT_FUNCTION);
   }
@@ -3221,17 +3466,20 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
   /*--- Check that this is an SU2 binary file. SU2 binary files
    have the hex representation of "SU2" as the first int in the file. ---*/
 
-  if (Restart_Vars[0] != 535532) {
+  if (Restart_Vars[0] != SU2_RESTART_MAGIC_NUMBER) {
     SU2_MPI::Error(string("File ") + string(fname) + string(" is not a binary SU2 restart file.\n") +
                    string("SU2 reads/writes binary restart files by default.\n") +
                    string("Note that backward compatibility for ASCII restart files is\n") +
                    string("possible with the READ_BINARY_RESTART option."), CURRENT_FUNCTION);
   }
 
-  /*--- Store the number of fields and points to be read for clarity. ---*/
+  /*--- Store the number of fields and points to be read for clarity. The file may
+   have been written by a build of different precision, in which case the data needs
+   to be converted after reading it. ---*/
 
   const unsigned long nFields = Restart_Vars[1];
   const unsigned long nPointFile = Restart_Vars[2];
+  const int scalarSize = GetSU2BinaryScalarSize(Restart_Vars[SU2_RESTART_PRECISION_IDX]);
 
   /*--- Read the variable names from the file. Note that we are adopting a
    fixed length of 33 for the string length to match with CGNS. This is
@@ -3268,9 +3516,12 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
 
   delete [] mpi_str_buf;
 
-  /*--- We're writing only su2doubles in the data portion of the file. ---*/
+  /*--- The data portion of the file holds scalars of the precision recorded in the
+   header, which is not necessarily that of this build. Describe them as opaque
+   blocks of bytes so that the file views do not depend on the build precision. ---*/
 
-  etype = MPI_DOUBLE;
+  MPI_Type_contiguous(scalarSize, MPI_BYTE, &etype);
+  MPI_Type_commit(&etype);
 
   /*--- We need to ignore the 4 ints describing the nVar_Restart and nPoints,
    along with the string names of the variables. ---*/
@@ -3296,7 +3547,7 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
     for (auto iPoint_Global = 0ul; iPoint_Global < geometry->GetGlobal_nPointDomain(); ++iPoint_Global) {
       if (geometry->GetGlobal_to_Local_Point(iPoint_Global) > -1) {
         blocklen[counter] = nFields;
-        displace[counter] = iPoint_Global*nFields*sizeof(passivedouble);
+        displace[counter] = iPoint_Global*nFields*scalarSize;
         counter++;
       }
     }
@@ -3311,10 +3562,10 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
     const auto partitioner = CLinearPartitioner(nPointFile,0);
 
     blocklen[0] = nFields*partitioner.GetSizeOnRank(rank);
-    displace[0] = nFields*partitioner.GetFirstIndexOnRank(rank)*sizeof(passivedouble);;
+    displace[0] = nFields*partitioner.GetFirstIndexOnRank(rank)*scalarSize;
   }
 
-  MPI_Type_create_hindexed(nBlock, blocklen, displace, MPI_DOUBLE, &filetype);
+  MPI_Type_create_hindexed(nBlock, blocklen, displace, etype, &filetype);
   MPI_Type_commit(&filetype);
 
   /*--- Set the view for the MPI file write, i.e., describe the location in
@@ -3327,17 +3578,25 @@ void CSolver::Read_SU2_Restart_Binary(CGeometry *geometry, const CConfig *config
   const int bufSize = nBlock*blocklen[0];
   Restart_Data.resize(bufSize);
 
-  /*--- Collective call for all ranks to read from their view simultaneously. ---*/
+  /*--- Collective call for all ranks to read from their view simultaneously,
+   converting the data if the file precision does not match this build. ---*/
 
-  MPI_File_read_all(fhw, Restart_Data.data(), bufSize, MPI_DOUBLE, &status);
+  if (scalarSize == static_cast<int>(sizeof(passivedouble))) {
+    MPI_File_read_all(fhw, Restart_Data.data(), bufSize, etype, &status);
+  } else {
+    vector<char> buffer(static_cast<unsigned long>(bufSize)*scalarSize);
+    MPI_File_read_all(fhw, buffer.data(), bufSize, etype, &status);
+    SU2BinaryDataToPassive(buffer.data(), scalarSize, bufSize, Restart_Data.data());
+  }
 
   /*--- All ranks close the file after writing. ---*/
 
   MPI_File_close(&fhw);
 
-  /*--- Free the derived datatype and release temp memory. ---*/
+  /*--- Free the derived datatypes and release temp memory. ---*/
 
   MPI_Type_free(&filetype);
+  MPI_Type_free(&etype);
 
   delete [] blocklen;
   delete [] displace;
@@ -4570,126 +4829,70 @@ void CSolver::SavelibROM(CGeometry *geometry, CConfig *config, bool converged) {
 }
 
 
-void CSolver::ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config, bool restartMetric) {
+void CSolver::ComputeAdaptiveMetric(CGeometry *geometry, const CConfig *config, bool restartMetric) {
   /*--- TODO: - goal-oriented metric ---*/
   /*---       - metric intersection  ---*/
-  const unsigned short nSensor = GetnMetricSensor();
+  auto& metric = base_nodes->GetAdaptiveMetric();
+  const auto& hessian = base_nodes->GetHessian();
 
-  const unsigned long time_iter = config->GetTimeIter();
-  const bool steady = (config->GetTime_Marching() == TIME_MARCHING::STEADY);
-  const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1) || (steady);
-  const bool normalize = (config->GetNormalize_Metric());
-
-  /*--- Integrate and normalize the metric tensor field ---*/
-  vector<double> integrals;
-  for (auto iSensor = 0u; iSensor < nSensor; ++iSensor) {
-    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-    {
-    /*--- Make the Hessian eigenvalues positive definite ---*/
-    auto& hessians = base_nodes->GetHessian();
-    setPositiveDefiniteMetrics<su2double, tensor::hessian>(*geometry, *config, iSensor, hessians);
-
-    if (iSensor == 0) {
-      /*--- Add Hessian of sensor at position 0 to metric tensor */
-      if (config->GetIntegrate_Metric() && time_iter >= config->GetMetric_Start_Iter())
-        AddMetrics(solver, geometry, config, iSensor, restartMetric);
-
-      auto& metrics = base_nodes->GetMetric();
-      if (config->GetIntegrate_Metric()) {
-        /*--- Integrate metric field on the last iteration (the end of the simulation if steady) ---*/
-        double integral = 0.0;
-        if (is_last_iter)
-          integral = integrateMetrics<double>(*geometry, *config, iSensor, metrics);
-
-        /*--- Normalize the metric field for steady simulations, or if requested for unsteady ---*/
-        if (steady || (normalize && is_last_iter))
-          normalizeMetrics<double, tensor::metric>(*geometry, *config, iSensor, integral, metrics);
-
-        /*--- Store the integral to be written ---*/
-        if (is_last_iter) {
-          integrals.push_back(integral);
-          if (rank == MASTER_NODE) {
-            const string& sensor_name = (iSensor < MetricSensors.size()) ? MetricSensors[iSensor].name : "unknown";
-            cout << "Global metric normalization integral for sensor ";
-            cout << sensor_name << ": " << integral << endl;
-          }
-        }
-      }
-    } // iSensor == 0
-    } // BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+  BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+  {
+  if (!config->GetTime_Domain()) {
+    /*--- Steady: the metric is the absolute value of the current Hessian ---*/
+    resetAdaptiveMetric(metric);
+    accumulateAdaptiveMetric(*geometry, hessian, 1.0, metric);
+    IntegrateAndNormalizeAdaptiveMetric(geometry, config);
   }
-
-  if (config->GetKind_SU2() == SU2_COMPONENT::SU2_CFD && is_last_iter && !integrals.empty() && rank == MASTER_NODE) {
-    /*--- Write the integral in an external file ---*/
-    ofstream Integral_file;
-    const bool tabTecplot = config->GetTabular_FileFormat() == TAB_OUTPUT::TAB_TECPLOT;
-
-    string filename = config->GetMetric_Integral_FileName();
-    unsigned short lastindex = filename.find_last_of('.');
-    filename = filename.substr(0, lastindex);
-    if (tabTecplot)
-      filename += ".dat";
-    else
-      filename += ".csv";
-
-    /*--- TODO: allow for multiple sensors ---*/
-    unsigned short iSensor = 0;
-
-    /*--- Check if file exists to determine write vs append mode ---*/
-    const bool file_exists = std::filesystem::exists(filename);
-
-    /*--- Open in appropriate mode ---*/
-    if (file_exists && !config->GetWrt_Metric_Integral_Overwrite()) {
-      Integral_file.open(filename.c_str(), ios::app);
-    } else {
-      Integral_file.open(filename.c_str(), ios::out);
-
-      /*--- Write header only for new files ---*/
-      if (tabTecplot) {
-        Integral_file << "TITLE = \"SU2_CFD Metric Integral Evaluation\"" << endl;
-        Integral_file << "VARIABLES = ";
-      }
-
-      string sensor_string = config->GetMetric_Sensor(iSensor);
-      Integral_file << "\"Time Iter\",\"" << sensor_string << " Metric Integral\"";
-      if (tabTecplot)
-        Integral_file << "\nZONE T= \"Metric integrals\"" << endl;
-      else
-        Integral_file << endl;
+  else {
+    /*--- Unsteady: trapezoidal time integration of |H|. The first step has half weight; the
+     *    half weight of the last step is applied in FinalizeAdaptiveMetric, since only the
+     *    driver knows when the run stops (e.g. MAX_TIME or time convergence). ---*/
+    const bool first_step = (config->GetTimeIter() == 0) || restartMetric;
+    if (first_step) {
+      resetAdaptiveMetric(metric);
+      nAdaptiveMetricSteps = 0;
     }
-
-    /*--- Write data (both new and existing files) ---*/
-    Integral_file << time_iter << ", " << setprecision(15) << scientific << integrals[iSensor] << endl;
-
-    Integral_file.close();
+    const passivedouble dt = SU2_TYPE::GetValue(config->GetTime_Step());
+    accumulateAdaptiveMetric(*geometry, hessian, (first_step ? 0.5 : 1.0) * dt, metric);
+    nAdaptiveMetricSteps++;
   }
+  }
+  END_SU2_OMP_SAFE_GLOBAL_ACCESS
 }
 
-void CSolver::AddMetrics(CSolver **solver, const CGeometry*geometry, const CConfig *config,
-                         const unsigned short iSensor, bool restartMetric) {
-  /*--- TODO: - goal-oriented metric ---*/
-  /*---       - metric intersection  ---*/
-  auto varFlo = solver[FLOW_SOL]->GetNodes();
+void CSolver::FinalizeAdaptiveMetric(CGeometry *geometry, const CConfig *config) {
+  if (!config->GetTime_Domain() || nAdaptiveMetricSteps == 0) return;
 
-  const unsigned long nPointDomain = geometry->GetnPointDomain();
-  const unsigned short nSymMat = 3*(nDim-1);
-
-  const unsigned long time_iter = config->GetTimeIter();
-  const bool time_stepping = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST) ||
-                             (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) ||
-                             (config->GetTime_Marching() == TIME_MARCHING::TIME_STEPPING);
-  const unsigned long metric_start_iter = config->GetMetric_Start_Iter();
-  const bool is_first_iter = (time_iter == metric_start_iter) || (restartMetric);
-  const bool is_last_iter = (time_iter == config->GetnTime_Iter() - 1);
-
-  double coeff = (time_stepping && (is_first_iter || is_last_iter))? 0.5 : 1.0;
-  if (time_stepping) coeff *= SU2_TYPE::GetValue(config->GetTime_Step());
-
-  for(auto iPoint = 0ul; iPoint < nPointDomain; ++iPoint) {
-    for (auto iMat = 0; iMat < nSymMat; ++iMat) {
-      double hess = SU2_TYPE::GetValue(varFlo->GetHessian(iPoint, iSensor, iMat));
-      varFlo->AddMetric(iPoint, iMat, coeff * hess);
-    }
+  BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+  {
+  /*--- Half weight on the last step, unless it was also the first one ---*/
+  if (nAdaptiveMetricSteps > 1) {
+    const passivedouble dt = SU2_TYPE::GetValue(config->GetTime_Step());
+    accumulateAdaptiveMetric(*geometry, base_nodes->GetHessian(), -0.5 * dt, base_nodes->GetAdaptiveMetric());
   }
+  nAdaptiveMetricSteps = 0;
+
+  IntegrateAndNormalizeAdaptiveMetric(geometry, config);
+  }
+  END_SU2_OMP_SAFE_GLOBAL_ACCESS
+}
+
+void CSolver::IntegrateAndNormalizeAdaptiveMetric(CGeometry *geometry, const CConfig *config) {
+  auto& metric = base_nodes->GetAdaptiveMetric();
+
+  /*--- The integrals are printed even without normalization, since a normalization
+   *    over several unsteady sub-intervals needs them. ---*/
+  const auto integrals = integrateAdaptiveMetric(*geometry, *config, metric);
+
+  vector<string> names;
+  for (const auto& sensor : AdaptiveMetricSensors) names.push_back(sensor.name);
+
+  if (rank == MASTER_NODE) {
+    for (auto iSensor = 0ul; iSensor < names.size(); ++iSensor)
+      cout << "Global adaptive metric normalization integral for sensor " << names[iSensor] << ": "
+           << integrals[iSensor] << endl;
+  }
+
+  if (config->GetAdaptiveMetricParsedOptions().normalize)
+    normalizeAdaptiveMetric(*geometry, *config, integrals, names, metric);
 }

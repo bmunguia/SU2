@@ -1,4 +1,5 @@
 install_data(['continuous_adjoint.py',
+             'aeroacoustics.py',
              'compute_uncertainty.py',
 	     'finite_differences.py',
 	     'mesh_deformation.py',
@@ -33,9 +34,9 @@ install_data(['SU2/io/config.py',
               'SU2/io/__init__.py'],
 	      install_dir: join_paths(get_option('bindir'), 'SU2/io'))
 
-install_data(['SU2/metric/resolver.py',
-              'SU2/metric/__init__.py'],
-	      install_dir: join_paths(get_option('bindir'), 'SU2/metric'))
+install_data(['SU2/adaptive_metric/resolver.py',
+              'SU2/adaptive_metric/__init__.py'],
+	      install_dir: join_paths(get_option('bindir'), 'SU2/adaptive_metric'))
 
 install_data(['SU2/opt/project.py',
               'SU2/opt/scipy_tools.py',
@@ -72,7 +73,15 @@ install_data(['FSI_tools/__init__.py',
 	      install_dir: join_paths(get_option('bindir'), 'FSI_tools'))
 
 install_data(['SU2_Nastran/__init__.py',
-              'SU2_Nastran/pysu2_nastran.py'],
+              'SU2_Nastran/pysu2_nastran.py',
+              'SU2_Nastran/test_pysu2_nastran.py'],
         install_dir: join_paths(get_option('bindir'), 'SU2_Nastran'))
 
 install_subdir(['../externals/FADO'], install_dir: get_option('bindir'))
+
+install_data(['monitor.py'],
+             install_dir: join_paths(get_option('bindir')))
+
+install_data(['SU2_MON'],
+             install_dir: join_paths(get_option('bindir')),
+             install_mode: 'rwxr-xr-x')

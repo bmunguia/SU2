@@ -2,7 +2,7 @@
  * \file CVariable.cpp
  * \brief Definition of the solution fields.
  * \author F. Palacios, T. Economon
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -28,7 +28,25 @@
 #include "../../include/variables/CVariable.hpp"
 #include "../../../Common/include/parallelization/omp_structure.hpp"
 
+namespace {
+/*!
+ * \brief Variable containers are allocated once, by one thread. Some constructors down the
+ *        hierarchy use OpenMP work-sharing loops (e.g. CFlowVariable seeds the BGS solution of a
+ *        multizone problem), whose barrier, if this ran in a master or single region, would take
+ *        an arrival of the team barrier the other threads are waiting on and leave them out of
+ *        step.
+ */
+void CheckNotInParallelRegion() {
+  if (omp_in_parallel()) {
+    assert(false);
+    SU2_MPI::Error("Variables cannot be constructed inside a parallel region.", CURRENT_FUNCTION);
+  }
+}
+}  // namespace
+
 CVariable::CVariable(unsigned long npoint, unsigned long nvar, const CConfig *config) {
+
+  CheckNotInParallelRegion();
 
   /*--- Initialize the number of solution variables. This version
    of the constructor will be used primarily for converting the
@@ -46,6 +64,8 @@ CVariable::CVariable(unsigned long npoint, unsigned long nvar, const CConfig *co
 
 CVariable::CVariable(unsigned long npoint, unsigned long ndim, unsigned long nvar,
                      const CConfig *config, bool adjoint) {
+
+  CheckNotInParallelRegion();
 
   /*--- Initializate the number of dimension and number of variables ---*/
   nPoint = npoint;
@@ -139,7 +159,7 @@ void CVariable::RegisterUserDefinedSource() {
   RegisterContainer(true, UserDefinedSource);
 }
 
-void CVariable::AllocateMetricSensorArrays(unsigned short nSensors) {
+void CVariable::AllocateAdaptiveMetricArrays(unsigned short nSensors) {
   if (nSensors == 0) return;
   if (nDim == 0 || nPoint == 0)
     SU2_MPI::Error("nDim and nPoint must be set before allocating metric arrays.", CURRENT_FUNCTION);
@@ -148,13 +168,13 @@ void CVariable::AllocateMetricSensorArrays(unsigned short nSensors) {
   if (Sensor_Adapt.size() == 0 || Sensor_Adapt.cols() != nSensors) {
     Sensor_Adapt.resize(nPoint, nSensors) = su2double(0.0);
   }
-  if (Gradient_Adapt.size() == 0 || Gradient_Adapt.cols() != nSensors) {
+  if (Gradient_Adapt.size() == 0 || Gradient_Adapt.rows() != nSensors) {
     Gradient_Adapt.resize(nPoint, nSensors, nDim, 0.0);
   }
-  if (Hessian.size() == 0 || Hessian.cols() != nSensors) {
+  if (Hessian.size() == 0 || Hessian.rows() != nSensors) {
     Hessian.resize(nPoint, nSensors, nSymMat, 0.0);
   }
-  if (Metric.size() == 0 || Metric.cols() != nSymMat) {
-    Metric.resize(nPoint, nSymMat) = 0.0;
+  if (AdaptiveMetric.size() == 0 || AdaptiveMetric.rows() != nSensors) {
+    AdaptiveMetric.resize(nPoint, nSensors, nSymMat, 0.0);
   }
 }

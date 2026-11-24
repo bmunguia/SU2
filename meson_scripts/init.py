@@ -4,7 +4,7 @@
 #  \brief Initializes necessary dependencies for SU2 either using git or it
 #         fetches zip files.
 #  \author T. Albring and F. Poli
-#  \version 8.4.0 "Harrier"
+#  \version 8.6.0 "Harrier"
 #
 # SU2 Project Website: https://su2code.github.io
 #
@@ -47,6 +47,7 @@ def init_submodules(
     own_opdi=True,
     own_mpp=True,
     own_cool=True,
+    own_cantera=False,
     own_mel=True,
     own_fado=True,
     own_mlpcpp=True,
@@ -71,11 +72,13 @@ def init_submodules(
     github_repo_mpp = "https://github.com/mutationpp/Mutationpp"
     sha_version_coolprop = "98b3523d5daa98454618d381d2ae53f7471d216b"
     github_repo_coolprop = "https://github.com/CoolProp/CoolProp"
+    sha_version_cantera = "f22643ecb91f7e8d1852197658efc5260d54d4a3"
+    github_repo_cantera = "https://github.com/cantera/cantera"
     sha_version_mel = "46205ab019e5224559091375a6d71aabae6bc5b9"
     github_repo_mel = "https://github.com/pcarruscag/MEL"
     sha_version_fado = "ce7ee018e4e699af5028d69baa1939fea290e18a"
     github_repo_fado = "https://github.com/pcarruscag/FADO"
-    sha_version_mlpcpp = "02f2cb9dde791074858e11ac091f7c4df9c6af65"
+    sha_version_mlpcpp = "e23facf388902f262fbe7ba3bcc84d36c85350b9"
     github_repo_mlpcpp = "https://github.com/EvertBunschoten/MLPCpp"
     sha_version_eigen = "d71c30c47858effcbd39967097a2d99ee48db464"
     github_repo_eigen = "https://gitlab.com/libeigen/eigen.git"
@@ -94,6 +97,7 @@ def init_submodules(
     ninja_name = "ninja"
     mpp_name = "Mutationpp"
     coolprop_name = "CoolProp"
+    cantera_name = "cantera"
     mel_name = "MEL"
     fado_name = "FADO"
     mlpcpp_name = "MLPCpp"
@@ -112,6 +116,7 @@ def init_submodules(
     alt_name_libmeshb = cur_dir + os.path.sep + "subprojects" + os.path.sep + "libmeshb"
     alt_name_mpp = cur_dir + os.path.sep + "subprojects" + os.path.sep + "Mutationpp"
     alt_name_coolprop = cur_dir + os.path.sep + "subprojects" + os.path.sep + "CoolProp"
+    alt_name_cantera = cur_dir + os.path.sep + "subprojects" + os.path.sep + "cantera"
     alt_name_mlpcpp = cur_dir + os.path.sep + "subprojects" + os.path.sep + "MLPCpp"
 
     if method == "auto":
@@ -140,6 +145,8 @@ def init_submodules(
             submodule_status(alt_name_mpp, sha_version_mpp)
         if own_cool:
             submodule_status(alt_name_coolprop, sha_version_coolprop)
+        if own_cantera:
+            submodule_status(alt_name_cantera, sha_version_cantera)
         if own_mel:
             submodule_status(alt_name_mel, sha_version_mel)
         if own_fado:
@@ -179,6 +186,13 @@ def init_submodules(
                 alt_name_coolprop,
                 github_repo_coolprop,
                 sha_version_coolprop,
+            )
+        if own_cantera:
+            download_module(
+                cantera_name,
+                alt_name_cantera,
+                github_repo_cantera,
+                sha_version_cantera,
             )
         if own_mel:
             download_module(mel_name, alt_name_mel, github_repo_mel, sha_version_mel)
@@ -275,6 +289,20 @@ def submodule_status(path, sha_commit):
             print(original_path)
             os.chdir(original_path)
             print("CoolProp updated")
+        if "cantera" in path:
+            # update cantera
+            original_path = os.getcwd()
+            print("update cantera")
+            absolute_path = sys.path[0]
+            relative_path = "subprojects/cantera"
+            full_path = os.path.join(absolute_path, relative_path)
+            os.chdir(full_path)
+            print(full_path)
+            subprocess.run(["git", "submodule", "init"])
+            subprocess.run(["git", "submodule", "update"])
+            print(original_path)
+            os.chdir(original_path)
+            print("cantera updated")
             # Check that the SHA tag stored in this file matches the one stored in the git index
         cur_sha_commit = status[1:].split(" ")[0]
         if cur_sha_commit != sha_commit:

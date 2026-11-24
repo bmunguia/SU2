@@ -2,7 +2,7 @@
  * \file centered.cpp
  * \brief Implementations of centered schemes.
  * \author F. Palacios, T. Economon
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -31,7 +31,7 @@
 CCentLaxInc_Flow::CCentLaxInc_Flow(unsigned short val_nDim, unsigned short val_nVar, const CConfig* config) : CNumerics(val_nDim, val_nVar, config) {
 
   implicit         = (config->GetKind_TimeIntScheme_Flow() == EULER_IMPLICIT);
-  variable_density = ((config->GetKind_DensityModel() == INC_DENSITYMODEL::VARIABLE) || (config->GetKind_DensityModel() == INC_DENSITYMODEL::FLAMELET));
+  variable_density = config->GetVariable_Density_Model();
   /* A grid is defined as dynamic if there's rigid grid movement or grid deformation AND the problem is time domain */
   dynamic_grid = config->GetDynamic_Grid();
   fix_factor = config->GetCent_Inc_Jac_Fix_Factor();
@@ -161,17 +161,25 @@ CNumerics::ResidualType<> CCentLaxInc_Flow::ComputeResidual(const CConfig* confi
       ProjVelocity += 0.5*(GridVel_i[iDim]+GridVel_j[iDim])*Normal[iDim];
 
     /*--- Residual contributions ---*/
-    for (iVar = 0; iVar < nVar; iVar++) {
+    for (iVar = 0; iVar < nVar; iVar++)
       ProjFlux[iVar] -= ProjVelocity * 0.5*(U_i[iVar]+U_j[iVar]);
 
-      /*--- Jacobian contributions ---*/
-      /*--- Implicit terms ---*/
-      if (implicit) {
-        for (iDim = 0; iDim < nDim+1; iDim++){
-          Jacobian_i[iDim+1][iDim+1] -= 0.5*ProjVelocity*DensityInc_i;
-          Jacobian_j[iDim+1][iDim+1] -= 0.5*ProjVelocity*DensityInc_j;
+    /*--- Jacobian of -ProjVelocity * 0.5*U, with U = (rho, rho*u, rho*h), w.r.t. the primitives (p, u, h), added
+     once. The density depends on h (variable density models) and not on the pressure. ---*/
+    if (implicit) {
+      auto addGridJacobian = [&](su2double **Jac, su2double rho, const su2double *vel, su2double h, su2double T,
+                                 su2double cp) {
+        const auto dRhodh = variable_density ? su2double(-rho / (T * cp)) : su2double(0.0);
+        const su2double factor = 0.5*ProjVelocity;
+        Jac[0][nDim+1] -= factor*dRhodh;
+        for (iDim = 0; iDim < nDim; iDim++) {
+          Jac[iDim+1][iDim+1] -= factor*rho;
+          Jac[iDim+1][nDim+1] -= factor*vel[iDim]*dRhodh;
         }
-      }
+        Jac[nDim+1][nDim+1] -= factor*(rho + h*dRhodh);
+      };
+      addGridJacobian(Jacobian_i, DensityInc_i, Velocity_i, Enthalpy_i, Temperature_i, Cp_i);
+      addGridJacobian(Jacobian_j, DensityInc_j, Velocity_j, Enthalpy_j, Temperature_j, Cp_j);
     }
   }
 
@@ -250,7 +258,7 @@ CNumerics::ResidualType<> CCentLaxInc_Flow::ComputeResidual(const CConfig* confi
 CCentJSTInc_Flow::CCentJSTInc_Flow(unsigned short val_nDim, unsigned short val_nVar, const CConfig* config) : CNumerics(val_nDim, val_nVar, config) {
 
   implicit         = (config->GetKind_TimeIntScheme_Flow() == EULER_IMPLICIT);
-  variable_density = (config->GetVariable_Density_Model());
+  variable_density = config->GetVariable_Density_Model();
   energy           = config->GetEnergy_Equation();
   /* A grid is defined as dynamic if there's rigid grid movement or grid deformation AND the problem is time domain */
   dynamic_grid = config->GetDynamic_Grid();
@@ -311,6 +319,8 @@ CNumerics::ResidualType<> CCentJSTInc_Flow::ComputeResidual(const CConfig* confi
 
   su2double U_i[5] = {0.0}, U_j[5] = {0.0};
   su2double ProjGridVel = 0.0;
+  bool LD2_Scheme = (config->GetKind_Centered_Flow() == CENTERED::LD2);
+  const su2double alpha_LD2 = 0.36;
 
   /*--- Primitive variables at point i and j ---*/
 
@@ -343,6 +353,21 @@ CNumerics::ResidualType<> CCentJSTInc_Flow::ComputeResidual(const CConfig* confi
   MeanEnthalpy    = 0.5*(Enthalpy_i    + Enthalpy_j);
   MeanCp          = 0.5*(Cp_i          + Cp_j);
   MeanTemperature = 0.5*(Temperature_i + Temperature_j);
+
+  if (LD2_Scheme) {
+    su2double d_ij[3] = {0.0};
+    GeometryToolbox::Distance(nDim, Coord_j, Coord_i, d_ij);
+    su2double diffPresGrad[3] = {0.0};
+    for (iDim = 0; iDim < nDim; iDim++) {
+      diffPresGrad[iDim] = PrimVar_Grad_i[0][iDim] - PrimVar_Grad_j[0][iDim];
+      su2double diffVelGrad[3];
+      for (unsigned short jDim = 0; jDim < nDim; jDim++) {
+        diffVelGrad[jDim] = PrimVar_Grad_i[iDim+1][jDim] - PrimVar_Grad_j[iDim+1][jDim];
+      }
+      MeanVelocity[iDim] += 0.5 * alpha_LD2 * GeometryToolbox::DotProduct(nDim, diffVelGrad, d_ij);
+    }
+    MeanPressure += 0.5 * alpha_LD2 * GeometryToolbox::DotProduct(nDim, diffPresGrad, d_ij);
+  }
 
   /*--- We need the derivative of the equation of state to build the
    preconditioning matrix. For now, the only option is the ideal gas
@@ -384,17 +409,25 @@ CNumerics::ResidualType<> CCentJSTInc_Flow::ComputeResidual(const CConfig* confi
       ProjVelocity += 0.5*(GridVel_i[iDim]+GridVel_j[iDim])*Normal[iDim];
 
     /*--- Residual contributions ---*/
-    for (iVar = 0; iVar < nVar; iVar++) {
+    for (iVar = 0; iVar < nVar; iVar++)
       ProjFlux[iVar] -= ProjVelocity * 0.5*(U_i[iVar]+U_j[iVar]);
 
-      /*--- Jacobian contributions ---*/
-      /*--- Implicit terms ---*/
-      if (implicit) {
-        for (iDim = 0; iDim < nDim+1; iDim++){
-          Jacobian_i[iDim+1][iDim+1] -= 0.5*ProjVelocity*DensityInc_i;
-          Jacobian_j[iDim+1][iDim+1] -= 0.5*ProjVelocity*DensityInc_j;
+    /*--- Jacobian of -ProjVelocity * 0.5*U, with U = (rho, rho*u, rho*h), w.r.t. the primitives (p, u, h), added
+     once. The density depends on h (variable density models) and not on the pressure. ---*/
+    if (implicit) {
+      auto addGridJacobian = [&](su2double **Jac, su2double rho, const su2double *vel, su2double h, su2double T,
+                                 su2double cp) {
+        const auto dRhodh = variable_density ? su2double(-rho / (T * cp)) : su2double(0.0);
+        const su2double factor = 0.5*ProjVelocity;
+        Jac[0][nDim+1] -= factor*dRhodh;
+        for (iDim = 0; iDim < nDim; iDim++) {
+          Jac[iDim+1][iDim+1] -= factor*rho;
+          Jac[iDim+1][nDim+1] -= factor*vel[iDim]*dRhodh;
         }
-      }
+        Jac[nDim+1][nDim+1] -= factor*(rho + h*dRhodh);
+      };
+      addGridJacobian(Jacobian_i, DensityInc_i, Velocity_i, Enthalpy_i, Temperature_i, Cp_i);
+      addGridJacobian(Jacobian_j, DensityInc_j, Velocity_j, Enthalpy_j, Temperature_j, Cp_j);
     }
   }
 

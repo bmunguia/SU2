@@ -2,7 +2,7 @@
  * \file CSolver.hpp
  * \brief Headers of the CSolver class which is inherited by all of the other solvers
  * \author F. Palacios, T. Economon
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <iostream>
 #include <set>
+#include <unordered_map>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -60,6 +61,8 @@
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
 #include "../limiters/CLimiterDetails.hpp"
 #include "../variables/CVariable.hpp"
+
+#include "../output/CTurboOutput.hpp"
 
 #ifdef HAVE_LIBROM
 #include "librom.h"
@@ -148,11 +151,15 @@ protected:
 
   bool rotate_periodic;    /*!< \brief Flag that controls whether the periodic solution needs to be rotated for the solver. */
   bool implicit_periodic;  /*!< \brief Flag that controls whether the implicit system should be treated by the periodic BC comms. */
+  su2activematrix PeriodicProj;  /*!< \brief Min/max reconstruction increments at periodic receive points (for limiters). */
+  std::unordered_map<unsigned long, size_t> PeriodicProjIndex;  /*!< \brief Local point to compact projection row. */
 
   bool dynamic_grid;       /*!< \brief Flag that determines whether the grid is dynamic (moving or deforming + grid velocities). */
 
   vector<su2activematrix> VertexTraction;          /*- Temporary, this will be moved to a new postprocessing structure once in place -*/
   vector<su2activematrix> VertexTractionAdjoint;   /*- Also temporary -*/
+
+  std::shared_ptr<CTurboOutput> TurbomachineryPerformance;  /*!< \brief turbo performance calculator. */
 
   string SolverName;      /*!< \brief Store the name of the solver for output purposes. */
 
@@ -195,13 +202,8 @@ public:
 
   CSysVector<su2double> LinSysSol;    /*!< \brief vector to store iterative solution of implicit linear system. */
   CSysVector<su2double> LinSysRes;    /*!< \brief vector to store iterative residual of implicit linear system. */
-#ifndef CODI_FORWARD_TYPE
-  using JacobianScalarType = su2mixedfloat;
-#else
-  using JacobianScalarType = su2double;
-#endif
-  CSysMatrix<JacobianScalarType> Jacobian; /*!< \brief Complete sparse Jacobian structure for implicit computations. */
-  CSysSolve<JacobianScalarType> System;    /*!< \brief Linear solver/smoother. */
+  CSysMatrix<su2mixedfloat> Jacobian; /*!< \brief Complete sparse Jacobian structure for implicit computations. */
+  CSysSolve<su2mixedfloat> System;    /*!< \brief Linear solver/smoother. */
 
   CSysVector<su2double> OutputVariables;    /*!< \brief vector to store the extra variables to be written. */
   string* OutputHeadingNames;               /*!< \brief vector of strings to store the headings for the exra variables */
@@ -211,13 +213,14 @@ public:
   vector<string> fields;
 
   /*--- Metric sensors for mesh adaptation ---*/
-  struct MetricSensorInfo {
-    unsigned short prim_idx;                       /*!< \brief Primitive variable index (PRIMITIVE type only). */
+  struct AdaptiveMetricSensorInfo {
+    unsigned short var_idx;                        /*!< \brief Variable index in the source solver (PRIMITIVE: primitive, SOLVER_FIELD: solution). */
     std::string name;                              /*!< \brief Sensor name as specified in config. */
     SensorType type = SensorType::PRIMITIVE;       /*!< \brief Category of sensor. */
     std::function<su2double(const su2double*)> fn; /*!< \brief Point-wise evaluator for COMPUTED sensors. */
+    unsigned short iSol = FLOW_SOL;                /*!< \brief Solver slot the values are read from (SOLVER_FIELD type). */
   };
-  vector<MetricSensorInfo> MetricSensors;  /*!< \brief Sensor list in config order, one entry per sensor. */
+  vector<AdaptiveMetricSensorInfo> AdaptiveMetricSensors;  /*!< \brief Sensor list in config order, one entry per sensor. */
 
 
 #ifdef HAVE_LIBROM
@@ -235,6 +238,23 @@ public:
   virtual ~CSolver(void);
 
   /*!
+   * \brief Whether the artificial ignition spark is active at the current iteration.
+   * \param[in] config - Definition of the particular problem.
+   */
+  static bool SparkActive(const CConfig* config) {
+    return config->GetFlameletParsedOptions().SparkActive(config->GetIgnitionIter());
+  }
+
+  /*!
+   * \brief Whether a point lies inside the artificial ignition spark region.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] coord - Coordinates of the point.
+   */
+  bool InSpark(const CConfig* config, const su2double* coord) const {
+    return config->GetFlameletParsedOptions().InSpark(nDim, coord);
+  }
+
+  /*!
    * \brief Allow outside access to the nodes of the solver, containing conservatives, primitives, etc.
    * \return Nodes of the solver.
    */
@@ -247,6 +267,8 @@ public:
     return base_nodes;
   }
 
+  bool HasPeriodicRotation(const CConfig& config) const;
+
   /*!
    * \brief Helper function to define the type and number of variables per point for each communication type.
    * \param[in] config - Definition of the particular problem.
@@ -257,7 +279,7 @@ public:
   void GetCommCountAndType(const CConfig* config,
                            MPI_QUANTITIES commType,
                            unsigned short &COUNT_PER_POINT,
-                           unsigned short &MPI_TYPE) const;
+                           COMM_TYPE &MPI_TYPE) const;
 
   /*!
    * \brief Routine to load a solver quantity into the data structures for MPI point-to-point communication and to launch non-blocking sends and recvs.
@@ -291,7 +313,7 @@ public:
   void GetPeriodicCommCountAndType(const CConfig* config,
                                    unsigned short commType,
                                    unsigned short &COUNT_PER_POINT,
-                                   unsigned short &MPI_TYPE,
+                                   COMM_TYPE &MPI_TYPE,
                                    unsigned short &ICOUNT,
                                    unsigned short &JCOUNT) const;
 
@@ -333,9 +355,11 @@ public:
 
   /*!
    * \brief Set the value of the max residual and RMS residual.
-   * \param[in] val_iterlinsolver - Number of linear iterations.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] force - Reduce on a coarse level too, where it is skipped by default.
    */
-  void SetResidual_RMS(const CGeometry *geometry, const CConfig *config);
+  void SetResidual_RMS(const CGeometry *geometry, const CConfig *config, bool force = false);
 
   /*!
    * \brief Communicate the value of the max residual and RMS residual.
@@ -407,6 +431,16 @@ public:
    * \return Value of the average local CFL number.
    */
   inline su2double GetAvg_CFL_Local(void) const { return Avg_CFL_Local; }
+
+  /*!
+   * \brief Set min/max/avg local CFL summary statistics.
+   * \param[in] val_cfl - Uniform CFL value to report.
+   */
+  inline void SetCFL_Local_Stats(su2double val_cfl) {
+    Min_CFL_Local = val_cfl;
+    Max_CFL_Local = val_cfl;
+    Avg_CFL_Local = val_cfl;
+  }
 
   /*!
    * \brief Get the number of variables of the problem.
@@ -587,6 +621,12 @@ public:
   void SetSolution_Limiter(CGeometry *geometry, const CConfig *config);
 
   /*!
+   * \brief Reference value of each variable for the limiters of SetSolution_Limiter, which then use an epsilon
+   *        relative to max(|solution|, |reference|) (see computeLimiters_impl). Null: absolute epsilon.
+   */
+  inline virtual const su2double* GetLimiterReference() const { return nullptr; }
+
+  /*!
    * \brief A virtual member.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
@@ -607,11 +647,19 @@ public:
    */
   virtual void SetComputed_SensorAdapt(CGeometry *geometry, const CConfig *config);
 
+  /*!
+   * \brief Copy SOLVER_FIELD sensor values (e.g. turbulence variables) from their source solver into Sensor_Adapt.
+   * \param[in] solver - Solver container holding the source solvers.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetSolverField_SensorAdapt(CSolver **solver, CGeometry *geometry, const CConfig *config);
+
     /*!
    * \brief Allocate Gradient_Adapt and Hessian arrays for the sensors assigned to this solver.
    * \param[in] nSensors - Number of sensors to allocate arrays for.
    */
-  virtual void AllocateMetricSensorArrays(unsigned short nSensors);
+  virtual void AllocateAdaptiveMetricArrays(unsigned short nSensors);
 
   /*!
    * \brief Compute the Green-Gauss Hessian of the solution.
@@ -623,6 +671,12 @@ public:
   void SetHessian_GG(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
 
   void SetHessian_L2Proj(CGeometry *geometry, const CConfig *config, short idxVel, const unsigned short Kind_Solver);
+
+  /*!
+   * \brief A virtual member.
+   * \return flame thickness value.
+   */
+  virtual su2double GetFlameThickness() const {return 1.0;}
 
   /*!
    * \brief Compute the projection of a variable for MUSCL reconstruction.
@@ -815,6 +869,22 @@ public:
                                     unsigned long Iteration,
                                     unsigned short RunTime_EqSystem,
                                     bool Output) { }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] solver_container - Container vector with all the solutions.
+   * \param[in] config - Definition of the particular problem.
+   */
+  inline virtual void ComputeEdgeMassFluxesRhieChow(CGeometry *geometry, CSolver **solver_container, CConfig *config) { }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] solver_container - Container vector with all the solutions.
+   * \param[in] config - Definition of the particular problem.
+   */
+  inline virtual void ApplyPressureVelocityCorrection(CGeometry *geometry, CSolver **solver_container, CConfig *config) { }
 
   /*!
    * \brief A virtual member.
@@ -1161,6 +1231,8 @@ public:
                                CConfig *config,
                                unsigned short val_marker) { }
 
+  inline virtual std::shared_ptr<CTurboOutput> GetTurboBladePerformance() const { return std::shared_ptr<CTurboOutput>(nullptr); }
+
   /*!
    * \brief A virtual member.
    * \param[in] geometry - Geometrical definition of the problem.
@@ -1342,6 +1414,29 @@ public:
    */
   virtual void Impose_Fixed_Values(const CGeometry *geometry, const CConfig *config) { }
 
+  /*!
+  * \brief Get a component of the donor-side averaged state at a mixing plane interface
+  * \param[in] val_marker - marker index
+  * \param[in] val_span - span index
+  * \param[in] val_state  - requested state component
+  */
+  inline virtual su2double GetMixingState(unsigned short val_marker,
+                                   unsigned long val_span,
+                                   unsigned short val_state) const { return 0; }
+
+  /*!
+   * \brief Set a component of the donor-side averaged state at a mixing plane interface nodes.
+   * \param[in] val_marker   - marker index
+   * \param[in] val_span   - span index
+   * \param[in] val_state    - state component to set
+   * \param[in] component    - value to set
+   */
+  inline virtual void SetMixingState(unsigned short val_marker,
+                              unsigned long val_span,
+                              unsigned short val_state,
+                              // unsigned long donor_span, // Do I care about where it comes from?
+                              su2double component) { }
+
  /*!
    * \brief Get the outer state for fluid interface nodes.
    * \param[in] val_marker - marker index
@@ -1486,6 +1581,14 @@ public:
    * \param[in] solver_container - Container vector with all the solutions.
    */
   void AdaptCFLNumber(CGeometry **geometry, CSolver ***solver_container, CConfig *config);
+
+  /*!
+   * \brief Identify points where the solution is an outlier (physics-specific concept)
+   *        so that solvers can try to restore them to a stable condition.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] iter - Current iteration (time, outer, or inner, as appropriate).
+   */
+  inline virtual void IdentifySolutionOutliers(const CConfig *config, unsigned long iter) { }
 
   /*!
    * \brief Reset the local CFL adaption variables
@@ -3539,7 +3642,7 @@ public:
    * \param[in] rhs - Right hand side.
    * \param[in] nVar - Number of variables.
    */
-  void Gauss_Elimination(su2double** A,
+  void GaussElimination(su2double** A,
                          su2double* rhs,
                          unsigned short nVar);
 
@@ -3833,7 +3936,7 @@ public:
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
    */
-  inline virtual void InitTurboContainers(CGeometry *geometry, CConfig *config) { }
+  inline virtual void InitTurboContainers(CGeometry *geometry, CConfig **config, unsigned short iZone) { }
 
    /*!
    * \brief Get Primal variables for turbo performance computation
@@ -3872,6 +3975,8 @@ public:
    * \param[in] geometry - Geometrical definition of the problem.
    */
   inline virtual void GatherInOutAverageValues(CConfig *config, CGeometry *geometry) { }
+
+  inline virtual void ComputeTurboBladePerformance(CGeometry* geometry, CConfig* config, unsigned short iBlade) { };
 
   /*!
    * \brief A virtual member.
@@ -3921,82 +4026,6 @@ public:
    * \return Value of the Average Omega on the surface <i>val_marker</i>.
    */
   inline virtual su2double GetAverageOmega(unsigned short valMarker, unsigned short valSpan) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Nu on the surface <i>val_marker</i>.
-   */
-  inline virtual su2double GetExtAverageNu(unsigned short valMarker, unsigned short valSpan) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Kine on the surface <i>val_marker</i>.
-   */
-  inline virtual su2double GetExtAverageKine(unsigned short valMarker, unsigned short valSpan) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Omega on the surface <i>val_marker</i>.
-   */
-  inline virtual su2double GetExtAverageOmega(unsigned short valMarker, unsigned short valSpan) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Density on the surface <i>val_marker</i>.
-   */
-  inline virtual void SetExtAverageDensity(unsigned short valMarker,
-                                           unsigned short valSpan,
-                                           su2double valDensity) { }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Pressure on the surface <i>val_marker</i>.
-   */
-  inline virtual void SetExtAveragePressure(unsigned short valMarker,
-                                            unsigned short valSpan,
-                                            su2double valPressure) { }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Total Pressure on the surface <i>val_marker</i>.
-   */
-  inline virtual void SetExtAverageTurboVelocity(unsigned short valMarker,
-                                                 unsigned short valSpan,
-                                                 unsigned short valIndex,
-                                                 su2double valTurboVelocity) { }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Nu on the surface <i>val_marker</i>.
-   */
-  inline virtual void SetExtAverageNu(unsigned short valMarker,
-                                      unsigned short valSpan,
-                                      su2double valNu) { }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Kine on the surface <i>val_marker</i>.
-   */
-  inline virtual void SetExtAverageKine(unsigned short valMarker,
-                                        unsigned short valSpan,
-                                        su2double valKine) { }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] val_marker - bound marker.
-   * \return Value of the Average Omega on the surface <i>val_marker</i>.
-   */
-  inline virtual void SetExtAverageOmega(unsigned short valMarker,
-                                         unsigned short valSpan,
-                                         su2double valOmega) { }
 
   /*!
    * \brief A virtual member.
@@ -4290,6 +4319,22 @@ public:
   inline void SetRotatePeriodic(bool val_rotate_periodic) { rotate_periodic = val_rotate_periodic; }
 
   /*!
+   * \brief Storage for the limiters with rotational periodicity: the min and max, over the edges of the periodic
+   *        matches of each point, of the reconstruction increments (communicated with PERIODIC_LIM_PRIM_1).
+   * \param[in] geometry - Periodic receive points of this mesh level.
+   * \param[in] config - Definition of the particular problem.
+   * \return The matrix (unique periodic receive points x 2*nPrimVarGrad, min then max), nullptr without rotation.
+   */
+  su2activematrix* GetPeriodicProjections(const CGeometry& geometry, const CConfig& config);
+
+  /*! \brief Reconstruction increment bounds for a periodic receive point, nullptr for other points. */
+  inline su2double* GetPeriodicProjection(unsigned long iPoint) {
+    const auto& indices = PeriodicProjIndex;
+    const auto it = indices.find(iPoint);
+    return it == indices.end() ? nullptr : PeriodicProj[it->second];
+  }
+
+  /*!
    * \brief Retrieve the solver name for output purposes.
    * \returns Name of the solver.
    */
@@ -4305,20 +4350,20 @@ public:
    * \brief Get the number of metric sensors assigned to this solver.
    * \return Number of metric sensors in this solver.
    */
-  inline unsigned short GetnMetricSensor() const { return static_cast<unsigned short>(MetricSensors.size()); }
+  inline unsigned short GetnAdaptiveMetricSensor() const { return static_cast<unsigned short>(AdaptiveMetricSensors.size()); }
 
   /*!
    * \brief Get the metric sensor list for this solver.
-   * \return Vector of MetricSensorInfo entries in config order.
+   * \return Vector of AdaptiveMetricSensorInfo entries in config order.
    */
-  inline const vector<MetricSensorInfo>& GetMetricSensors() const { return MetricSensors; }
+  inline const vector<AdaptiveMetricSensorInfo>& GetAdaptiveMetricSensors() const { return AdaptiveMetricSensors; }
 
   /*!
    * \brief Set the metric sensor list for this solver.
    * \param[in] sensors - Sensor entries in config order.
    */
-  inline void SetMetricSensors(const vector<MetricSensorInfo>& sensors) {
-    MetricSensors = sensors;
+  inline void SetAdaptiveMetricSensors(const vector<AdaptiveMetricSensorInfo>& sensors) {
+    AdaptiveMetricSensors = sensors;
   }
 
   /*!
@@ -4399,6 +4444,25 @@ public:
   virtual StreamwisePeriodicValues GetStreamwisePeriodicValues() const { return StreamwisePeriodicValues(); }
 
   /*!
+   * \brief A virtual member
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] solver_container - Container with all the solutions.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] periodic - Flag for periodic boundary conditions.
+   * \param[in] iMesh - Index of the mesh in multigrid computations.
+   */
+  inline virtual void SetMomCoeff(CGeometry *geometry, CSolver **solver_container, CConfig *config, bool periodic, unsigned short iMesh) { }
+
+  /*!
+   * \brief A virtual member
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] solver_container - Container with all the solutions.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] iMesh - Index of the mesh in multigrid computations.
+   */
+  inline virtual void ComputeHbyA(CGeometry *geometry, CSolver **solver_container, CConfig *config, unsigned short iMesh) { }
+
+  /*!
    * \brief Save snapshot or POD data using libROM
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
@@ -4455,24 +4519,33 @@ public:
   }
 
   /*!
-   * \brief Compute the goal-oriented metric.
-   * \param[in] solver - Physical definition of the problem.
+   * \brief Add the current Hessians of all sensors to their adaptive metrics.
+   * \note Steady: the metric is |H|, normalized if requested. Unsteady: dt*|H| is accumulated
+   *       (half weight on the first step); call FinalizeAdaptiveMetric when the run stops.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
    * \param[in] restartMetric - Whether this is the initial sub-interval metric computation for an unsteady restart.
    */
-  void ComputeMetric(CSolver **solver, CGeometry *geometry, const CConfig *config, bool restartMetric);
+  void ComputeAdaptiveMetric(CGeometry *geometry, const CConfig *config, bool restartMetric);
 
   /*!
-   * \brief Sum up the weighted Hessians to obtain the goal-oriented metric.
-   * \param[in] solver - Physical definition of the problem.
+   * \brief Finalize the time-integrated adaptive metric of an unsteady run at the step where it stops.
+   * \note Applies the half weight of the last step, then integrates and (if requested) normalizes.
+   *       Does nothing for steady runs, or if nothing was accumulated since the last finalization.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
-   * \param[in] iSensor - Index of the sensor to work on.
-   * \param[in] restartMetric - Whether this is the initial sub-interval metric computation for an unsteady restart.
    */
-  void AddMetrics(CSolver **solver, const CGeometry *geometry, const CConfig *config,
-                  const unsigned short iSensor, bool restartMetric);
+  void FinalizeAdaptiveMetric(CGeometry *geometry, const CConfig *config);
+
+private:
+  unsigned long nAdaptiveMetricSteps = 0; /*!< \brief Number of time steps accumulated in the unsteady adaptive metric. */
+
+  /*!
+   * \brief Integrate the adaptive metric of all sensors, print the integrals, and normalize if requested.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void IntegrateAndNormalizeAdaptiveMetric(CGeometry *geometry, const CConfig *config);
 
 protected:
   /*!

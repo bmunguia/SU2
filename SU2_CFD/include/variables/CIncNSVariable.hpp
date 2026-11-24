@@ -3,7 +3,7 @@
  * \brief Class for defining the variables of the incompressible
           Navier-Stokes solver.
  * \author F. Palacios, T. Economon
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -39,8 +39,10 @@
 class CIncNSVariable final : public CIncEulerVariable {
 private:
   VectorType Tau_Wall;        /*!< \brief Magnitude of the wall shear stress from a wall function. */
-  VectorType DES_LengthScale;
+  VectorType DES_LengthScale; /*!< \brief DES Length Scale. */
+  VectorType lesMode;        /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
   const bool Energy;          /*!< \brief Flag for Energy equation in incompressible flows. */
+  MatrixType MassDiffusivity; /*!< \brief (nPoint, nSpecies+1) laminar mass diffusivities, evaluated by the fluid model (Cantera). */
 
 public:
   /*!
@@ -55,6 +57,23 @@ public:
    */
   CIncNSVariable(su2double pressure, const su2double *velocity, su2double temperature,
                  unsigned long npoint, unsigned long ndim, unsigned long nvar, const CConfig *config);
+
+  /*!
+   * \brief Store the laminar mass diffusivity of a species, which the species solver reads.
+   * \param[in] iPoint - Point index.
+   * \param[in] val_diffusivity - Mass diffusivity.
+   * \param[in] val_ivar - Species index, the remainder species included.
+   */
+  inline void SetMassDiffusivity(unsigned long iPoint, su2double val_diffusivity, unsigned short val_ivar) {
+    MassDiffusivity(iPoint, val_ivar) = val_diffusivity;
+  }
+
+  /*!
+   * \brief Get the laminar mass diffusivity of a species stored by the flow solver.
+   */
+  inline su2double GetDiffusivity(unsigned long iPoint, unsigned short val_ivar) const override {
+    return MassDiffusivity(iPoint, val_ivar);
+  }
 
   /*!
    * \brief Set the laminar viscosity.
@@ -132,5 +151,18 @@ public:
    * \return Value of the DES length Scale.
    */
   inline su2double GetDES_LengthScale(unsigned long iPoint) const override { return DES_LengthScale(iPoint); }
+
+  /*!
+   * \brief Set the LES sensor.
+   */
+  inline void SetLES_Mode(unsigned long iPoint, su2double val_les_mode) override {
+    lesMode(iPoint) = val_les_mode;
+  }
+
+  /*!
+   * \brief Get the LES sensor.
+   * \return Value of the LES sensor.
+   */
+  inline su2double GetLES_Mode(unsigned long iPoint) const override { return lesMode(iPoint); }
 
 };

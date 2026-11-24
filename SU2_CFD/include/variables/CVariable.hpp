@@ -4,7 +4,7 @@
           variables, function definitions in file <i>CVariable.cpp</i>.
           All variables are children of at least this class.
  * \author F. Palacios, T. Economon
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -106,7 +106,7 @@ protected:
   MatrixType Sensor_Adapt;        /*!< \brief Variables for which we need gradients for anisotropy in mesh adaptation. */
   CVectorOfMatrix Gradient_Adapt; /*!< \brief Gradient of sensor used for anisotropy in mesh adaptation. */
   CVectorOfMatrix Hessian;        /*!< \brief Hessian of sensor used for anisotropy in mesh adaptation. */
-  su2matrix<double> Metric;       /*!< \brief Metric tensor used for anisotropy in mesh adaptation. */
+  C3DPassiveMatrix AdaptiveMetric; /*!< \brief Adaptive metric tensor of each sensor for anisotropic mesh adaptation. */
 
   MatrixType Solution_Mass; /*!< \brief Mass (and volume) accumulation for conservative interpolation (nVar + 1). */
 
@@ -119,6 +119,10 @@ protected:
   unsigned long nAuxVar = 0; /*!< \brief Number of auxiliary variables. */
   unsigned long nSymMat = 0;        /*!< \brief Number of symmetric matrix componenents for Hessian and metric tensor. */
 
+
+  /*!< \brief Handed out by the base implementations of the container accessors of fields only
+   * some models have, e.g. GetF1blending; a solver that has no such field never reads it. */
+  inline static const VectorType EmptyVector{};
 
   /*--- Only allow default construction by derived classes. ---*/
   CVariable() = default;
@@ -408,6 +412,46 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    */
+  inline virtual su2double GetLES_Mode(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] val_les_mode - Value of the LES sensor.
+   */
+  inline virtual void SetLES_Mode(unsigned long iPoint, su2double val_les_mode) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline virtual su2double GetLangevinSourceTerms(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \param[in] val_stochSource - Source term in Langevin equations.
+   */
+  inline virtual void SetLangevinSourceTerms(unsigned long iPoint, unsigned short iDim, su2double val_stochSource) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] val_integral - Value of the integral.
+   */
+  inline virtual void SetBesselIntegral(unsigned long iPoint, su2double val_integral) {}
+
+  /*!
+   * \brief A virtual member.
+   */
+  inline virtual su2double GetBesselIntegral(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
   virtual void SetSolution_New() {}
 
   /*!
@@ -648,6 +692,7 @@ public:
    * \return Reference to gradient.
    */
   inline CVectorOfMatrix& GetAuxVarGradient(void) { return Grad_AuxVar; }
+  inline const CVectorOfMatrix& GetAuxVarGradient(void) const { return Grad_AuxVar; }
 
   /*!
    * \brief Get the value of the auxilliary gradient.
@@ -758,6 +803,7 @@ public:
    * \return Reference to gradient.
    */
   inline CVectorOfMatrix& GetGradient(void) { return Gradient; }
+  inline const CVectorOfMatrix& GetGradient(void) const { return Gradient; }
 
   /*!
    * \brief Get the value of the solution gradient.
@@ -804,6 +850,7 @@ public:
    * \return Reference to the limiters vector.
    */
   inline MatrixType& GetLimiter(void) { return Limiter; }
+  inline const MatrixType& GetLimiter(void) const { return Limiter; }
 
   /*!
    * \brief Get the value of the slope limiter.
@@ -1137,6 +1184,20 @@ public:
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
+   * \return Value of the chemical source term.
+   */
+  inline virtual su2double GetChemicalSourceTerm(unsigned long iPoint, unsigned short val_ivar) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \return Value of the heat release due to combustion.
+   */
+  inline virtual su2double GetHeatRelease(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
    * \return Value of the specific heat at constant P
    */
   inline virtual su2double GetSpecificHeatCp(unsigned long iPoint) const { return 0.0; }
@@ -1176,6 +1237,13 @@ public:
    */
   inline virtual su2double *GetVorticity(unsigned long iPoint) { return nullptr; }
   inline virtual const su2double *GetVorticity(unsigned long iPoint) const { return nullptr; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \return Value of strain rate magnitude.
+   */
+  inline virtual su2double GetStrainMag(unsigned long iPoint) const { return 0.0; }
 
   /*!
    * \brief A virtual member.
@@ -2408,17 +2476,6 @@ public:
   inline su2double GetSensor_Adapt(unsigned long iPoint, unsigned long iVar) const { return Sensor_Adapt(iPoint,iVar); }
 
   /*!
-   * \brief Set the gradient of the solution.
-   * \param[in] iPoint - Point index.
-   * \param[in] gradient - Gradient of the solution.
-   */
-  inline void SetGradient_Adapt(unsigned long iPoint, su2double** gradient) {
-    for (unsigned long iVar = 0; iVar < nVar; iVar++)
-      for (unsigned long iDim = 0; iDim < nDim; iDim++)
-        Gradient_Adapt(iPoint,iVar,iDim) = gradient[iVar][iDim];
-  }
-
-  /*!
    * \brief Get the gradient of the entire solution.
    * \return Reference to gradient.
    */
@@ -2465,36 +2522,27 @@ public:
   inline su2double GetHessian(unsigned long iPoint, unsigned long iVar, unsigned long iMat) const { return Hessian(iPoint,iVar,iMat); }
 
   /*!
-   * \brief Set the value of the metric.
-   * \param[in] iMat - Metric tensor index.
-   * \param[in] metric - Metric value.
+   * \brief Get the adaptive metric field of all sensors.
+   * \return Reference to the adaptive metric field (nPoint, nSensor, nSymMat).
    */
-  inline void SetMetric(unsigned long iPoint, unsigned short iMat, double metric) { Metric(iPoint,iMat) = metric; }
+  inline C3DPassiveMatrix& GetAdaptiveMetric(void) { return AdaptiveMetric; }
 
   /*!
-   * \brief Get the metric of the entire solution.
-   * \return Reference to the metric tensor field.
+   * \brief Get a component of the adaptive metric of a sensor.
+   * \param[in] iPoint - Point index.
+   * \param[in] iSensor - Sensor index.
+   * \param[in] iMat - Symmetric tensor component index.
+   * \return Value of the adaptive metric component.
    */
-  inline su2matrix<double>& GetMetric(void) { return Metric; }
+  inline passivedouble GetAdaptiveMetric(unsigned long iPoint, unsigned long iSensor, unsigned long iMat) const {
+    return AdaptiveMetric(iPoint, iSensor, iMat);
+  }
 
   /*!
-   * \brief Add the value of the metric.
-   * \param[in] iMat - Metric tensor index.
-   * \param[in] metric - Metric value.
-   */
-  inline void AddMetric(unsigned long iPoint, unsigned short iMat, double metric) { Metric(iPoint,iMat) += metric; }
-
-  /*!
-   * \brief Get the value of the metric.
-   * \param[in] iMat  - Metric tensor index.
-   */
-  inline double GetMetric(unsigned long iPoint, unsigned short iMat) const { return Metric(iPoint,iMat); }
-
-  /*!
-   * \brief Allocate Sensor_Adapt, Gradient_Adapt, Hessian, and Metric arrays for specified sensor indices.
+   * \brief Allocate Sensor_Adapt, Gradient_Adapt, Hessian, and AdaptiveMetric arrays for the given number of sensors.
    * \param[in] nSensors - Number of metric sensors
    */
-  void AllocateMetricSensorArrays(unsigned short nSensors);
+  void AllocateAdaptiveMetricArrays(unsigned short nSensors);
 
   /*!
    * \brief Get the solution mass for conservative interpolation.
@@ -2533,4 +2581,22 @@ public:
    * \param[in] mass - Value of the mass for the index <i>iVar</i>.
    */
   inline void AddSolution_Mass(unsigned long iPoint, unsigned long iVar, su2double mass) { Solution_Mass(iPoint,iVar) += mass; }
+
+  inline virtual su2double GetMomCoeff(unsigned long iPoint) { return 0.0; }
+
+  inline virtual void SetMomCoeff(unsigned long iPoint, su2double val_Mom_Coeff) { }
+
+  /*!
+   * \brief Get whether a strong boundary condition was applied to the point, which for the
+   *        pressure-based solver means its momentum row was deleted and carries no A_p.
+   */
+  inline virtual bool GetStrongBC(unsigned long iPoint) const { return false; }
+
+  inline virtual su2double GetMomentumCorrection(unsigned long iPoint, unsigned short iDim) { return 0.0; }
+
+  inline virtual void SetMomentumCorrection(unsigned long iPoint, unsigned short iDim, su2double val_mom) { }
+
+  inline virtual su2double GetHbyACorrection(unsigned long iPoint, unsigned short iDim) { return 0.0; }
+
+  inline virtual void SetHbyACorrection(unsigned long iPoint, unsigned short iDim, su2double val_HbyAcorrection) { }
 };
