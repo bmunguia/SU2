@@ -4,7 +4,7 @@
  * \note Only implemented for triangles (2D) and tetrahedra (3D). Boundary nodes accumulate
  *       contributions solely from interior elements, avoiding contamination from BC states.
  * \author B. Munguía
- * \version 8.4.0 "Harrier"
+ * \version 8.6.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
